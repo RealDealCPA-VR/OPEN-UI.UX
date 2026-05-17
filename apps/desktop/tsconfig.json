@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "outDir": "out",
+    "rootDir": "src",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@/*": ["src/renderer/*"],
+      "@main/*": ["src/main/*"],
+      "@shared/*": ["src/shared/*"]
+    }
+  },
+  "include": ["src/**/*", "electron.vite.config.ts"]
+}

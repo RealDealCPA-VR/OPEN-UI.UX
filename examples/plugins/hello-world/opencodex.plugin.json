@@ -1,0 +1,14 @@
+{
+  "name": "hello-world",
+  "version": "0.0.0",
+  "displayName": "Hello World",
+  "description": "Reference plugin demonstrating the OpenCodex plugin SDK",
+  "author": "OpenCodex contributors",
+  "license": "MIT",
+  "entry": "dist/index.js",
+  "engines": { "opencodex": "^0.1.0" },
+  "permissions": [],
+  "contributions": {
+    "tools": ["hello_world"]
+  }
+}

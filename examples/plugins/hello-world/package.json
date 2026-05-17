@@ -1,0 +1,21 @@
+{
+  "name": "@opencodex-example/hello-world",
+  "version": "0.0.0",
+  "description": "Reference plugin demonstrating the OpenCodex plugin SDK",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@opencodex/core": "workspace:*",
+    "@opencodex/plugin-sdk": "workspace:*",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

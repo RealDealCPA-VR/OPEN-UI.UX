@@ -1,0 +1,28 @@
+{
+  "name": "@opencodex/tools",
+  "version": "0.0.0",
+  "description": "Built-in tool implementations: read_file, write_file, edit_file, glob, grep, list_dir, run_shell, web_fetch",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@opencodex/core": "workspace:*",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
+  }
+}

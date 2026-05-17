@@ -1,0 +1,35 @@
+{
+  "name": "@opencodex/providers",
+  "version": "0.0.0",
+  "description": "Built-in LLMProvider adapters for OpenAI, Anthropic, Google, xAI, Mistral, Ollama, OpenRouter",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./openai": { "types": "./dist/openai.d.ts", "import": "./dist/openai.js" },
+    "./anthropic": { "types": "./dist/anthropic.d.ts", "import": "./dist/anthropic.js" },
+    "./google": { "types": "./dist/google.d.ts", "import": "./dist/google.js" },
+    "./xai": { "types": "./dist/xai.d.ts", "import": "./dist/xai.js" },
+    "./mistral": { "types": "./dist/mistral.d.ts", "import": "./dist/mistral.js" },
+    "./ollama": { "types": "./dist/ollama.d.ts", "import": "./dist/ollama.js" },
+    "./openrouter": { "types": "./dist/openrouter.d.ts", "import": "./dist/openrouter.js" }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@opencodex/core": "workspace:*",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
+  }
+}

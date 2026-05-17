@@ -1,0 +1,27 @@
+{
+  "name": "opencodex",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Open-source desktop coding agent that works with any LLM",
+  "license": "MIT",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @opencodex/desktop dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r clean && rimraf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.2.0",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
+  }
+}
