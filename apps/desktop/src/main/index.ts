@@ -3,8 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { logger } from './logger';
+import { registerChatHandlers } from './chat/handlers';
 import { registerInvoke } from './ipc/registry';
 import { registerProviderHandlers } from './providers/handlers';
+import { registerSelectedModelHandlers } from './selected-model/handlers';
 import { openDb, closeDb } from './storage/db';
 import { createTray, destroyTray } from './tray';
 import { initAutoUpdater } from './updater';
@@ -124,4 +126,6 @@ app.on('before-quit', () => {
 function registerIpcHandlers(): void {
   registerInvoke('app:version', z.void(), () => app.getVersion());
   registerProviderHandlers();
+  registerSelectedModelHandlers();
+  registerChatHandlers();
 }

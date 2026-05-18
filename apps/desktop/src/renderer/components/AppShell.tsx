@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
+import { ModelPicker } from './ModelPicker';
 
 const NAV_ITEMS = [
   { to: '/chat', label: 'Chat' },
@@ -33,9 +34,14 @@ export function AppShell(): JSX.Element {
         </ul>
         <div className="sidebar-footer">v{version}</div>
       </nav>
-      <main className="content">
-        <Outlet />
-      </main>
+      <div className="main-column">
+        <header className="topbar">
+          <ModelPicker />
+        </header>
+        <main className="content">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

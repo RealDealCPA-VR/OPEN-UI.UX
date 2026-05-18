@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
+import { ChatProvider } from './state/chat-context';
+import { SelectedModelProvider } from './state/selected-model-context';
 import { ChatView } from './views/ChatView';
 import { AgentView } from './views/AgentView';
 import { CodebaseView } from './views/CodebaseView';
@@ -9,17 +11,21 @@ import { SettingsView } from './views/SettingsView';
 export function App(): JSX.Element {
   return (
     <HashRouter>
-      <DeepLinkRouter />
-      <Routes>
-        <Route element={<AppShell />}>
-          <Route index element={<Navigate to="/chat" replace />} />
-          <Route path="/chat" element={<ChatView />} />
-          <Route path="/agent" element={<AgentView />} />
-          <Route path="/codebase" element={<CodebaseView />} />
-          <Route path="/settings" element={<SettingsView />} />
-          <Route path="*" element={<Navigate to="/chat" replace />} />
-        </Route>
-      </Routes>
+      <SelectedModelProvider>
+        <ChatProvider>
+          <DeepLinkRouter />
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route index element={<Navigate to="/chat" replace />} />
+              <Route path="/chat" element={<ChatView />} />
+              <Route path="/agent" element={<AgentView />} />
+              <Route path="/codebase" element={<CodebaseView />} />
+              <Route path="/settings" element={<SettingsView />} />
+              <Route path="*" element={<Navigate to="/chat" replace />} />
+            </Route>
+          </Routes>
+        </ChatProvider>
+      </SelectedModelProvider>
     </HashRouter>
   );
 }

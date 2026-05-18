@@ -1,6 +1,7 @@
 import Store from 'electron-store';
 import { z } from 'zod';
 import type { ProviderTestResult } from '../../shared/provider-config';
+import type { SelectedModel } from '../../shared/selected-model';
 
 const providerTestResultSchema: z.ZodType<ProviderTestResult> = z.object({
   code: z.enum(['ok', 'config', 'auth', 'http', 'network', 'timeout', 'unknown']),
@@ -18,11 +19,17 @@ const providerEntrySchema = z.object({
 
 export type StoredProviderEntry = z.infer<typeof providerEntrySchema>;
 
+const selectedModelSchema: z.ZodType<SelectedModel> = z.object({
+  providerId: z.string().min(1),
+  modelId: z.string().min(1),
+});
+
 const SettingsSchema = z.object({
   theme: z.enum(['light', 'dark', 'system']).default('system'),
   workspaceHistory: z.array(z.string()).default([]),
   activeWorkspace: z.string().nullable().default(null),
   providers: z.record(providerEntrySchema).default({}),
+  selectedModel: selectedModelSchema.nullable().default(null),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -66,4 +73,13 @@ export function deleteProviderEntry(id: string): void {
   const next = { ...settings.providers };
   delete next[id];
   updateSettings({ providers: next });
+}
+
+export function getSelectedModel(): SelectedModel | null {
+  return getSettings().selectedModel;
+}
+
+export function setSelectedModel(sel: SelectedModel | null): SelectedModel | null {
+  const next = updateSettings({ selectedModel: sel });
+  return next.selectedModel;
 }

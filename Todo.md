@@ -62,12 +62,12 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 ### UI
 
 - [x] Provider config UI (add/remove keys, test connection)
-- [ ] Model picker with cost + context window display + capabilities badges
-- [ ] Capabilities-driven UI gating (hide tools toggle if `!toolUse`)
-- [ ] Streaming chat view (markdown + syntax-highlighted code + copy buttons)
-- [ ] Conversation persistence in SQLite
-- [ ] Token usage + cost accounting per session
-- [ ] Export conversation (markdown, JSON)
+- [x] Model picker with cost + context window display + capabilities badges
+- [x] Capabilities-driven UI gating (hide tools toggle if `!toolUse`)
+- [x] Streaming chat view (markdown + syntax-highlighted code + copy buttons)
+- [x] Conversation persistence in SQLite
+- [x] Token usage + cost accounting per session _(session rollup via `getConversationUsage` + `conversations:usage` IPC; surfaced in chat header with per-model tooltip)_
+- [x] Export conversation (markdown, JSON) _(`buildConversationExport` + `conversations:export` IPC with native save dialog; Export menu in chat header)_
 
 ## Phase 2 — Local coding agent
 

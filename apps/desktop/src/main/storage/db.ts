@@ -40,6 +40,19 @@ const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    sql: `
+      ALTER TABLE conversations ADD COLUMN provider_id TEXT;
+      ALTER TABLE conversations ADD COLUMN model_id TEXT;
+
+      ALTER TABLE messages ADD COLUMN provider_id TEXT;
+      ALTER TABLE messages ADD COLUMN model_id TEXT;
+      ALTER TABLE messages ADD COLUMN input_tokens INTEGER;
+      ALTER TABLE messages ADD COLUMN output_tokens INTEGER;
+      ALTER TABLE messages ADD COLUMN cost_usd REAL;
+    `,
+  },
 ];
 
 let db: Database.Database | null = null;
@@ -50,7 +63,7 @@ export function openDb(): Database.Database {
   const instance = new Database(dbPath);
   instance.pragma('journal_mode = WAL');
   instance.pragma('foreign_keys = ON');
-  runMigrations(instance);
+  applyMigrations(instance);
   db = instance;
   logger.info({ path: dbPath }, 'sqlite opened');
   return instance;
@@ -61,9 +74,17 @@ export function getDb(): Database.Database {
   return db;
 }
 
+export function setDbForTesting(instance: Database.Database | null): void {
+  db = instance;
+}
+
 export function closeDb(): void {
   db?.close();
   db = null;
+}
+
+export function applyMigrations(database: Database.Database): void {
+  runMigrations(database);
 }
 
 function runMigrations(database: Database.Database): void {

@@ -24,7 +24,13 @@
       "Bash(git diff *)",
       "Read(//tmp/**)",
       "Bash(pnpm --filter @opencodex/desktop typecheck)",
-      "Bash(pnpm --filter @opencodex/desktop lint)"
+      "Bash(pnpm --filter @opencodex/desktop lint)",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('fs'\\).readFileSync\\('c:/Users/VR/Projects/OPEN UI.UX/apps/desktop/src/main/storage/conversation-export.ts','utf8'\\).split\\('\\\\n'\\).slice\\(135,143\\)\\)\\)\")",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('c:/Users/VR/Projects/OPEN UI.UX/apps/desktop/src/main/storage/conversation-export.ts','utf8'\\); const line=s.split\\('\\\\n'\\)[137]; console.log\\(line\\); console.log\\(Array.from\\(line\\).map\\(c=>c.charCodeAt\\(0\\).toString\\(16\\)\\).join\\(' '\\)\\)\")",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('c:/Users/VR/Projects/OPEN UI.UX/apps/desktop/src/main/storage/conversation-export.ts','utf8'\\); const line=s.split\\('\\\\n'\\)[133]; console.log\\(JSON.stringify\\(line\\)\\); console.log\\(Array.from\\(line\\).map\\(c=>c.charCodeAt\\(0\\).toString\\(16\\)\\).join\\(' '\\)\\)\")",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('c:/Users/VR/Projects/OPEN UI.UX/apps/desktop/src/main/storage/conversation-export.ts','utf8'\\); s.split\\('\\\\n'\\).forEach\\(\\(l,i\\)=>{ if\\(l.includes\\('FILENAME'\\)||l.includes\\('replace'\\)\\) console.log\\(i,JSON.stringify\\(l\\)\\); }\\);\")",
+      "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('c:/Users/VR/Projects/OPEN UI.UX/apps/desktop/src/main/storage/conversation-export.ts','utf8'\\); s.split\\('\\\\n'\\).forEach\\(\\(l,i\\)=>{ if\\(l.includes\\('FORBIDDEN'\\)||l.includes\\('Set\\('\\)\\) console.log\\(i,JSON.stringify\\(l\\)\\); }\\);\")",
+      "Bash(pnpm --filter @opencodex/desktop test)"
     ]
   }
 }
