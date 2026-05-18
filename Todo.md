@@ -23,20 +23,20 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 
 ## Phase 0.5 — Electron scaffold
 
-- [ ] `apps/desktop`: Electron 30+ + Vite + React 18 + TS scaffold
-- [ ] Configure `electron-vite` for separate main / preload / renderer builds
-- [ ] Main process entry with single-instance lock + deep-link handling
-- [ ] Preload bridge with `contextBridge` typed API (`window.opencodex.*`)
-- [ ] Renderer: React app shell with router (chat / agent / codebase / settings)
-- [ ] IPC channel registry with typed contracts in `apps/desktop/src/shared/ipc-types.ts`
-- [ ] IPC handler dispatch in main with Zod validation on every payload
-- [ ] Logger setup (`pino` in main, structured console in renderer)
-- [ ] SQLite via `better-sqlite3`, migration runner with versioned migrations
-- [ ] Settings store (`electron-store`) for non-secret prefs
-- [ ] Secure key storage via `keytar` (provider API keys)
-- [ ] `electron-updater` scaffold (no signing yet)
-- [ ] App icon + branding placeholders
-- [ ] Tray icon + minimal menu bar
+- [x] `apps/desktop`: Electron 30+ + Vite + React 18 + TS scaffold
+- [x] Configure `electron-vite` for separate main / preload / renderer builds
+- [x] Main process entry with single-instance lock + deep-link handling
+- [x] Preload bridge with `contextBridge` typed API (`window.opencodex.*`)
+- [x] Renderer: React app shell with router (chat / agent / codebase / settings)
+- [x] IPC channel registry with typed contracts in `apps/desktop/src/shared/ipc-types.ts`
+- [x] IPC handler dispatch in main with Zod validation on every payload
+- [x] Logger setup (`pino` in main, structured console in renderer)
+- [x] SQLite via `better-sqlite3`, migration runner with versioned migrations
+- [x] Settings store (`electron-store`) for non-secret prefs
+- [x] Secure key storage via `keytar` (provider API keys)
+- [x] `electron-updater` scaffold (no signing yet)
+- [x] App icon + branding placeholders
+- [x] Tray icon + minimal menu bar
 
 ## Phase 1 — Provider abstraction & adapters
 

@@ -2,59 +2,76 @@
 
 ## Last Session Summary
 
-- Completed Phase 0 foundations: pnpm workspaces verified, ESLint 9 flat config with TS + React + react-hooks rules, Prettier + `.prettierignore`, Husky 9 `pre-commit` running `lint-staged` + full repo typecheck, Vitest workspace mode (`vitest.workspace.ts` + `vitest.config.ts`), GitHub Actions `ci.yml` (lint + typecheck + test + format check on Linux/Windows/macOS).
-- Added community health files: `CODEOWNERS`, `CODE_OF_CONDUCT.md` (links to Contributor Covenant 2.1), `SECURITY.md`, `CONTRIBUTING.md`, plus `.github/ISSUE_TEMPLATE/{config,bug_report,feature_request}.yml` and `pull_request_template.md`. All contain `TODO-set-github-handle` / `TODO-set-domain` / `TODO-org` placeholders.
-- Restructured every per-package `tsconfig.json` to be typecheck-only (`noEmit: true`, no `rootDir`/`outDir`) and added `@opencodex/*` path mappings in `tsconfig.base.json` so workspace packages resolve to source at dev time. `apps/desktop/tsconfig.json` duplicates the path mappings (TS child `paths` replaces parent's, not merges) and adds `baseUrl: "."`. Root `package.json` now has `"type": "module"` to align with the ESM-everywhere rule.
+- Completed all 14 Phase 0.5 items. Main process now has protocol registration (`opencodex://`), single-instance lock, deep-link delivery (Windows `second-instance` + macOS `open-url`), pending-deep-link buffer for cold-launch URLs, tray with placeholder icon, packaged-only auto-updater, SQLite (WAL + FK + transactional migrations), electron-store-backed settings (Zod-validated), keytar secret storage, pino logger. New typed IPC dispatcher in `apps/desktop/src/main/ipc/registry.ts` validates every payload with Zod via `registerInvoke(channel, schema, handler)`.
+- Renderer shell shipped: `HashRouter` (chosen over `BrowserRouter` for `file://` compatibility when packaged), sidebar nav with 4 routed views (chat/agent/codebase/settings), `DeepLinkRouter` listens to `app:deep-link` and parses `opencodex://chat`-style URLs into route navigations. Renderer also has a tiny structured-JSON `logger` wrapper.
+- Fixed a latent runtime bug in the prior session's main entry: preload was loaded as `index.js` but electron-vite emits `out/preload/index.mjs`. Corrected to `.mjs`.
 
 ## Verify Before Continuing
 
-- [ ] **Full local CI still green** — run `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`. All four should exit 0. If any fail, fix before continuing.
-- [ ] **Husky pre-commit hook installed** — run `git config core.hooksPath`; expect `.husky/_`. If empty, run `pnpm prepare`.
-- [ ] **No stray `dist/` directories** in `packages/*/` (we removed `outDir` configs; if you see one, it's stale from before).
+- [ ] **Full CI still green** — run `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check && pnpm build`. All five should exit 0. Last run produced main 7.31 kB, preload 0.37 kB (.mjs), renderer 271.65 kB JS + 1.31 kB CSS.
+- [ ] **Native deps load inside Electron** — run `pnpm --filter @opencodex/desktop dev` and look for `Error: The module '...' was compiled against a different Node.js version`. `better-sqlite3` and `keytar` install via prebuilt Node-ABI binaries; if Electron's bundled Node ABI differs from the system Node used at install time, they will fail at `require()` time. Fix path: add `@electron/rebuild` as a devDep and a `postinstall` script in `apps/desktop` that runs `electron-rebuild -f -w better-sqlite3,keytar`. Don't preemptively add this — only if the error appears.
+- [ ] **Husky pre-commit hook** — `git config core.hooksPath` should print `.husky/_`. If empty, run `pnpm prepare`.
 
 ## Next Task
 
-Phase 0 has 2 unchecked items, both intentionally deferred. Skip them for now and move into **Phase 0.5 — Electron scaffold**. The first items are:
+Phase 0.5 is done. Skip the two unchecked Phase 0 deferrals (Playwright config, CI `pnpm build` step). Move into **Phase 1 — Provider abstraction**, starting with the core contracts:
 
-> - [ ] `apps/desktop`: Electron 30+ + Vite + React 18 + TS scaffold
-> - [ ] Configure `electron-vite` for separate main / preload / renderer builds
-> - [ ] Main process entry with single-instance lock + deep-link handling
-> - [ ] Preload bridge with `contextBridge` typed API (`window.opencodex.*`)
-> - [ ] Renderer: React app shell with router (chat / agent / codebase / settings)
+> ### Core contracts
+>
+> - [ ] `packages/core`: `LLMProvider` interface (chat, embed, capabilities)
+> - [ ] `packages/core`: `ChatEvent` union (`text_delta`, `tool_call`, `tool_result`, `usage`, `done`, `error`)
+> - [ ] `packages/core`: `ModelCapabilities` (toolUse, vision, streaming, contextWindow, pricing, embeddings)
+> - [ ] `packages/core`: `Message` / `ContentBlock` shared types (text, image, tool_use, tool_result)
+> - [ ] Provider registry + factory with config validation
 
-Tackle in that order. The `apps/desktop/` skeleton already has the directory layout from the previous session (`src/main/`, `src/preload/`, `src/renderer/`, `src/shared/`), an `electron.vite.config.ts` file, and placeholder entry files — they need real Electron deps installed and the build pipeline wired.
+Build these in order. The interface in `packages/core/src/provider.ts` is the load-bearing contract — every adapter under `packages/providers/*` (planned: openai, anthropic, google, xai, mistral, ollama, openrouter) will implement it, so think hard before locking the shape.
 
 ## Context Notes
 
-### tsconfig strategy (load-bearing for the whole repo)
+### Typed IPC pattern (load-bearing)
 
-- **Typecheck-only configs**: every `packages/*/tsconfig.json`, `apps/desktop/tsconfig.json`, and `examples/plugins/hello-world/tsconfig.json` is now `noEmit: true` with no `rootDir`/`outDir`. They exist solely for `pnpm -r typecheck`.
-- **Build state is mixed**:
-  - `pnpm build` exits 0 across the whole tree.
-  - `apps/desktop` produces real artifacts in `out/{main,preload,renderer}/` via `electron-vite build` — the previous session's prediction that builds would fail until Phase 0.5 turned out to be wrong; electron-vite was already wired enough to build the skeleton.
-  - `packages/*` build scripts (`tsc -p tsconfig.json`) emit **nothing** because `noEmit: true`. Their `dist/` directories stay empty (or contain only `tsconfig.tsbuildinfo`). This is fine at dev time because path mappings point at `src/`, but **packages cannot be consumed from `dist/`** — that matters before publishing or before a non-workspace consumer pulls them in.
-  - Recommendation for when real package builds are needed: `tsup` per package (one tiny config per consumer, ESM output, dts generation, watch mode), OR TypeScript project references with a separate `tsconfig.build.json` per package + `tsc -b`. `tsup` is less ceremony and plays nicely alongside the existing `electron-vite` setup.
-- **Path mappings** in `tsconfig.base.json` resolve `@opencodex/*` to each package's `src/index.ts`. `apps/desktop/tsconfig.json` duplicates them under its own `paths` because TS does not merge `paths` from `extends`. If you add a new workspace package, update **both** places.
+- Add new channels to one of two registries in `apps/desktop/src/shared/ipc-types.ts`:
+  - `IpcInvokeChannels` — request/response (renderer → main → renderer)
+  - `IpcEventChannels` — main → renderer push events
+- In main, register handlers via `registerInvoke('channel:name', zodSchema, handler)` from `apps/desktop/src/main/ipc/registry.ts`. Zod parsing is mandatory — never call `ipcMain.handle` directly. `safeParse` failure logs structured warning via pino and throws.
+- For events, use `emit(webContents, channel, payload)` from the same registry.
+- Renderer side: expose new methods on `window.opencodex` via `apps/desktop/src/preload/index.ts`. The `OpenCodexBridge` type export keeps the renderer's `window.opencodex` typed via `apps/desktop/src/renderer/global.d.ts`.
 
-### CI workflow gap
+### electron-updater import quirk
 
-- `.github/workflows/ci.yml` does not run `pnpm build` yet. It currently runs `pnpm install --frozen-lockfile`, lint, typecheck, test, and format check across a 3-OS matrix. `pnpm build` could be added now (it exits 0 and produces real Electron artifacts), but consider deferring the CI build step until `packages/*` actually emit something — otherwise CI just rebuilds Electron and silently no-ops on every package, which is misleading.
+`electron-updater` is CJS internally. The main entry uses `import pkg from 'electron-updater'; const { autoUpdater } = pkg;` (see `apps/desktop/src/main/updater.ts`). Named imports break under ESM with this package. Updater is only initialized when `app.isPackaged` is true, so dev runs don't trigger update checks.
 
-### Pre-commit hook
+### electron-store version
 
-- `.husky/pre-commit` runs `pnpm lint-staged` then `pnpm -r typecheck`. The typecheck-on-every-commit can be slow on big diffs — if it becomes painful, switch to `tsc-files` on staged files instead.
+We're on `electron-store@10`, which is ESM-only. This works because the root `package.json` has `"type": "module"`. If you downgrade or another consumer breaks, that's why.
 
-### Placeholders to fill in before going public
+### SQLite migration pattern
 
-- `CODEOWNERS`: every `@TODO-set-github-handle` → real GitHub handle.
-- `SECURITY.md`: `security@TODO-set-domain` → real contact.
-- `.github/ISSUE_TEMPLATE/config.yml`: `github.com/TODO-org/TODO-repo` → real repo URL.
+Migrations live as a `MIGRATIONS` array of `{ version, sql }` in `apps/desktop/src/main/storage/db.ts`. To add a migration:
 
-### Carry-overs from the prior session
+1. Append a new entry with the next version number — never edit an existing one.
+2. Wrap multi-statement SQL inside the `sql` string (`.exec()` runs them all).
+3. The runner is transactional via `database.transaction(...)`; partial migrations rollback.
 
-- Folder path has a space + period (`OPEN UI.UX`). Quote paths in shell commands.
-- `packages/core/src/provider.ts` is the load-bearing `LLMProvider` contract — changes are breaking-change-grade.
-- No provider SDKs installed yet. Install them inside `packages/providers/`, not at root.
+Initial migration (v1) creates `conversations`, `messages`, `tool_calls` tables. Schema is intentionally minimal — Phase 2+ will extend it.
+
+### Tray icon is empty
+
+`apps/desktop/src/main/tray.ts` uses `nativeImage.createEmpty()`. On Windows this may not show the tray reliably. Real icons go in `apps/desktop/build/` per the README there. Replace before any visible release.
+
+### Renderer routing
+
+- `HashRouter` not `BrowserRouter` — required for `file://` protocol loading when packaged.
+- `DeepLinkRouter` in `apps/desktop/src/renderer/App.tsx` parses `opencodex://<segment>` URLs into `/<segment>` routes via `parseDeepLink`. Unknown segments are ignored.
+- Catch-all `<Route path="*">` redirects to `/chat`.
+
+### Carry-overs from earlier sessions
+
+- Folder path has a space + period (`OPEN UI.UX`). Quote in shell commands.
+- `packages/core/src/provider.ts` is the load-bearing `LLMProvider` contract — changes are breaking-change-grade. **This is exactly what Phase 1 starts editing — be deliberate.**
+- No provider SDKs installed yet. Install them inside `packages/providers/*`, not at root.
 - MIT license — don't add GPL deps.
-- Electron was chosen over Tauri for iteration speed.
-- The repo's `.git` was already initialized before this session started; the user confirmed it.
+- `packages/*` build scripts (`tsc -p tsconfig.json`) emit nothing because `noEmit: true`. Path mappings point at `src/` for dev. Packages cannot be consumed from `dist/` — matters before publishing. Recommendation when needed: `tsup` per package.
+- Path mappings in both `tsconfig.base.json` AND `apps/desktop/tsconfig.json` — TS does not merge `paths` from `extends`. When adding a new workspace package, update both.
+- CI workflow at `.github/workflows/ci.yml` still does not run `pnpm build`. Could be added now (passes locally), but it just no-ops on every `packages/*` package — defer until those actually emit.
+- Placeholders still to fill before going public: `@TODO-set-github-handle` (CODEOWNERS), `security@TODO-set-domain` (SECURITY.md), `github.com/TODO-org/TODO-repo` (issue template config).

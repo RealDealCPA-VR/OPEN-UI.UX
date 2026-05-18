@@ -23,10 +23,18 @@
     "@opencodex/mcp-client": "workspace:*",
     "@opencodex/plugin-sdk": "workspace:*",
     "@opencodex/providers": "workspace:*",
-    "@opencodex/tools": "workspace:*"
+    "@opencodex/tools": "workspace:*",
+    "better-sqlite3": "^11.3.0",
+    "electron-store": "^10.0.0",
+    "electron-updater": "^6.3.0",
+    "keytar": "^7.9.0",
+    "pino": "^9.5.0",
+    "react-router-dom": "^6.26.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.42.0",
+    "@types/better-sqlite3": "^7.6.11",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.0",
