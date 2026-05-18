@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { ChatEvent } from './events';
 import type { Message } from './message';
 import type { ModelCapabilities } from './capabilities';
@@ -36,14 +37,17 @@ export interface LLMProvider {
   capabilities(model: string): Promise<ModelCapabilities | undefined>;
 }
 
-export interface ProviderConfig {
-  apiKey?: string;
-  baseUrl?: string;
-  headers?: Record<string, string>;
-}
+export const providerConfigSchema = z.object({
+  apiKey: z.string().min(1).optional(),
+  baseUrl: z.string().url().optional(),
+  headers: z.record(z.string()).optional(),
+});
 
-export interface ProviderFactory {
+export type ProviderConfig = z.infer<typeof providerConfigSchema>;
+
+export interface ProviderFactory<TConfig extends ProviderConfig = ProviderConfig> {
   readonly id: string;
   readonly displayName: string;
-  create(config: ProviderConfig): LLMProvider;
+  readonly configSchema: z.ZodType<TConfig>;
+  create(config: TConfig): LLMProvider;
 }

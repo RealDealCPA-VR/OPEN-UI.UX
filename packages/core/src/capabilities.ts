@@ -1,19 +1,24 @@
-export interface ModelPricing {
-  inputPerMillion: number;
-  outputPerMillion: number;
-  cachedInputPerMillion?: number;
-}
+import { z } from 'zod';
 
-export interface ModelCapabilities {
-  id: string;
-  providerId: string;
-  displayName: string;
-  contextWindow: number;
-  maxOutputTokens?: number;
-  toolUse: boolean;
-  vision: boolean;
-  streaming: boolean;
-  embeddings: boolean;
-  promptCaching?: boolean;
-  pricing?: ModelPricing;
-}
+export const modelPricingSchema = z.object({
+  inputPerMillion: z.number().nonnegative(),
+  outputPerMillion: z.number().nonnegative(),
+  cachedInputPerMillion: z.number().nonnegative().optional(),
+});
+
+export const modelCapabilitiesSchema = z.object({
+  id: z.string().min(1),
+  providerId: z.string().min(1),
+  displayName: z.string().min(1),
+  contextWindow: z.number().int().positive(),
+  maxOutputTokens: z.number().int().positive().optional(),
+  toolUse: z.boolean(),
+  vision: z.boolean(),
+  streaming: z.boolean(),
+  embeddings: z.boolean(),
+  promptCaching: z.boolean().optional(),
+  pricing: modelPricingSchema.optional(),
+});
+
+export type ModelPricing = z.infer<typeof modelPricingSchema>;
+export type ModelCapabilities = z.infer<typeof modelCapabilitiesSchema>;

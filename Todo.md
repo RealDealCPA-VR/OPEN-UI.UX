@@ -42,15 +42,15 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 
 ### Core contracts
 
-- [ ] `packages/core`: `LLMProvider` interface (chat, embed, capabilities)
-- [ ] `packages/core`: `ChatEvent` union (`text_delta`, `tool_call`, `tool_result`, `usage`, `done`, `error`)
-- [ ] `packages/core`: `ModelCapabilities` (toolUse, vision, streaming, contextWindow, pricing, embeddings)
-- [ ] `packages/core`: `Message` / `ContentBlock` shared types (text, image, tool_use, tool_result)
-- [ ] Provider registry + factory with config validation
+- [x] `packages/core`: `LLMProvider` interface (chat, embed, capabilities)
+- [x] `packages/core`: `ChatEvent` union (`text_delta`, `tool_call`, `tool_result`, `usage`, `done`, `error`)
+- [x] `packages/core`: `ModelCapabilities` (toolUse, vision, streaming, contextWindow, pricing, embeddings)
+- [x] `packages/core`: `Message` / `ContentBlock` shared types (text, image, tool_use, tool_result)
+- [x] Provider registry + factory with config validation
 
 ### Adapters
 
-- [ ] `packages/providers/openai`: Chat Completions + Responses API, streaming, tool calls
+- [ ] `packages/providers/openai`: Chat Completions + Responses API, streaming, tool calls _(Chat Completions done with streaming + tool calls + embeddings; Responses API not implemented yet)_
 - [ ] `packages/providers/anthropic`: Messages API with prompt caching, tool use, vision
 - [ ] `packages/providers/google`: Gemini API, tool calls, vision
 - [ ] `packages/providers/xai`: Grok API (OpenAI-compatible)

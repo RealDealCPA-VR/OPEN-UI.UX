@@ -59,9 +59,27 @@ importers:
       '@opencodex/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
-      '@opencodex/providers':
+      '@opencodex/provider-anthropic':
         specifier: workspace:*
-        version: link:../../packages/providers
+        version: link:../../packages/provider-anthropic
+      '@opencodex/provider-google':
+        specifier: workspace:*
+        version: link:../../packages/provider-google
+      '@opencodex/provider-mistral':
+        specifier: workspace:*
+        version: link:../../packages/provider-mistral
+      '@opencodex/provider-ollama':
+        specifier: workspace:*
+        version: link:../../packages/provider-ollama
+      '@opencodex/provider-openai':
+        specifier: workspace:*
+        version: link:../../packages/provider-openai
+      '@opencodex/provider-openrouter':
+        specifier: workspace:*
+        version: link:../../packages/provider-openrouter
+      '@opencodex/provider-xai':
+        specifier: workspace:*
+        version: link:../../packages/provider-xai
       '@opencodex/tools':
         specifier: workspace:*
         version: link:../../packages/tools
@@ -188,7 +206,103 @@ importers:
         specifier: ^1.4.0
         version: 1.6.1(@types/node@20.19.41)
 
-  packages/providers:
+  packages/provider-anthropic:
+    dependencies:
+      '@opencodex/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^3.22.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.1(@types/node@20.19.41)
+
+  packages/provider-google:
+    dependencies:
+      '@opencodex/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^3.22.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.1(@types/node@20.19.41)
+
+  packages/provider-mistral:
+    dependencies:
+      '@opencodex/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^3.22.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.1(@types/node@20.19.41)
+
+  packages/provider-ollama:
+    dependencies:
+      '@opencodex/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^3.22.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.1(@types/node@20.19.41)
+
+  packages/provider-openai:
+    dependencies:
+      '@opencodex/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^3.22.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.1(@types/node@20.19.41)
+
+  packages/provider-openrouter:
+    dependencies:
+      '@opencodex/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^3.22.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.1(@types/node@20.19.41)
+
+  packages/provider-xai:
     dependencies:
       '@opencodex/core':
         specifier: workspace:*

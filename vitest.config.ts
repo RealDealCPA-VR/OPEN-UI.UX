@@ -1,6 +1,24 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
+const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@opencodex/core': r('./packages/core/src/index.ts'),
+      '@opencodex/provider-openai': r('./packages/provider-openai/src/index.ts'),
+      '@opencodex/provider-anthropic': r('./packages/provider-anthropic/src/index.ts'),
+      '@opencodex/provider-google': r('./packages/provider-google/src/index.ts'),
+      '@opencodex/provider-xai': r('./packages/provider-xai/src/index.ts'),
+      '@opencodex/provider-mistral': r('./packages/provider-mistral/src/index.ts'),
+      '@opencodex/provider-ollama': r('./packages/provider-ollama/src/index.ts'),
+      '@opencodex/provider-openrouter': r('./packages/provider-openrouter/src/index.ts'),
+      '@opencodex/tools': r('./packages/tools/src/index.ts'),
+      '@opencodex/plugin-sdk': r('./packages/plugin-sdk/src/index.ts'),
+      '@opencodex/mcp-client': r('./packages/mcp-client/src/index.ts'),
+    },
+  },
   test: {
     globals: false,
     environment: 'node',

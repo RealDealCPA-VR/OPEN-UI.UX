@@ -65,6 +65,8 @@ Tools come from three sources, all flowing through the same registry:
 2. **MCP** (`@opencodex/mcp-client`) — every connected MCP server's tools.
 3. **Plugins** (`@opencodex/plugin-sdk`) — third-party tools registered via the plugin host.
 
+Built-in LLM provider adapters live in one package per provider: `@opencodex/provider-openai`, `@opencodex/provider-anthropic`, `@opencodex/provider-google`, `@opencodex/provider-xai`, `@opencodex/provider-mistral`, `@opencodex/provider-ollama`, `@opencodex/provider-openrouter`.
+
 Each tool declares a `permissionTier` (`read` / `write` / `execute` / `network`). The approval gateway uses the tier to decide auto vs prompt vs deny.
 
 ## Approval system
@@ -127,7 +129,7 @@ Transports supported: stdio, SSE, HTTP streamable.
 
 Electron was chosen for iteration velocity. Pure Node/TS means the same SDKs (openai, @anthropic-ai/sdk, tree-sitter bindings, better-sqlite3, LanceDB Node bindings) work everywhere without a Rust↔TS boundary. The cost is bundle size (~150MB) and a slightly weaker sandbox model, both of which we mitigate by aggressively using `sandbox: true` + `contextIsolation: true` in the renderer and routing all privileged work through the IPC bridge.
 
-If Tauri later proves a better fit, the monorepo structure isolates the swap: `@opencodex/core`, `@opencodex/providers`, `@opencodex/tools`, `@opencodex/mcp-client` are all framework-agnostic.
+If Tauri later proves a better fit, the monorepo structure isolates the swap: `@opencodex/core`, `@opencodex/provider-*`, `@opencodex/tools`, `@opencodex/mcp-client` are all framework-agnostic.
 
 ## Open architectural decisions
 

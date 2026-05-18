@@ -16,7 +16,8 @@
       "Bash(pnpm format *)",
       "Bash(pnpm lint *)",
       "Bash(pnpm typecheck *)",
-      "Bash(pnpm build *)"
+      "Bash(pnpm build *)",
+      "Bash(pnpm prettier *)"
     ]
   }
 }

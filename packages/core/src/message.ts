@@ -1,33 +1,48 @@
-export type Role = 'system' | 'user' | 'assistant' | 'tool';
+import { z } from 'zod';
 
-export interface TextBlock {
-  type: 'text';
-  text: string;
-}
+export const roleSchema = z.enum(['system', 'user', 'assistant', 'tool']);
 
-export interface ImageBlock {
-  type: 'image';
-  mimeType: string;
-  data: string;
-}
+export const textBlockSchema = z.object({
+  type: z.literal('text'),
+  text: z.string(),
+});
 
-export interface ToolUseBlock {
-  type: 'tool_use';
-  id: string;
-  name: string;
-  arguments: unknown;
-}
+export const imageBlockSchema = z.object({
+  type: z.literal('image'),
+  mimeType: z.string().min(1),
+  data: z.string().min(1),
+});
 
-export interface ToolResultBlock {
-  type: 'tool_result';
-  toolUseId: string;
-  output: unknown;
-  isError?: boolean;
-}
+export const toolUseBlockSchema = z.object({
+  type: z.literal('tool_use'),
+  id: z.string().min(1),
+  name: z.string().min(1),
+  arguments: z.unknown(),
+});
 
-export type ContentBlock = TextBlock | ImageBlock | ToolUseBlock | ToolResultBlock;
+export const toolResultBlockSchema = z.object({
+  type: z.literal('tool_result'),
+  toolUseId: z.string().min(1),
+  output: z.unknown(),
+  isError: z.boolean().optional(),
+});
 
-export interface Message {
-  role: Role;
-  content: string | ContentBlock[];
-}
+export const contentBlockSchema = z.discriminatedUnion('type', [
+  textBlockSchema,
+  imageBlockSchema,
+  toolUseBlockSchema,
+  toolResultBlockSchema,
+]);
+
+export const messageSchema = z.object({
+  role: roleSchema,
+  content: z.union([z.string(), z.array(contentBlockSchema)]),
+});
+
+export type Role = z.infer<typeof roleSchema>;
+export type TextBlock = z.infer<typeof textBlockSchema>;
+export type ImageBlock = z.infer<typeof imageBlockSchema>;
+export type ToolUseBlock = z.infer<typeof toolUseBlockSchema>;
+export type ToolResultBlock = z.infer<typeof toolResultBlockSchema>;
+export type ContentBlock = z.infer<typeof contentBlockSchema>;
+export type Message = z.infer<typeof messageSchema>;
