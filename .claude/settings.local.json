@@ -30,7 +30,11 @@
       "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('c:/Users/VR/Projects/OPEN UI.UX/apps/desktop/src/main/storage/conversation-export.ts','utf8'\\); const line=s.split\\('\\\\n'\\)[133]; console.log\\(JSON.stringify\\(line\\)\\); console.log\\(Array.from\\(line\\).map\\(c=>c.charCodeAt\\(0\\).toString\\(16\\)\\).join\\(' '\\)\\)\")",
       "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('c:/Users/VR/Projects/OPEN UI.UX/apps/desktop/src/main/storage/conversation-export.ts','utf8'\\); s.split\\('\\\\n'\\).forEach\\(\\(l,i\\)=>{ if\\(l.includes\\('FILENAME'\\)||l.includes\\('replace'\\)\\) console.log\\(i,JSON.stringify\\(l\\)\\); }\\);\")",
       "Bash(node -e \"const s=require\\('fs'\\).readFileSync\\('c:/Users/VR/Projects/OPEN UI.UX/apps/desktop/src/main/storage/conversation-export.ts','utf8'\\); s.split\\('\\\\n'\\).forEach\\(\\(l,i\\)=>{ if\\(l.includes\\('FORBIDDEN'\\)||l.includes\\('Set\\('\\)\\) console.log\\(i,JSON.stringify\\(l\\)\\); }\\);\")",
-      "Bash(pnpm --filter @opencodex/desktop test)"
+      "Bash(pnpm --filter @opencodex/desktop test)",
+      "Bash(pnpm --filter @opencodex/core test)",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('fs'\\).readFileSync\\('packages/tools/src/grep.test.ts','utf8'\\).split\\('\\\\n'\\).slice\\(10,15\\).join\\('\\\\n'\\)\\)\\)\")",
+      "Bash(node -e \"const f = require\\('fs'\\).readFileSync\\('packages/tools/src/grep.test.ts','utf8'\\); const m = f.match\\(/Uint8Array.+/\\); console.log\\(JSON.stringify\\(m && m[0]\\)\\);\")",
+      "Bash(pnpm --filter @opencodex/tools test)"
     ]
   }
 }

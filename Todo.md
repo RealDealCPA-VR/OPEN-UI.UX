@@ -73,17 +73,17 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 
 ### Tool layer
 
-- [ ] `packages/core`: `Tool` interface (name, schema (Zod), permission tier, execute)
-- [ ] Permission tiers: `read` / `write` / `execute` / `network`
-- [ ] `packages/tools/read-file`
+- [x] `packages/core`: `Tool` interface (name, schema (Zod), permission tier, execute) _(plus `defineTool` factory; JSON Schema derived from Zod via `zodToJSONSchema`)_
+- [x] Permission tiers: `read` / `write` / `execute` / `network`
+- [x] `packages/tools/read-file` _(line offset/limit, path-traversal guard, abort-aware)_
 - [ ] `packages/tools/write-file`
 - [ ] `packages/tools/edit-file` (unified-diff patch application with conflict detection)
-- [ ] `packages/tools/glob`
-- [ ] `packages/tools/grep` (ripgrep wrapper, falls back to JS impl if rg missing)
-- [ ] `packages/tools/list-dir`
+- [x] `packages/tools/glob` _(zero-dep matcher: `*`, `**`, `?`, brace expansion; ignores node_modules/.git/dist/build/out/.next/.turbo)_
+- [x] `packages/tools/grep` _(JS regex impl; ripgrep wrapper deferred to a later task)_
+- [x] `packages/tools/list-dir`
 - [ ] `packages/tools/run-shell` (sandboxed)
 - [ ] `packages/tools/web-fetch` (with allow-listed domains by default)
-- [ ] Tool registry with permission-tier dispatch
+- [x] Tool registry with permission-tier dispatch _(`ToolRegistry` class with `listByTier`, `execute` with Zod validation)_
 
 ### Agent runtime
 

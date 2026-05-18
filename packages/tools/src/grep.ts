@@ -1,23 +1,89 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { z } from 'zod';
-import type { Tool } from '@opencodex/core';
+import { defineTool } from '@opencodex/core';
+import { resolveWithinWorkspace } from './path-guard';
+import { globToRegExp } from './glob-match';
+import { walkFiles } from './walk';
 
 const input = z.object({
-  pattern: z.string(),
-  path: z.string().optional(),
-  glob: z.string().optional(),
+  pattern: z.string().describe('Regular expression to search for'),
+  path: z
+    .string()
+    .optional()
+    .describe('Workspace-relative directory to search (default: workspace root)'),
+  glob: z
+    .string()
+    .optional()
+    .describe('Filename glob to limit which files are scanned, e.g. "**/*.ts"'),
   caseInsensitive: z.boolean().optional(),
+  maxMatches: z
+    .number()
+    .int()
+    .min(1)
+    .max(10000)
+    .optional()
+    .describe('Maximum matches to return (default: 1000)'),
 });
 
-export const grepTool: Tool<
-  z.infer<typeof input>,
-  { file: string; line: number; text: string }[]
-> = {
+export interface GrepMatch {
+  file: string;
+  line: number;
+  text: string;
+}
+
+const BINARY_PROBE_BYTES = 4096;
+const FILE_SIZE_LIMIT = 10 * 1024 * 1024;
+
+export const grepTool = defineTool({
   name: 'grep',
-  description: 'Search file contents with a regex (ripgrep)',
-  inputSchema: input.shape,
+  description:
+    'Search file contents in the workspace with a regular expression. Returns one entry per matching line. Skips binary and oversize files.',
   inputZod: input,
   permissionTier: 'read',
-  execute(_input, _ctx) {
-    throw new Error('Not implemented — Phase 2 tool task');
+  async execute(
+    { pattern, path: searchPath, glob, caseInsensitive, maxMatches },
+    ctx,
+  ): Promise<GrepMatch[]> {
+    const base = searchPath
+      ? resolveWithinWorkspace(ctx.workspaceRoot, searchPath)
+      : path.resolve(ctx.workspaceRoot);
+    const regex = new RegExp(pattern, caseInsensitive ? 'i' : '');
+    const fileFilter = glob ? globToRegExp(glob) : null;
+    const limit = maxMatches ?? 1000;
+    const matches: GrepMatch[] = [];
+
+    for await (const file of walkFiles(base, { signal: ctx.signal, maxFiles: 100_000 })) {
+      ctx.signal.throwIfAborted();
+      const rel = path.relative(base, file).split(path.sep).join('/');
+      if (fileFilter && !fileFilter.test(rel)) continue;
+      let stat;
+      try {
+        stat = await fs.stat(file);
+      } catch {
+        continue;
+      }
+      if (stat.size > FILE_SIZE_LIMIT) continue;
+      const buf = await fs.readFile(file);
+      if (looksBinary(buf)) continue;
+      const text = buf.toString('utf8');
+      const lines = text.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i] ?? '';
+        if (regex.test(line)) {
+          matches.push({ file: rel, line: i + 1, text: line });
+          if (matches.length >= limit) return matches;
+        }
+      }
+    }
+    return matches;
   },
-};
+});
+
+function looksBinary(buf: Buffer): boolean {
+  const probe = buf.subarray(0, Math.min(buf.length, BINARY_PROBE_BYTES));
+  for (let i = 0; i < probe.length; i++) {
+    if (probe[i] === 0) return true;
+  }
+  return false;
+}
