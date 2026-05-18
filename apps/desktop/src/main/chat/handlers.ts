@@ -14,6 +14,7 @@ import {
   listMessages,
   renameConversation,
 } from '../storage/conversations';
+import { getSettings } from '../storage/settings';
 import { cancelChatStream, startChatStream, type ChatStreamSink } from './runner';
 
 const roleSchema = z.enum(['system', 'user', 'assistant', 'tool']);
@@ -120,8 +121,14 @@ export function registerChatHandlers(): void {
       if (!caps) {
         throw new Error(`Model ${req.providerId}/${req.modelId} is not in the catalog`);
       }
+      const workspaceRoot = getSettings().activeWorkspace ?? process.cwd();
       logger.info(
-        { providerId: req.providerId, modelId: req.modelId, conversationId: req.conversationId },
+        {
+          providerId: req.providerId,
+          modelId: req.modelId,
+          conversationId: req.conversationId,
+          workspaceRoot,
+        },
         'chat stream starting',
       );
       return startChatStream({
@@ -130,6 +137,7 @@ export function registerChatHandlers(): void {
         modelId: req.modelId,
         userMessage: req.userMessage,
         sink: broadcast(),
+        workspaceRoot,
       });
     },
   );

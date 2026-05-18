@@ -1,5 +1,6 @@
 import Store from 'electron-store';
 import { z } from 'zod';
+import { type ApprovalPolicies, DEFAULT_TIER_POLICIES } from '../../shared/approvals';
 import type { ProviderTestResult } from '../../shared/provider-config';
 import type { SelectedModel } from '../../shared/selected-model';
 
@@ -24,12 +25,30 @@ const selectedModelSchema: z.ZodType<SelectedModel> = z.object({
   modelId: z.string().min(1),
 });
 
+const approvalPolicySchema = z.enum(['auto', 'prompt', 'deny']);
+
+const approvalPoliciesSchema = z.object({
+  tierDefaults: z
+    .object({
+      read: approvalPolicySchema,
+      write: approvalPolicySchema,
+      execute: approvalPolicySchema,
+      network: approvalPolicySchema,
+    })
+    .default(DEFAULT_TIER_POLICIES),
+  toolOverrides: z.record(approvalPolicySchema).default({}),
+});
+
 const SettingsSchema = z.object({
   theme: z.enum(['light', 'dark', 'system']).default('system'),
   workspaceHistory: z.array(z.string()).default([]),
   activeWorkspace: z.string().nullable().default(null),
   providers: z.record(providerEntrySchema).default({}),
   selectedModel: selectedModelSchema.nullable().default(null),
+  approvals: approvalPoliciesSchema.default({
+    tierDefaults: DEFAULT_TIER_POLICIES,
+    toolOverrides: {},
+  }),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -82,4 +101,13 @@ export function getSelectedModel(): SelectedModel | null {
 export function setSelectedModel(sel: SelectedModel | null): SelectedModel | null {
   const next = updateSettings({ selectedModel: sel });
   return next.selectedModel;
+}
+
+export function getApprovalPolicies(): ApprovalPolicies {
+  return getSettings().approvals;
+}
+
+export function setApprovalPolicies(patch: ApprovalPolicies): ApprovalPolicies {
+  const next = updateSettings({ approvals: patch });
+  return next.approvals;
 }

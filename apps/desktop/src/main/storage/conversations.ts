@@ -7,7 +7,7 @@ import type {
   ConversationUsageByModel,
   StoredMessage,
 } from '../../shared/conversation';
-import type { Role } from '@opencodex/core';
+import type { ContentBlock, Role } from '@opencodex/core';
 import { getDb } from './db';
 
 interface ConversationRow {
@@ -24,6 +24,7 @@ interface MessageRow {
   conversation_id: string;
   role: string;
   content: string;
+  content_blocks_json: string | null;
   provider_id: string | null;
   model_id: string | null;
   input_tokens: number | null;
@@ -31,6 +32,9 @@ interface MessageRow {
   cost_usd: number | null;
   created_at: string;
 }
+
+const MESSAGE_COLUMNS = `id, conversation_id, role, content, content_blocks_json,
+                         provider_id, model_id, input_tokens, output_tokens, cost_usd, created_at`;
 
 const VALID_ROLES: ReadonlySet<Role> = new Set(['system', 'user', 'assistant', 'tool']);
 
@@ -54,6 +58,7 @@ function rowToMessage(row: MessageRow): StoredMessage {
     conversationId: row.conversation_id,
     role: row.role as Role,
     content: row.content,
+    contentBlocks: parseContentBlocks(row.content_blocks_json),
     providerId: row.provider_id,
     modelId: row.model_id,
     inputTokens: row.input_tokens,
@@ -61,6 +66,22 @@ function rowToMessage(row: MessageRow): StoredMessage {
     costUsd: row.cost_usd,
     createdAt: row.created_at,
   };
+}
+
+function parseContentBlocks(raw: string | null): ContentBlock[] | null {
+  if (raw === null) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) return parsed as ContentBlock[];
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function serializeContentBlocks(blocks: ContentBlock[] | null | undefined): string | null {
+  if (!blocks) return null;
+  return JSON.stringify(blocks);
 }
 
 export interface CreateConversationInput {
@@ -132,8 +153,7 @@ export function listMessages(
 ): StoredMessage[] {
   const rows = db
     .prepare(
-      `SELECT id, conversation_id, role, content, provider_id, model_id,
-              input_tokens, output_tokens, cost_usd, created_at
+      `SELECT ${MESSAGE_COLUMNS}
        FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC`,
     )
     .all(conversationId) as MessageRow[];
@@ -151,14 +171,15 @@ export function appendMessage(
     if (!existing) throw new Error(`conversation ${req.conversationId} not found`);
     db.prepare(
       `INSERT INTO messages
-        (id, conversation_id, role, content, provider_id, model_id,
-         input_tokens, output_tokens, cost_usd, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, conversation_id, role, content, content_blocks_json,
+         provider_id, model_id, input_tokens, output_tokens, cost_usd, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       req.conversationId,
       req.role,
       req.content,
+      serializeContentBlocks(req.contentBlocks),
       req.providerId ?? null,
       req.modelId ?? null,
       req.inputTokens ?? null,
@@ -169,13 +190,9 @@ export function appendMessage(
     db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now, req.conversationId);
   });
   tx();
-  const row = db
-    .prepare(
-      `SELECT id, conversation_id, role, content, provider_id, model_id,
-              input_tokens, output_tokens, cost_usd, created_at
-       FROM messages WHERE id = ?`,
-    )
-    .get(id) as MessageRow | undefined;
+  const row = db.prepare(`SELECT ${MESSAGE_COLUMNS} FROM messages WHERE id = ?`).get(id) as
+    | MessageRow
+    | undefined;
   if (!row) throw new Error('failed to read back appended message');
   return rowToMessage(row);
 }
@@ -238,6 +255,7 @@ export function updateAssistantMessage(
   id: string,
   patch: {
     content: string;
+    contentBlocks?: ContentBlock[] | null;
     inputTokens?: number | null;
     outputTokens?: number | null;
     costUsd?: number | null;
@@ -248,6 +266,7 @@ export function updateAssistantMessage(
     .prepare(
       `UPDATE messages
        SET content = ?,
+           content_blocks_json = ?,
            input_tokens = COALESCE(?, input_tokens),
            output_tokens = COALESCE(?, output_tokens),
            cost_usd = COALESCE(?, cost_usd)
@@ -255,19 +274,16 @@ export function updateAssistantMessage(
     )
     .run(
       patch.content,
+      serializeContentBlocks(patch.contentBlocks),
       patch.inputTokens ?? null,
       patch.outputTokens ?? null,
       patch.costUsd ?? null,
       id,
     );
   if (result.changes === 0) throw new Error(`message ${id} not found`);
-  const row = db
-    .prepare(
-      `SELECT id, conversation_id, role, content, provider_id, model_id,
-              input_tokens, output_tokens, cost_usd, created_at
-       FROM messages WHERE id = ?`,
-    )
-    .get(id) as MessageRow | undefined;
+  const row = db.prepare(`SELECT ${MESSAGE_COLUMNS} FROM messages WHERE id = ?`).get(id) as
+    | MessageRow
+    | undefined;
   if (!row) throw new Error(`message ${id} not found after update`);
   return rowToMessage(row);
 }

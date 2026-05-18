@@ -1,6 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import type { ContentBlock } from '@opencodex/core';
 import { Markdown } from '../components/Markdown';
+import { ToolCallCard } from '../components/ToolCallCard';
+import { groupContentBlocks } from '../components/tool-block-grouping';
 import { useChat, type AssistantDraft } from '../state/chat-context';
 import { useSelectedModel } from '../state/selected-model-context';
 import type {
@@ -140,7 +143,7 @@ function ChatPane({
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [chat.messages, chat.draft?.text]);
+  }, [chat.messages, chat.draft]);
 
   const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
@@ -309,10 +312,15 @@ function ExportMenu({
 }
 
 function MessageBubble({ message }: { message: StoredMessage }): JSX.Element {
+  const hasBlocks = message.contentBlocks !== null && message.contentBlocks.length > 0;
   return (
     <article className={`chat-bubble chat-bubble-${message.role}`}>
       <header className="chat-bubble-head">{roleLabel(message.role)}</header>
-      <Markdown text={message.content} />
+      {hasBlocks ? (
+        <BlockSequence blocks={message.contentBlocks ?? []} />
+      ) : (
+        <Markdown text={message.content} />
+      )}
       {message.role === 'assistant' &&
       (message.inputTokens !== null || message.costUsd !== null) ? (
         <footer className="chat-bubble-foot">
@@ -327,10 +335,15 @@ function MessageBubble({ message }: { message: StoredMessage }): JSX.Element {
 }
 
 function DraftBubble({ draft }: { draft: AssistantDraft }): JSX.Element {
+  const hasBlocks = draft.blocks.length > 0;
   return (
     <article className="chat-bubble chat-bubble-assistant chat-bubble-draft">
       <header className="chat-bubble-head">Assistant{!draft.done ? <CaretBlink /> : null}</header>
-      <Markdown text={draft.text || (draft.done ? '' : '…')} />
+      {hasBlocks ? (
+        <BlockSequence blocks={draft.blocks} />
+      ) : (
+        <Markdown text={draft.done ? '' : '…'} />
+      )}
       {draft.error ? <p className="chat-warn">{draft.error}</p> : null}
       {draft.inputTokens !== null ? (
         <footer className="chat-bubble-foot">
@@ -339,6 +352,23 @@ function DraftBubble({ draft }: { draft: AssistantDraft }): JSX.Element {
         </footer>
       ) : null}
     </article>
+  );
+}
+
+function BlockSequence({ blocks }: { blocks: ContentBlock[] }): JSX.Element {
+  const items = groupContentBlocks(blocks);
+  return (
+    <div className="chat-bubble-body">
+      {items.map((item, idx) => {
+        if (item.kind === 'text') {
+          return <Markdown key={idx} text={item.text} />;
+        }
+        if (item.kind === 'tool') {
+          return <ToolCallCard key={item.use.id || idx} use={item.use} result={item.result} />;
+        }
+        return null;
+      })}
+    </div>
   );
 }
 

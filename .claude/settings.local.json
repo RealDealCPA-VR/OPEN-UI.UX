@@ -34,7 +34,14 @@
       "Bash(pnpm --filter @opencodex/core test)",
       "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('fs'\\).readFileSync\\('packages/tools/src/grep.test.ts','utf8'\\).split\\('\\\\n'\\).slice\\(10,15\\).join\\('\\\\n'\\)\\)\\)\")",
       "Bash(node -e \"const f = require\\('fs'\\).readFileSync\\('packages/tools/src/grep.test.ts','utf8'\\); const m = f.match\\(/Uint8Array.+/\\); console.log\\(JSON.stringify\\(m && m[0]\\)\\);\")",
-      "Bash(pnpm --filter @opencodex/tools test)"
+      "Bash(pnpm --filter @opencodex/tools test)",
+      "Bash(pnpm --filter @opencodex/tools test -- --run write-file)",
+      "Bash(pnpm --filter @opencodex/tools test -- --run edit-file)",
+      "Bash(pnpm --filter @opencodex/tools typecheck)",
+      "Bash(pnpm --filter @opencodex/tools lint)",
+      "Bash(pnpm --filter @opencodex/tools test web-fetch)",
+      "Bash(pnpm --filter @opencodex/core typecheck)",
+      "Bash(pnpm --filter @opencodex/tools test run-shell)"
     ]
   }
 }

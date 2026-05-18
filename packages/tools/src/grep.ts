@@ -1,10 +1,11 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { defineTool } from '@opencodex/core';
+import { defineTool, type ToolContext } from '@opencodex/core';
 import { resolveWithinWorkspace } from './path-guard';
 import { globToRegExp } from './glob-match';
 import { walkFiles } from './walk';
+import { isRipgrepAvailable, ripgrepSearch } from './ripgrep';
 
 const input = z.object({
   pattern: z.string().describe('Regular expression to search for'),
@@ -48,37 +49,66 @@ export const grepTool = defineTool({
     const base = searchPath
       ? resolveWithinWorkspace(ctx.workspaceRoot, searchPath)
       : path.resolve(ctx.workspaceRoot);
-    const regex = new RegExp(pattern, caseInsensitive ? 'i' : '');
-    const fileFilter = glob ? globToRegExp(glob) : null;
     const limit = maxMatches ?? 1000;
-    const matches: GrepMatch[] = [];
 
-    for await (const file of walkFiles(base, { signal: ctx.signal, maxFiles: 100_000 })) {
-      ctx.signal.throwIfAborted();
-      const rel = path.relative(base, file).split(path.sep).join('/');
-      if (fileFilter && !fileFilter.test(rel)) continue;
-      let stat;
+    if (!process.env.OPENCODEX_NO_RIPGREP && (await isRipgrepAvailable())) {
       try {
-        stat = await fs.stat(file);
-      } catch {
-        continue;
-      }
-      if (stat.size > FILE_SIZE_LIMIT) continue;
-      const buf = await fs.readFile(file);
-      if (looksBinary(buf)) continue;
-      const text = buf.toString('utf8');
-      const lines = text.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i] ?? '';
-        if (regex.test(line)) {
-          matches.push({ file: rel, line: i + 1, text: line });
-          if (matches.length >= limit) return matches;
-        }
+        return await ripgrepSearch({
+          pattern,
+          cwd: base,
+          glob,
+          caseInsensitive,
+          maxMatches: limit,
+          fileSizeLimit: FILE_SIZE_LIMIT,
+          signal: ctx.signal,
+        });
+      } catch (err) {
+        if (ctx.signal.aborted) throw err;
+        ctx.logger?.error?.('ripgrep failed, falling back to JS impl', { err });
       }
     }
-    return matches;
+
+    return grepWithJs(pattern, base, glob, caseInsensitive, limit, ctx);
   },
 });
+
+async function grepWithJs(
+  pattern: string,
+  base: string,
+  glob: string | undefined,
+  caseInsensitive: boolean | undefined,
+  limit: number,
+  ctx: ToolContext,
+): Promise<GrepMatch[]> {
+  const regex = new RegExp(pattern, caseInsensitive ? 'i' : '');
+  const fileFilter = glob ? globToRegExp(glob) : null;
+  const matches: GrepMatch[] = [];
+
+  for await (const file of walkFiles(base, { signal: ctx.signal, maxFiles: 100_000 })) {
+    ctx.signal.throwIfAborted();
+    const rel = path.relative(base, file).split(path.sep).join('/');
+    if (fileFilter && !fileFilter.test(rel)) continue;
+    let stat;
+    try {
+      stat = await fs.stat(file);
+    } catch {
+      continue;
+    }
+    if (stat.size > FILE_SIZE_LIMIT) continue;
+    const buf = await fs.readFile(file);
+    if (looksBinary(buf)) continue;
+    const text = buf.toString('utf8');
+    const lines = text.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] ?? '';
+      if (regex.test(line)) {
+        matches.push({ file: rel, line: i + 1, text: line });
+        if (matches.length >= limit) return matches;
+      }
+    }
+  }
+  return matches;
+}
 
 function looksBinary(buf: Buffer): boolean {
   const probe = buf.subarray(0, Math.min(buf.length, BINARY_PROBE_BYTES));

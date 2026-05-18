@@ -72,6 +72,14 @@ describe('zodToJSONSchema', () => {
     expect(result.required).toBeUndefined();
   });
 
+  it('encodes z.record(z.string()) as object with string additionalProperties', () => {
+    const result = zodToJSONSchema(z.object({ headers: z.record(z.string()) }));
+    expect(result.properties?.headers).toEqual({
+      type: 'object',
+      additionalProperties: { type: 'string' },
+    });
+  });
+
   it('throws UnsupportedZodTypeError for unhandled types', () => {
     expect(() => zodToJSONSchema(z.object({ d: z.date() }))).toThrow(UnsupportedZodTypeError);
   });

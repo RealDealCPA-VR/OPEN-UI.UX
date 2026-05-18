@@ -1,8 +1,22 @@
 import { randomUUID } from 'node:crypto';
-import type { ChatEvent, LLMProvider, Message } from '@opencodex/core';
+import type {
+  ChatEvent,
+  ContentBlock,
+  LLMProvider,
+  Message,
+  Role,
+  StopReason,
+  ToolCallEvent,
+  ToolRegistry,
+} from '@opencodex/core';
 import type { ChatStartResponse, ChatStreamEvent } from '../../shared/chat';
+import type { StoredMessage } from '../../shared/conversation';
 import { logger } from '../logger';
+import { getToolRegistry } from '../tools/registry';
 import { appendMessage, listMessages, updateAssistantMessage } from '../storage/conversations';
+import { type ApprovalManager, getApprovalManager } from './approvals';
+
+const MAX_TOOL_ITERATIONS = 10;
 
 async function defaultBuildProvider(id: string): Promise<LLMProvider> {
   const mod = await import('./provider-builder');
@@ -19,7 +33,10 @@ export interface StartChatStreamOptions {
   modelId: string;
   userMessage: string;
   sink: ChatStreamSink;
+  workspaceRoot?: string;
   buildProvider?: (id: string) => Promise<LLMProvider>;
+  toolRegistry?: ToolRegistry | null;
+  approvalManager?: ApprovalManager | null;
 }
 
 interface ActiveStream {
@@ -49,13 +66,15 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
   });
 
   const history = listMessages(opts.conversationId);
-  const messages: Message[] = history
-    .filter((m) => m.id !== assistantRow.id && m.content.length > 0)
-    .map((m) => ({ role: m.role, content: m.content }));
+  const messages: Message[] = expandStoredMessages(history.filter((m) => m.id !== assistantRow.id));
 
   const streamId = randomUUID();
   const controller = new AbortController();
   active.set(streamId, { controller });
+
+  const registry = opts.toolRegistry === undefined ? getToolRegistry() : opts.toolRegistry;
+  const approvals =
+    opts.approvalManager === undefined ? safeGetApprovalManager() : opts.approvalManager;
 
   void runStream({
     streamId,
@@ -65,8 +84,12 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
     assistantMessageId: assistantRow.id,
     sink: opts.sink,
     signal: controller.signal,
+    workspaceRoot: opts.workspaceRoot ?? process.cwd(),
+    toolRegistry: registry,
+    approvalManager: approvals,
   }).finally(() => {
     active.delete(streamId);
+    approvals?.clearSession(streamId);
   });
 
   return {
@@ -94,6 +117,17 @@ interface RunStreamArgs {
   assistantMessageId: string;
   sink: ChatStreamSink;
   signal: AbortSignal;
+  workspaceRoot: string;
+  toolRegistry: ToolRegistry | null;
+  approvalManager: ApprovalManager | null;
+}
+
+function safeGetApprovalManager(): ApprovalManager | null {
+  try {
+    return getApprovalManager();
+  } catch {
+    return null;
+  }
 }
 
 async function runStream(args: RunStreamArgs): Promise<void> {
@@ -102,6 +136,8 @@ async function runStream(args: RunStreamArgs): Promise<void> {
   let outputTokens: number | null = null;
   let costUsd: number | null = null;
   let emittedDoneOrError = false;
+  const messages: Message[] = [...args.messages];
+  const allBlocks: ContentBlock[] = [];
 
   const emit = (event: ChatEvent): void => {
     args.sink.emit({ streamId: args.streamId, event });
@@ -110,26 +146,95 @@ async function runStream(args: RunStreamArgs): Promise<void> {
     }
   };
 
+  const toolDefs = args.toolRegistry?.list() ?? [];
+
   try {
-    const iter = args.provider.chat({
-      model: args.modelId,
-      messages: args.messages,
-      signal: args.signal,
-    });
-    for await (const event of iter) {
-      if (args.signal.aborted) break;
-      if (event.type === 'text_delta') {
-        buffer += event.delta;
-      } else if (event.type === 'usage') {
-        inputTokens = event.inputTokens;
-        outputTokens = event.outputTokens;
-        costUsd = event.costUsd ?? null;
+    for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+      const iterToolCalls: ToolCallEvent[] = [];
+      let iterText = '';
+      let iterStop: StopReason = 'end_turn';
+
+      const iter = args.provider.chat({
+        model: args.modelId,
+        messages,
+        signal: args.signal,
+        ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
+      });
+
+      for await (const event of iter) {
+        if (args.signal.aborted) break;
+        if (event.type === 'text_delta') {
+          buffer += event.delta;
+          iterText += event.delta;
+          emit(event);
+        } else if (event.type === 'tool_call') {
+          iterToolCalls.push(event);
+          emit(event);
+        } else if (event.type === 'usage') {
+          inputTokens = (inputTokens ?? 0) + event.inputTokens;
+          outputTokens = (outputTokens ?? 0) + event.outputTokens;
+          if (event.costUsd !== undefined) costUsd = (costUsd ?? 0) + event.costUsd;
+          emit(event);
+        } else if (event.type === 'done') {
+          iterStop = event.stopReason;
+        } else {
+          emit(event);
+        }
       }
-      emit(event);
+
+      if (args.signal.aborted) {
+        if (!emittedDoneOrError) emit({ type: 'done', stopReason: 'end_turn' });
+        return;
+      }
+
+      const shouldRunTools =
+        iterToolCalls.length > 0 && iterStop === 'tool_use' && args.toolRegistry !== null;
+
+      if (!shouldRunTools) {
+        if (iterText.length > 0) allBlocks.push({ type: 'text', text: iterText });
+        emit({ type: 'done', stopReason: iterStop });
+        return;
+      }
+
+      const assistantBlocks: ContentBlock[] = [];
+      if (iterText.length > 0) {
+        const textBlock: ContentBlock = { type: 'text', text: iterText };
+        assistantBlocks.push(textBlock);
+        allBlocks.push(textBlock);
+      }
+      for (const tc of iterToolCalls) {
+        const toolUseBlock: ContentBlock = {
+          type: 'tool_use',
+          id: tc.id,
+          name: tc.name,
+          arguments: tc.arguments,
+        };
+        assistantBlocks.push(toolUseBlock);
+        allBlocks.push(toolUseBlock);
+      }
+      messages.push({ role: 'assistant', content: assistantBlocks });
+
+      const toolBlocks: ContentBlock[] = [];
+      for (const tc of iterToolCalls) {
+        const result = await executeToolCall(tc, args);
+        emit({ type: 'tool_result', id: tc.id, output: result.output, isError: result.isError });
+        const toolResultBlock: ContentBlock = {
+          type: 'tool_result',
+          toolUseId: tc.id,
+          output: result.output,
+          isError: result.isError,
+        };
+        toolBlocks.push(toolResultBlock);
+        allBlocks.push(toolResultBlock);
+      }
+      messages.push({ role: 'tool', content: toolBlocks });
     }
-    if (args.signal.aborted && !emittedDoneOrError) {
-      emit({ type: 'done', stopReason: 'end_turn' });
-    }
+
+    emit({
+      type: 'error',
+      message: `Agent loop exceeded ${MAX_TOOL_ITERATIONS} tool iterations`,
+      retryable: false,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error({ err, streamId: args.streamId }, 'chat stream errored');
@@ -138,8 +243,12 @@ async function runStream(args: RunStreamArgs): Promise<void> {
     }
   } finally {
     try {
+      const hasToolBlocks = allBlocks.some(
+        (b) => b.type === 'tool_use' || b.type === 'tool_result',
+      );
       updateAssistantMessage(args.assistantMessageId, {
         content: buffer,
+        contentBlocks: hasToolBlocks ? allBlocks : null,
         inputTokens,
         outputTokens,
         costUsd,
@@ -150,5 +259,105 @@ async function runStream(args: RunStreamArgs): Promise<void> {
         'failed to persist assistant message',
       );
     }
+  }
+}
+
+export function expandStoredMessages(stored: StoredMessage[]): Message[] {
+  const out: Message[] = [];
+  for (const m of stored) {
+    if (m.contentBlocks && m.contentBlocks.length > 0) {
+      if (m.role === 'assistant') {
+        out.push(...expandAssistantTurn(m.contentBlocks));
+      } else {
+        out.push({ role: m.role, content: m.contentBlocks });
+      }
+    } else if (m.content.length > 0) {
+      out.push({ role: m.role, content: m.content });
+    }
+  }
+  return out;
+}
+
+function expandAssistantTurn(blocks: ContentBlock[]): Message[] {
+  const out: Message[] = [];
+  let pending: ContentBlock[] = [];
+  let pendingRole: Role | null = null;
+
+  const flush = () => {
+    if (pending.length > 0 && pendingRole !== null) {
+      out.push({ role: pendingRole, content: pending });
+      pending = [];
+      pendingRole = null;
+    }
+  };
+
+  for (const block of blocks) {
+    const blockRole: Role = block.type === 'tool_result' ? 'tool' : 'assistant';
+    if (pendingRole !== null && pendingRole !== blockRole) flush();
+    pendingRole = blockRole;
+    pending.push(block);
+  }
+  flush();
+  return out;
+}
+
+interface ToolExecutionResult {
+  output: unknown;
+  isError: boolean;
+}
+
+async function executeToolCall(
+  tc: ToolCallEvent,
+  args: RunStreamArgs,
+): Promise<ToolExecutionResult> {
+  const registry = args.toolRegistry;
+  if (!registry) {
+    return { output: `Tool "${tc.name}" is not available`, isError: true };
+  }
+  const tool = registry.get(tc.name);
+  if (!tool) {
+    return { output: `Tool "${tc.name}" is not registered`, isError: true };
+  }
+  if (tool.permissionTier !== 'read') {
+    if (!args.approvalManager) {
+      return {
+        output: `Tool "${tc.name}" requires approval (tier "${tool.permissionTier}") but no approval manager is configured`,
+        isError: true,
+      };
+    }
+    try {
+      const decision = await args.approvalManager.requestApproval({
+        streamId: args.streamId,
+        toolName: tc.name,
+        toolDescription: tool.description,
+        permissionTier: tool.permissionTier,
+        arguments: tc.arguments,
+        signal: args.signal,
+      });
+      if (decision === 'deny') {
+        return {
+          output: `Tool "${tc.name}" was denied by user policy`,
+          isError: true,
+        };
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { output: `Tool "${tc.name}" approval failed: ${msg}`, isError: true };
+    }
+  }
+  try {
+    const output = await registry.execute(tc.name, tc.arguments, {
+      workspaceRoot: args.workspaceRoot,
+      signal: args.signal,
+      logger: {
+        info: (msg, meta) => logger.info({ tool: tc.name, meta }, msg),
+        error: (msg, meta) => logger.error({ tool: tc.name, meta }, msg),
+      },
+    });
+    return { output, isError: false };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error({ err, tool: tc.name, streamId: args.streamId }, 'tool execution failed');
+    return { output: msg, isError: true };
   }
 }

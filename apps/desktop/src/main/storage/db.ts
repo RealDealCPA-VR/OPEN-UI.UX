@@ -53,6 +53,12 @@ const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE messages ADD COLUMN cost_usd REAL;
     `,
   },
+  {
+    version: 3,
+    sql: `
+      ALTER TABLE messages ADD COLUMN content_blocks_json TEXT;
+    `,
+  },
 ];
 
 let db: Database.Database | null = null;

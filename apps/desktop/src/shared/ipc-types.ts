@@ -4,6 +4,12 @@
  */
 
 import type {
+  ApprovalPolicies,
+  ApprovalRequest,
+  ApprovalResponse,
+  SetPolicyRequest,
+} from './approvals';
+import type {
   ChatCancelRequest,
   ChatStartRequest,
   ChatStartResponse,
@@ -96,11 +102,24 @@ export interface IpcInvokeChannels {
     request: ChatCancelRequest;
     response: void;
   };
+  'approvals:get-policies': {
+    request: void;
+    response: ApprovalPolicies;
+  };
+  'approvals:set-policy': {
+    request: SetPolicyRequest;
+    response: ApprovalPolicies;
+  };
+  'approvals:respond': {
+    request: ApprovalResponse;
+    response: void;
+  };
 }
 
 export interface IpcEventChannels {
   'app:deep-link': string;
   'chat:event': ChatStreamEvent;
+  'chat:approval-request': ApprovalRequest;
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

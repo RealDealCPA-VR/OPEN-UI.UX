@@ -5,7 +5,7 @@ export interface JSONSchema {
   description?: string;
   properties?: Record<string, JSONSchema>;
   required?: string[];
-  additionalProperties?: boolean;
+  additionalProperties?: boolean | JSONSchema;
   enum?: readonly string[];
   format?: string;
   items?: JSONSchema;
@@ -53,6 +53,11 @@ function convert(schema: z.ZodTypeAny): JSONSchema {
       return convert((schema as z.ZodDefault<z.ZodTypeAny>).removeDefault());
     case 'ZodNullable':
       return convert((schema as z.ZodNullable<z.ZodTypeAny>).unwrap());
+    case 'ZodRecord':
+      return withDescription(
+        convertRecord(schema as z.ZodRecord<z.ZodString, z.ZodTypeAny>),
+        description,
+      );
     default:
       throw new UnsupportedZodTypeError(typeName);
   }
@@ -69,6 +74,11 @@ function convertObject(schema: z.ZodObject<z.ZodRawShape>): JSONSchema {
   const result: JSONSchema = { type: 'object', properties, additionalProperties: false };
   if (required.length > 0) result.required = required;
   return result;
+}
+
+function convertRecord(schema: z.ZodRecord<z.ZodString, z.ZodTypeAny>): JSONSchema {
+  const valueType = (schema._def as { valueType: z.ZodTypeAny }).valueType;
+  return { type: 'object', additionalProperties: convert(valueType) };
 }
 
 function convertString(schema: z.ZodString): JSONSchema {

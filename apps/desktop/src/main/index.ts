@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { logger } from './logger';
+import { registerApprovalHandlers } from './chat/approval-handlers';
 import { registerChatHandlers } from './chat/handlers';
 import { registerInvoke } from './ipc/registry';
 import { registerProviderHandlers } from './providers/handlers';
@@ -127,5 +128,6 @@ function registerIpcHandlers(): void {
   registerInvoke('app:version', z.void(), () => app.getVersion());
   registerProviderHandlers();
   registerSelectedModelHandlers();
+  registerApprovalHandlers();
   registerChatHandlers();
 }

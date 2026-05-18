@@ -1,11 +1,12 @@
-import { afterEach, beforeEach, describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { grepTool } from './grep';
 import { createTmpWorkspace, makeCtx, type TmpWorkspace } from './test-helpers';
 
-describe('grep tool', () => {
+describe('grep tool (JS impl)', () => {
   let ws: TmpWorkspace;
 
   beforeEach(async () => {
+    vi.stubEnv('OPENCODEX_NO_RIPGREP', '1');
     ws = await createTmpWorkspace({
       'a.ts': 'import { foo } from "bar";\nexport const x = 1;\n',
       'b.ts': 'export function foo() {\n  return 42;\n}\n',
@@ -16,6 +17,7 @@ describe('grep tool', () => {
 
   afterEach(async () => {
     await ws.cleanup();
+    vi.unstubAllEnvs();
   });
 
   it('finds literal matches and reports 1-based line numbers', async () => {

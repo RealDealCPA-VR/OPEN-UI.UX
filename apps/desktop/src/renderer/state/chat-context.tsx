@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import type { ContentBlock } from '@opencodex/core';
 import type {
   Conversation,
   ConversationExportFormat,
@@ -19,6 +20,7 @@ import type {
 export interface AssistantDraft {
   messageId: string;
   text: string;
+  blocks: ContentBlock[];
   done: boolean;
   error: string | null;
   inputTokens: number | null;
@@ -54,6 +56,16 @@ interface ActiveStream {
 }
 
 const EMPTY_MESSAGES: StoredMessage[] = [];
+
+function appendDeltaBlock(blocks: ContentBlock[], delta: string): ContentBlock[] {
+  const last = blocks[blocks.length - 1];
+  if (last && last.type === 'text') {
+    const next = blocks.slice(0, -1);
+    next.push({ type: 'text', text: last.text + delta });
+    return next;
+  }
+  return [...blocks, { type: 'text', text: delta }];
+}
 
 export function ChatProvider({ children }: { children: ReactNode }): JSX.Element {
   const [conversations, setConversations] = useState<Conversation[] | null>(null);
@@ -146,7 +158,32 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
         if (!prev) return prev;
         switch (event.type) {
           case 'text_delta':
-            return { ...prev, text: prev.text + event.delta };
+            return {
+              ...prev,
+              text: prev.text + event.delta,
+              blocks: appendDeltaBlock(prev.blocks, event.delta),
+            };
+          case 'tool_call':
+            return {
+              ...prev,
+              blocks: [
+                ...prev.blocks,
+                { type: 'tool_use', id: event.id, name: event.name, arguments: event.arguments },
+              ],
+            };
+          case 'tool_result':
+            return {
+              ...prev,
+              blocks: [
+                ...prev.blocks,
+                {
+                  type: 'tool_result',
+                  toolUseId: event.id,
+                  output: event.output,
+                  isError: event.isError ?? false,
+                },
+              ],
+            };
           case 'usage':
             return {
               ...prev,
@@ -251,6 +288,7 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
         setDraft({
           messageId: result.assistantMessageId,
           text: '',
+          blocks: [],
           done: false,
           error: null,
           inputTokens: null,

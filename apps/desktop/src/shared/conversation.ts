@@ -1,4 +1,4 @@
-import type { Role } from '@opencodex/core';
+import type { ContentBlock, Role } from '@opencodex/core';
 
 export interface Conversation {
   id: string;
@@ -14,6 +14,7 @@ export interface StoredMessage {
   conversationId: string;
   role: Role;
   content: string;
+  contentBlocks: ContentBlock[] | null;
   providerId: string | null;
   modelId: string | null;
   inputTokens: number | null;
@@ -26,6 +27,7 @@ export interface AppendMessageRequest {
   conversationId: string;
   role: Role;
   content: string;
+  contentBlocks?: ContentBlock[] | null;
   providerId?: string | null;
   modelId?: string | null;
   inputTokens?: number | null;

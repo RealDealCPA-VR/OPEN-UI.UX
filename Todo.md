@@ -76,24 +76,24 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 - [x] `packages/core`: `Tool` interface (name, schema (Zod), permission tier, execute) _(plus `defineTool` factory; JSON Schema derived from Zod via `zodToJSONSchema`)_
 - [x] Permission tiers: `read` / `write` / `execute` / `network`
 - [x] `packages/tools/read-file` _(line offset/limit, path-traversal guard, abort-aware)_
-- [ ] `packages/tools/write-file`
-- [ ] `packages/tools/edit-file` (unified-diff patch application with conflict detection)
+- [x] `packages/tools/write-file` _(atomic write via tmp + rename; creates parent dirs; UTF-8 byte count returned)_
+- [x] `packages/tools/edit-file` _(exact-string match; `replaceAll` flag; throws `OldStringNotFoundError` / `EditFileAmbiguousError`; unified-diff variant deferred)_
 - [x] `packages/tools/glob` _(zero-dep matcher: `*`, `**`, `?`, brace expansion; ignores node_modules/.git/dist/build/out/.next/.turbo)_
-- [x] `packages/tools/grep` _(JS regex impl; ripgrep wrapper deferred to a later task)_
+- [x] `packages/tools/grep` _(JS regex impl + ripgrep wrapper with auto-detection; falls back to JS if `rg` is missing or fails. `OPENCODEX_NO_RIPGREP=1` forces JS)_
 - [x] `packages/tools/list-dir`
-- [ ] `packages/tools/run-shell` (sandboxed)
-- [ ] `packages/tools/web-fetch` (with allow-listed domains by default)
+- [x] `packages/tools/run-shell` _(sandboxed: scrubbed env via `OPENCODEX_SHELL_ENV_KEEP`, cwd locked to workspace, hard timeout with SIGTERM → SIGKILL grace, process-tree kill via taskkill on Windows / process-group kill on POSIX, per-stream output cap with truncation flag)_
+- [x] `packages/tools/web-fetch` _(network tier with allow-list via `OPENCODEX_WEB_FETCH_ALLOWLIST` — supports exact + `*.example.com` wildcard; denied-by-default; protocol guard; timeout; response body cap with truncation)_
 - [x] Tool registry with permission-tier dispatch _(`ToolRegistry` class with `listByTier`, `execute` with Zod validation)_
 
 ### Agent runtime
 
-- [ ] Agent loop (stream → collect tool calls → exec → feed results → repeat)
-- [ ] Cancellation: abort mid-stream and kill in-flight shell processes
-- [ ] Approval system (per-tool `auto` / `prompt` / `deny` policy)
-- [ ] Per-session approval overrides ("trust this session")
-- [ ] Approval UI: modal queue with diff preview for write ops, command preview for exec
-- [ ] Shell sandbox: cwd lock, env scrub, timeout, output size cap, PATH allowlist
-- [ ] Audit log of every tool call (input, output, decision, timestamp) in SQLite
+- [x] Agent loop (stream → collect tool calls → exec → feed results → repeat) _(main-process `ToolRegistry` singleton with all 8 tools registered: read_file, glob, grep, list_dir, write_file, edit_file, run_shell, web_fetch; runner does up to 10 tool turns, injects `tools` into provider request, executes through approval manager, and feeds `tool_result` blocks back as a `tool` message; tool blocks persisted in SQLite so multi-turn history survives reloads)_
+- [ ] Cancellation: abort mid-stream and kill in-flight shell processes _(approval and shell tool both honor `ctx.signal`; mid-stream cancel via `chat:cancel` IPC works; verifying it actually kills an in-flight shell process is left untested)_
+- [x] Approval system (per-tool `auto` / `prompt` / `deny` policy) _(stored in electron-store; tier defaults + per-tool overrides; effective policy = override ?? tier default; IPC: `approvals:get-policies`, `approvals:set-policy`, `approvals:respond`)_
+- [x] Per-session approval overrides ("trust this session") _(session map keyed by streamId → toolName → allow/deny; cleared in `runStream` finally via `clearSession(streamId)`)_
+- [x] Approval UI: modal queue with diff preview for write ops, command preview for exec _(basic queue UI with 6 buttons — Allow/Deny × once/session/always — and JSON args preview; per-tool diff/command previews still future)_
+- [x] Shell sandbox: cwd lock, env scrub, timeout, output size cap, PATH allowlist _(PATH/HOME/USER/etc allow-listed by default; user extensions via `OPENCODEX_SHELL_ENV_KEEP`; explicit positive PATH allowlist still future)_
+- [ ] Audit log of every tool call (input, output, decision, timestamp) in SQLite _(tool blocks are persisted on the assistant message row via `content_blocks_json`; a dedicated `tool_calls` audit table exists in migration 1 but is not yet written to)_
 
 ### UI
 

@@ -228,6 +228,54 @@ describe('conversations storage', () => {
     });
   });
 
+  describe('content blocks', () => {
+    it('appendMessage stores and returns contentBlocks', () => {
+      const c = createConversation({}, db);
+      const m = appendMessage(
+        {
+          conversationId: c.id,
+          role: 'assistant',
+          content: 'hi',
+          contentBlocks: [
+            { type: 'text', text: 'hi' },
+            { type: 'tool_use', id: 'tu_1', name: 'read_file', arguments: { path: 'a.ts' } },
+          ],
+        },
+        db,
+      );
+      expect(m.contentBlocks).toEqual([
+        { type: 'text', text: 'hi' },
+        { type: 'tool_use', id: 'tu_1', name: 'read_file', arguments: { path: 'a.ts' } },
+      ]);
+    });
+
+    it('listMessages returns null contentBlocks for legacy text rows', () => {
+      const c = createConversation({}, db);
+      appendMessage({ conversationId: c.id, role: 'user', content: 'plain text' }, db);
+      const msgs = listMessages(c.id, db);
+      expect(msgs[0]?.contentBlocks).toBeNull();
+      expect(msgs[0]?.content).toBe('plain text');
+    });
+
+    it('updateAssistantMessage replaces contentBlocks', () => {
+      const c = createConversation({}, db);
+      const m = appendMessage({ conversationId: c.id, role: 'assistant', content: '' }, db);
+      const updated = updateAssistantMessage(
+        m.id,
+        {
+          content: 'final text',
+          contentBlocks: [
+            { type: 'text', text: 'final text' },
+            { type: 'tool_use', id: 'tu_2', name: 'grep', arguments: { pattern: 'x' } },
+          ],
+        },
+        db,
+      );
+      expect(updated.contentBlocks).toHaveLength(2);
+      expect(updated.contentBlocks?.[1]).toMatchObject({ type: 'tool_use', id: 'tu_2' });
+    });
+  });
+
   it('persists provider/model metadata on messages', () => {
     const c = createConversation({}, db);
     const m = appendMessage(

@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import type {
+  ApprovalPolicies,
+  ApprovalRequest,
+  ApprovalResponse,
+  SetPolicyRequest,
+} from '../shared/approvals';
+import type {
   ChatCancelRequest,
   ChatStartRequest,
   ChatStartResponse,
@@ -26,6 +32,7 @@ import type { SelectedModel } from '../shared/selected-model';
 
 type DeepLinkListener = (url: string) => void;
 type ChatEventListener = (payload: ChatStreamEvent) => void;
+type ApprovalRequestListener = (req: ApprovalRequest) => void;
 
 const providers = {
   list: (): Promise<ProviderListItem[]> => ipcRenderer.invoke('providers:list'),
@@ -74,6 +81,18 @@ const chat = {
   },
 };
 
+const approvals = {
+  getPolicies: (): Promise<ApprovalPolicies> => ipcRenderer.invoke('approvals:get-policies'),
+  setPolicy: (req: SetPolicyRequest): Promise<ApprovalPolicies> =>
+    ipcRenderer.invoke('approvals:set-policy', req),
+  respond: (res: ApprovalResponse): Promise<void> => ipcRenderer.invoke('approvals:respond', res),
+  onRequest: (listener: ApprovalRequestListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: ApprovalRequest): void => listener(payload);
+    ipcRenderer.on('chat:approval-request', wrapped);
+    return () => ipcRenderer.off('chat:approval-request', wrapped);
+  },
+};
+
 const api = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   onDeepLink: (listener: DeepLinkListener): (() => void) => {
@@ -85,6 +104,7 @@ const api = {
   selectedModel,
   conversations,
   chat,
+  approvals,
 } as const;
 
 export type OpenCodexBridge = typeof api;
