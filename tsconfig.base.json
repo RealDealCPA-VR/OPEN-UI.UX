@@ -15,7 +15,19 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "incremental": true
+    "incremental": true,
+    "paths": {
+      "@opencodex/core": ["./packages/core/src/index.ts"],
+      "@opencodex/core/*": ["./packages/core/src/*"],
+      "@opencodex/providers": ["./packages/providers/src/index.ts"],
+      "@opencodex/providers/*": ["./packages/providers/src/*"],
+      "@opencodex/tools": ["./packages/tools/src/index.ts"],
+      "@opencodex/tools/*": ["./packages/tools/src/*"],
+      "@opencodex/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"],
+      "@opencodex/plugin-sdk/*": ["./packages/plugin-sdk/src/*"],
+      "@opencodex/mcp-client": ["./packages/mcp-client/src/index.ts"],
+      "@opencodex/mcp-client/*": ["./packages/mcp-client/src/*"]
+    }
   },
   "exclude": ["node_modules", "dist", "build", "out"]
 }

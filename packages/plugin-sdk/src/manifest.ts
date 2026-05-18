@@ -15,9 +15,7 @@ export type Permission = z.infer<typeof PermissionSchema>;
 export const ContributionSchema = z.object({
   tools: z.array(z.string()).optional(),
   providers: z.array(z.string()).optional(),
-  panels: z
-    .array(z.object({ id: z.string(), title: z.string(), entry: z.string() }))
-    .optional(),
+  panels: z.array(z.object({ id: z.string(), title: z.string(), entry: z.string() })).optional(),
   slashCommands: z.array(z.object({ name: z.string(), entry: z.string() })).optional(),
 });
 

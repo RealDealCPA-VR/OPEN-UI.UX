@@ -2,6 +2,7 @@
   "name": "opencodex",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "description": "Open-source desktop coding agent that works with any LLM",
   "license": "MIT",
   "packageManager": "pnpm@9.0.0",
@@ -11,17 +12,28 @@
   "scripts": {
     "dev": "pnpm --filter @opencodex/desktop dev",
     "build": "pnpm -r build",
-    "test": "pnpm -r test",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "clean": "pnpm -r clean && rimraf node_modules"
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "clean": "pnpm -r clean && rimraf node_modules",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/node": "^20.11.0",
     "eslint": "^9.0.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.6.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.5",
     "prettier": "^3.2.0",
     "rimraf": "^5.0.0",
     "typescript": "^5.4.0",
+    "typescript-eslint": "^8.59.3",
     "vitest": "^1.4.0"
   }
 }

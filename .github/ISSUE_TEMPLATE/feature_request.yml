@@ -1,0 +1,65 @@
+name: Feature request
+description: Suggest a new capability or improvement
+labels: ['enhancement', 'triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Before filing, please check [Todo.md](../../Todo.md) — your idea may already be on the backlog.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what's getting in the way today?
+      placeholder: 'I want to ___, but currently I have to ___.'
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would you like this to work?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought about and why you ruled them out.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Provider adapter (OpenAI / Anthropic / etc.)
+        - Tool (read_file / grep / shell / etc.)
+        - Agent runtime (loop, approvals, cancellation)
+        - MCP support
+        - RAG / codebase chat
+        - Plugin system / SDK
+        - Multi-agent orchestration
+        - UI / UX
+        - Build / packaging / install
+        - Documentation
+        - Other
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Mockups, links, prior art from other tools, etc.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checks
+      options:
+        - label: I searched existing issues and Todo.md and didn't find this
+          required: true
+        - label: This is consistent with the architectural decisions in CLAUDE.md (local-first, provider-agnostic, plugin-first)
+          required: true

@@ -1,0 +1,114 @@
+name: Bug report
+description: Something isn't working the way it should
+labels: ['bug', 'triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill out the sections below — the more detail, the faster we can help.
+
+        **Security issues** should NOT be filed here. See [SECURITY.md](../../SECURITY.md) instead.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing what went wrong.
+      placeholder: 'When I do X, Y happens instead of Z.'
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: A minimal sequence of actions that triggers the bug.
+      placeholder: |
+        1. Open OpenCodex
+        2. Configure provider X with model Y
+        3. Send message "..."
+        4. Observe error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include error messages, stack traces, or screenshots. Redact any secrets.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: OpenCodex version
+      description: From Settings → About, or the git commit SHA you're running.
+      placeholder: 'v0.1.0 or commit abc1234'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version
+      placeholder: 'macOS 14.4, Windows 11 23H2, Ubuntu 24.04, ...'
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Output of `node -v`. Only needed if you're running from source.
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: LLM provider (if relevant)
+      multiple: true
+      options:
+        - OpenAI
+        - Anthropic
+        - Google Gemini
+        - xAI Grok
+        - Mistral
+        - Ollama
+        - OpenRouter
+        - Other (specify below)
+        - Not applicable
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant console output, main process log, or developer tools output. Use code fences. Redact secrets.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checks
+      options:
+        - label: I searched existing issues and didn't find a duplicate
+          required: true
+        - label: I'm running a recent version (within the last few releases or main)
+          required: true

@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import type { Tool } from '@opencodex/core';
 
-const input = z.object({ path: z.string(), oldString: z.string(), newString: z.string(), replaceAll: z.boolean().optional() });
+const input = z.object({
+  path: z.string(),
+  oldString: z.string(),
+  newString: z.string(),
+  replaceAll: z.boolean().optional(),
+});
 
 export const editFileTool: Tool<z.infer<typeof input>, { replacements: number }> = {
   name: 'edit_file',

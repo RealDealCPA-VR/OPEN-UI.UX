@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import type { Tool } from '@opencodex/core';
 
-const input = z.object({ path: z.string(), offset: z.number().optional(), limit: z.number().optional() });
+const input = z.object({
+  path: z.string(),
+  offset: z.number().optional(),
+  limit: z.number().optional(),
+});
 
 export const readFileTool: Tool<z.infer<typeof input>, string> = {
   name: 'read_file',

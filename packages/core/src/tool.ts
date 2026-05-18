@@ -12,7 +12,10 @@ export interface ToolDefinition {
 export interface ToolContext {
   workspaceRoot: string;
   signal: AbortSignal;
-  logger: { info: (msg: string, meta?: unknown) => void; error: (msg: string, meta?: unknown) => void };
+  logger: {
+    info: (msg: string, meta?: unknown) => void;
+    error: (msg: string, meta?: unknown) => void;
+  };
 }
 
 export interface Tool<TInput = unknown, TOutput = unknown> extends ToolDefinition {

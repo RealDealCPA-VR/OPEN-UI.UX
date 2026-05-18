@@ -1,7 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "Read(//c/Users/VR/.claude/**)"
+      "Read(//c/Users/VR/.claude/**)",
+      "Bash(git init *)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm -r typecheck)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm exec *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(pnpm -r lint)",
+      "Bash(pnpm prepare *)",
+      "Bash(git config *)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm format:check)",
+      "Bash(pnpm format *)",
+      "Bash(pnpm lint *)",
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm build *)"
     ]
   }
 }

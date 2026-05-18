@@ -70,6 +70,7 @@ Each tool declares a `permissionTier` (`read` / `write` / `execute` / `network`)
 ## Approval system
 
 Default policy (configurable):
+
 - `read` → auto
 - `network` → auto for built-in allow-listed domains, prompt otherwise
 - `write` → prompt with diff preview
@@ -97,6 +98,7 @@ All decisions are audit-logged to SQLite.
 ## Plugin model
 
 Plugin packages ship a `opencodex.plugin.json` manifest declaring:
+
 - name, version, entry point, engines
 - requested **permissions** (workspace.read, workspace.write, shell.execute, network.fetch, ui.panel, ...)
 - **contributions** (tool names, provider IDs, UI panel entries, slash command entries)
@@ -108,6 +110,7 @@ UI panels run in sandboxed iframes with a `postMessage` bridge to the plugin hos
 ## MCP integration
 
 MCP is treated as a peer of built-in tools. When you add an MCP server:
+
 - its `tools/list` becomes part of the agent's tool registry
 - its `resources/list` feeds the RAG retriever as an additional source
 - its `prompts/list` shows up as `/` commands in the chat

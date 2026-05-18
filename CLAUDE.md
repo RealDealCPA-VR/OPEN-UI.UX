@@ -30,6 +30,7 @@ OpenCodex uses a two-file session baton so multiple agent runs can share the sam
 
 1. Update [Todo.md](./Todo.md) — check off `[x]` only tasks that actually shipped and work.
 2. Replace [HANDOFF.md](./HANDOFF.md) entirely with these sections:
+
    ```
    # Handoff State
 
@@ -46,6 +47,7 @@ OpenCodex uses a two-file session baton so multiple agent runs can share the sam
    ## Context Notes
    <Gotchas, decisions, file:line refs the next agent needs>
    ```
+
 3. Run `pnpm build` to confirm the tree compiles.
 4. Tell the user: `Handoff ready. Start a new session and say: /pickup`
 

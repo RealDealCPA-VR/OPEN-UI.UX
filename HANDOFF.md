@@ -2,38 +2,59 @@
 
 ## Last Session Summary
 
-- Scaffolded the full monorepo skeleton: root configs (LICENSE, README, package.json, pnpm-workspace, tsconfig.base, .gitignore, .prettierrc, .editorconfig), CLAUDE.md with embedded `/pickup` and `/handoff` protocol, master `Todo.md` covering all 7 phases, and architecture doc.
-- Created Electron app skeleton at `apps/desktop/` with main / preload / renderer split and placeholder module directories (agent, providers, tools, mcp, plugins, rag, storage, shell, ipc).
-- Created package skeletons for `@opencodex/core`, `@opencodex/providers`, `@opencodex/tools`, `@opencodex/plugin-sdk`, `@opencodex/mcp-client`, plus an `examples/plugins/hello-world` reference plugin. `@opencodex/core` has real interface stubs (`LLMProvider`, `ChatEvent`, `Tool`, `ModelCapabilities`); other packages have placeholder index files.
+- Completed Phase 0 foundations: pnpm workspaces verified, ESLint 9 flat config with TS + React + react-hooks rules, Prettier + `.prettierignore`, Husky 9 `pre-commit` running `lint-staged` + full repo typecheck, Vitest workspace mode (`vitest.workspace.ts` + `vitest.config.ts`), GitHub Actions `ci.yml` (lint + typecheck + test + format check on Linux/Windows/macOS).
+- Added community health files: `CODEOWNERS`, `CODE_OF_CONDUCT.md` (links to Contributor Covenant 2.1), `SECURITY.md`, `CONTRIBUTING.md`, plus `.github/ISSUE_TEMPLATE/{config,bug_report,feature_request}.yml` and `pull_request_template.md`. All contain `TODO-set-github-handle` / `TODO-set-domain` / `TODO-org` placeholders.
+- Restructured every per-package `tsconfig.json` to be typecheck-only (`noEmit: true`, no `rootDir`/`outDir`) and added `@opencodex/*` path mappings in `tsconfig.base.json` so workspace packages resolve to source at dev time. `apps/desktop/tsconfig.json` duplicates the path mappings (TS child `paths` replaces parent's, not merges) and adds `baseUrl: "."`. Root `package.json` now has `"type": "module"` to align with the ESM-everywhere rule.
 
 ## Verify Before Continuing
 
-- [ ] **Confirm Node 20+ and pnpm 9+ are installed** — run `node -v` and `pnpm -v`. If pnpm is missing: `npm install -g pnpm`.
-- [ ] **Initialize git** — `git init && git add -A && git commit -m "initial scaffold"`. The repo is currently not a git repo; do this before any further changes.
-- [ ] **Install deps** — run `pnpm install` from repo root. Expect it to succeed even though most packages have no real code yet (no provider SDKs or Electron deps are pinned beyond placeholders).
-- [ ] **Verify the tree** — `pnpm -r typecheck` should pass against the stub interfaces. Build will fail until Phase 0.5 wires `electron-vite`; that's expected.
+- [ ] **Full local CI still green** — run `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`. All four should exit 0. If any fail, fix before continuing.
+- [ ] **Husky pre-commit hook installed** — run `git config core.hooksPath`; expect `.husky/_`. If empty, run `pnpm prepare`.
+- [ ] **No stray `dist/` directories** in `packages/*/` (we removed `outDir` configs; if you see one, it's stale from before).
 
 ## Next Task
 
-From [Todo.md](./Todo.md), the next unchecked items are in **Phase 0**:
+Phase 0 has 2 unchecked items, both intentionally deferred. Skip them for now and move into **Phase 0.5 — Electron scaffold**. The first items are:
 
-> - [ ] Initialize git repo (`git init`), set default branch to `main`
-> - [ ] Configure pnpm workspaces (root `package.json` + `pnpm-workspace.yaml` exist; verify `pnpm install` succeeds)
-> - [ ] ESLint flat config (`eslint.config.js`) with TS + React rules
-> - [ ] Husky + lint-staged pre-commit (lint + typecheck staged files)
-> - [ ] Vitest base config (workspace-aware, runs all packages)
-> - [ ] GitHub Actions: `ci.yml` running lint + typecheck + test + build on PR
-> - [ ] CODEOWNERS, CODE_OF_CONDUCT.md, SECURITY.md, CONTRIBUTING.md
-> - [ ] Issue + PR templates
+> - [ ] `apps/desktop`: Electron 30+ + Vite + React 18 + TS scaffold
+> - [ ] Configure `electron-vite` for separate main / preload / renderer builds
+> - [ ] Main process entry with single-instance lock + deep-link handling
+> - [ ] Preload bridge with `contextBridge` typed API (`window.opencodex.*`)
+> - [ ] Renderer: React app shell with router (chat / agent / codebase / settings)
 
-Tackle in that order. Don't move on to Phase 0.5 (Electron scaffold) until `pnpm install`, `pnpm lint`, and `pnpm typecheck` all pass cleanly on a fresh clone.
+Tackle in that order. The `apps/desktop/` skeleton already has the directory layout from the previous session (`src/main/`, `src/preload/`, `src/renderer/`, `src/shared/`), an `electron.vite.config.ts` file, and placeholder entry files — they need real Electron deps installed and the build pipeline wired.
 
 ## Context Notes
 
-- **Folder path has a space + period** (`OPEN UI.UX`). Quote paths in shell commands. Some Windows tools (older npm scripts, certain pre-commit hooks) misbehave with this — if you hit weird path errors, this is the first thing to suspect.
-- **Provider abstraction lives in `packages/core/src/provider.ts`**. The `LLMProvider` interface is the load-bearing contract for the whole project; every provider adapter and the agent runtime depend on it. Treat changes to this file as breaking-change-grade.
-- **No provider SDKs installed yet.** The provider stub files in `packages/providers/src/*.ts` are just empty exports. When you install `openai`, `@anthropic-ai/sdk`, etc., do it inside the providers package, not at the root.
-- **Plugins are first-class** (see [[project-opencodex]] memory). Don't introduce architectural assumptions that only built-in code can register tools or providers — everything routes through the registry.
-- **`/pickup` and `/handoff` are the workflow.** Always end a session with `/handoff` (update Todo.md checkboxes + replace this file). Always start with `/pickup`.
-- **MIT license** chosen for max adoption. Don't add code under an incompatible license (no GPL deps).
-- **Electron was chosen over Tauri** for iteration speed. Don't propose a framework swap without strong evidence — the bet is already placed.
+### tsconfig strategy (load-bearing for the whole repo)
+
+- **Typecheck-only configs**: every `packages/*/tsconfig.json`, `apps/desktop/tsconfig.json`, and `examples/plugins/hello-world/tsconfig.json` is now `noEmit: true` with no `rootDir`/`outDir`. They exist solely for `pnpm -r typecheck`.
+- **Build state is mixed**:
+  - `pnpm build` exits 0 across the whole tree.
+  - `apps/desktop` produces real artifacts in `out/{main,preload,renderer}/` via `electron-vite build` — the previous session's prediction that builds would fail until Phase 0.5 turned out to be wrong; electron-vite was already wired enough to build the skeleton.
+  - `packages/*` build scripts (`tsc -p tsconfig.json`) emit **nothing** because `noEmit: true`. Their `dist/` directories stay empty (or contain only `tsconfig.tsbuildinfo`). This is fine at dev time because path mappings point at `src/`, but **packages cannot be consumed from `dist/`** — that matters before publishing or before a non-workspace consumer pulls them in.
+  - Recommendation for when real package builds are needed: `tsup` per package (one tiny config per consumer, ESM output, dts generation, watch mode), OR TypeScript project references with a separate `tsconfig.build.json` per package + `tsc -b`. `tsup` is less ceremony and plays nicely alongside the existing `electron-vite` setup.
+- **Path mappings** in `tsconfig.base.json` resolve `@opencodex/*` to each package's `src/index.ts`. `apps/desktop/tsconfig.json` duplicates them under its own `paths` because TS does not merge `paths` from `extends`. If you add a new workspace package, update **both** places.
+
+### CI workflow gap
+
+- `.github/workflows/ci.yml` does not run `pnpm build` yet. It currently runs `pnpm install --frozen-lockfile`, lint, typecheck, test, and format check across a 3-OS matrix. `pnpm build` could be added now (it exits 0 and produces real Electron artifacts), but consider deferring the CI build step until `packages/*` actually emit something — otherwise CI just rebuilds Electron and silently no-ops on every package, which is misleading.
+
+### Pre-commit hook
+
+- `.husky/pre-commit` runs `pnpm lint-staged` then `pnpm -r typecheck`. The typecheck-on-every-commit can be slow on big diffs — if it becomes painful, switch to `tsc-files` on staged files instead.
+
+### Placeholders to fill in before going public
+
+- `CODEOWNERS`: every `@TODO-set-github-handle` → real GitHub handle.
+- `SECURITY.md`: `security@TODO-set-domain` → real contact.
+- `.github/ISSUE_TEMPLATE/config.yml`: `github.com/TODO-org/TODO-repo` → real repo URL.
+
+### Carry-overs from the prior session
+
+- Folder path has a space + period (`OPEN UI.UX`). Quote paths in shell commands.
+- `packages/core/src/provider.ts` is the load-bearing `LLMProvider` contract — changes are breaking-change-grade.
+- No provider SDKs installed yet. Install them inside `packages/providers/`, not at root.
+- MIT license — don't add GPL deps.
+- Electron was chosen over Tauri for iteration speed.
+- The repo's `.git` was already initialized before this session started; the user confirmed it.

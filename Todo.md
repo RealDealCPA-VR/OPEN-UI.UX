@@ -8,18 +8,18 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 
 ## Phase 0 — Foundations
 
-- [ ] Initialize git repo (`git init`), set default branch to `main`
-- [ ] Configure pnpm workspaces (root `package.json` + `pnpm-workspace.yaml` exist; verify `pnpm install` succeeds)
-- [ ] Root `tsconfig.base.json` with strict mode (done — verify package configs extend it)
-- [ ] ESLint flat config (`eslint.config.js`) with TS + React rules
-- [ ] Prettier config (done — verify it runs)
-- [ ] Husky + lint-staged pre-commit (lint + typecheck staged files)
-- [ ] Vitest base config (workspace-aware, runs all packages)
+- [x] Initialize git repo (`git init`), set default branch to `main`
+- [x] Configure pnpm workspaces (root `package.json` + `pnpm-workspace.yaml` exist; verify `pnpm install` succeeds)
+- [x] Root `tsconfig.base.json` with strict mode (done — verify package configs extend it)
+- [x] ESLint flat config (`eslint.config.js`) with TS + React rules
+- [x] Prettier config (done — verify it runs)
+- [x] Husky + lint-staged pre-commit (lint + typecheck staged files)
+- [x] Vitest base config (workspace-aware, runs all packages)
 - [ ] Playwright base config for `apps/desktop` E2E
-- [ ] GitHub Actions: `ci.yml` running lint + typecheck + test + build on PR
+- [ ] GitHub Actions: `ci.yml` running lint + typecheck + test + build on PR (lint + typecheck + test + format done; build deferred to Phase 0.5)
 - [ ] GitHub Actions: `release.yml` for tagged builds (deferred to Phase 6)
-- [ ] CODEOWNERS, CODE_OF_CONDUCT.md, SECURITY.md, CONTRIBUTING.md
-- [ ] Issue + PR templates
+- [x] CODEOWNERS, CODE_OF_CONDUCT.md, SECURITY.md, CONTRIBUTING.md
+- [x] Issue + PR templates
 
 ## Phase 0.5 — Electron scaffold
 
@@ -41,6 +41,7 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 ## Phase 1 — Provider abstraction & adapters
 
 ### Core contracts
+
 - [ ] `packages/core`: `LLMProvider` interface (chat, embed, capabilities)
 - [ ] `packages/core`: `ChatEvent` union (`text_delta`, `tool_call`, `tool_result`, `usage`, `done`, `error`)
 - [ ] `packages/core`: `ModelCapabilities` (toolUse, vision, streaming, contextWindow, pricing, embeddings)
@@ -48,6 +49,7 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 - [ ] Provider registry + factory with config validation
 
 ### Adapters
+
 - [ ] `packages/providers/openai`: Chat Completions + Responses API, streaming, tool calls
 - [ ] `packages/providers/anthropic`: Messages API with prompt caching, tool use, vision
 - [ ] `packages/providers/google`: Gemini API, tool calls, vision
@@ -58,6 +60,7 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 - [ ] Per-adapter unit tests with recorded fixtures (no live API in CI)
 
 ### UI
+
 - [ ] Provider config UI (add/remove keys, test connection)
 - [ ] Model picker with cost + context window display + capabilities badges
 - [ ] Capabilities-driven UI gating (hide tools toggle if `!toolUse`)
@@ -69,6 +72,7 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 ## Phase 2 — Local coding agent
 
 ### Tool layer
+
 - [ ] `packages/core`: `Tool` interface (name, schema (Zod), permission tier, execute)
 - [ ] Permission tiers: `read` / `write` / `execute` / `network`
 - [ ] `packages/tools/read-file`
@@ -82,6 +86,7 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 - [ ] Tool registry with permission-tier dispatch
 
 ### Agent runtime
+
 - [ ] Agent loop (stream → collect tool calls → exec → feed results → repeat)
 - [ ] Cancellation: abort mid-stream and kill in-flight shell processes
 - [ ] Approval system (per-tool `auto` / `prompt` / `deny` policy)
@@ -91,6 +96,7 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 - [ ] Audit log of every tool call (input, output, decision, timestamp) in SQLite
 
 ### UI
+
 - [ ] Diff viewer (Monaco diff editor) with hunk-level accept/reject
 - [ ] File tree with agent edit annotations (pending / applied / rejected)
 - [ ] Embedded terminal (`xterm.js`) tailing `run_shell` output
