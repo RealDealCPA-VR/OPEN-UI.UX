@@ -3,10 +3,35 @@
  * Both sides import from here so the wire format stays in sync.
  */
 
+import type {
+  ProviderDeleteRequest,
+  ProviderListItem,
+  ProviderSaveRequest,
+  ProviderSaveResponse,
+  ProviderTestRequest,
+  ProviderTestResult,
+} from './provider-config';
+
 export interface IpcInvokeChannels {
   'app:version': {
     request: void;
     response: string;
+  };
+  'providers:list': {
+    request: void;
+    response: ProviderListItem[];
+  };
+  'providers:save': {
+    request: ProviderSaveRequest;
+    response: ProviderSaveResponse;
+  };
+  'providers:delete': {
+    request: ProviderDeleteRequest;
+    response: ProviderListItem;
+  };
+  'providers:test': {
+    request: ProviderTestRequest;
+    response: ProviderTestResult;
   };
 }
 

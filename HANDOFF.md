@@ -2,74 +2,66 @@
 
 ## Last Session Summary
 
-- **Provider packages split 7 ways.** Old single `packages/providers` package removed; replaced by `packages/provider-{openai,anthropic,google,xai,mistral,ollama,openrouter}`, each its own `@opencodex/provider-<name>` workspace package. Path mappings updated in both `tsconfig.base.json` and `apps/desktop/tsconfig.json`; `apps/desktop/package.json` now depends on all 7 individually. Docs/READMEs updated.
-- **OpenAI adapter implemented for real** (Chat Completions only — Responses API still TODO). Raw `fetch`, no `openai` SDK. Module layout under `packages/provider-openai/src/`: `config.ts` (extends `providerConfigSchema` with `organization`+`project`), `models.ts` (8-entry capabilities table with pricing), `sse.ts` (generic SSE parser), `response-schemas.ts` (Zod at the wire boundary), `translate-request.ts` (Message[]/ToolDefinition[] → OpenAI body — handles text, image data-URL, `tool_use`, `tool_result`), `translate-stream.ts` (accumulates tool calls across chunks, maps `finish_reason` → `StopReason`), `provider.ts` (the `OpenAIProvider` class + `openAIProvider` factory: streaming chat, embeddings, listModels, capabilities, custom baseUrl, error events on HTTP failure).
-- **29 new tests added, 45 total green.** OpenAI: `sse.test.ts` (6), `translate-request.test.ts` (11), `translate-stream.test.ts` (6), `provider.test.ts` (6, fixture-based — no live API). Core's 16 still pass.
+- **Provider config UI shipped end-to-end.** Settings → Providers now renders a card per adapter (all 7 from Phase 1) with API key field, base URL override, per-provider extra fields (e.g. OpenAI `organization`/`project`, Anthropic `anthropicVersion`/`beta`, OpenRouter `referer`/`title`, Ollama `keepAlive`, Google `apiVersion`), Save / Test / Clear actions, and a last-test-result line with timestamp.
+- **Secrets land in keytar** at account `provider:<id>:apiKey`; non-secret config (baseUrl, extra, lastTestedAt, lastTestResult) lives in `electron-store` under a new `providers` map in [apps/desktop/src/main/storage/settings.ts](apps/desktop/src/main/storage/settings.ts). API key edits use a dirty-flag so a Save that only changes baseUrl/extra doesn't disturb keytar.
+- **15 new tests, 171 total green** across 20 files. New ones cover the per-provider ping-spec catalog and a stubbed-fetch ping classifier (200/401/403/5xx/network/timeout). Desktop build sizes: main 21.93 kB, preload 0.64 kB, renderer 281.54 kB JS + 4.08 kB CSS.
 
 ## Verify Before Continuing
 
-- [ ] **Full CI green** — `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check && pnpm build`. `pnpm test` should now report **45 passing tests across 6 files**. Build sizes unchanged: main 7.31 kB, preload 0.37 kB (.mjs), renderer 271.65 kB JS + 1.31 kB CSS.
-- [ ] **Native deps load inside Electron** (carry-over, only if you run `pnpm --filter @opencodex/desktop dev`).
+- [ ] **Full CI green** — `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check && pnpm build`. `pnpm test` should report **171 passing tests across 20 files**. Build sizes per above.
+- [ ] **Format quirk reminder** — Prettier escapes bare underscores in long single-paragraph bullets. Wrap terms like `tool_use`, `stream_options`, `keep_alive`, `done_reason` in backticks in HANDOFF/docs.
+- [ ] **Native deps inside Electron** (carry-over, only if you run `pnpm --filter @opencodex/desktop dev`).
 
 ## Next Task
 
-Phase 1 → Adapters (continued). Decide first:
+Phase 1 → UI. Recommended next chunk:
 
-1. Whether to ship the OpenAI **Responses API** path before moving on (the Todo line still has it open). It's mostly the same surface as Chat Completions but a different endpoint and different streaming event names. Recommended: defer — Chat Completions is sufficient for the agent loop and we can come back when there's a concrete consumer need.
-2. Then proceed in the original order — Anthropic next:
+> ### UI
+>
+> - [ ] Model picker with cost + context window display + capabilities badges
+> - [ ] Capabilities-driven UI gating (hide tools toggle if `!toolUse`)
 
-> - [ ] `packages/providers/anthropic`: Messages API with prompt caching, tool use, vision
-> - [ ] `packages/providers/google`: Gemini API, tool calls, vision
-> - [ ] `packages/providers/xai`: Grok API (OpenAI-compatible)
-> - [ ] `packages/providers/mistral`: Mistral API, tool calls
-> - [ ] `packages/providers/ollama`: Local Ollama HTTP, streaming, tool-call JSON-mode fallback
-> - [ ] `packages/providers/openrouter`: OpenRouter unified API (covers fallback "any model")
+The plumbing is already in place: `providers:list` returns each provider's `ModelCapabilities[]` (with `contextWindow`, `pricing`, `toolUse`, `vision`, `embeddings`, `promptCaching`), so a Model picker can consume the same `window.opencodex.providers.list()` call the Settings panel uses. Natural shape: a top-bar dropdown that lists all _configured_ providers (`status.hasApiKey || !info.requiresApiKey`) and lets the user pick a model; show pricing/context-window chips next to each entry; UI-gate the tools toggle on `selectedModel.toolUse`.
+
+Alternative smaller follow-ups:
+
+- [ ] OpenAI Responses API (deferred half of the OpenAI adapter)
+- [ ] Ollama JSON-mode prompt-injection fallback for legacy non-tool-capable models
+- [ ] Real-API-recorded fixtures (current tests use hand-crafted fixtures)
+- [ ] Streaming chat view (Phase 1 → UI) — bigger; needs an active-provider selector first, so ideally do Model picker before this
 
 ## Context Notes
 
-### Provider package naming + structure
+### Provider config UI architecture (this session)
 
-Each provider lives at `packages/provider-<id>` with package name `@opencodex/provider-<id>`. Each has `package.json` (`type: module`, `main: dist/index.js`, scripts: build/typecheck/test/lint/clean, deps: `@opencodex/core` workspace + `zod`), `tsconfig.json` (`extends ../../tsconfig.base.json`, `noEmit: true`), and `src/index.ts`. When adding a new workspace package, also update path mappings in **both** `tsconfig.base.json` and `apps/desktop/tsconfig.json` AND add it to the `resolve.alias` in `vitest.config.ts` (see below).
+- **Single source of truth**: [apps/desktop/src/main/providers/catalog.ts](apps/desktop/src/main/providers/catalog.ts) lists each provider with `factory`, `defaultBaseUrl`, `requiresApiKey`, `extraFields[]`, `loadModels()`, and `buildPingSpec()`. Adding an 8th provider means appending one entry — _and_ reflecting `extraFields` in the renderer is automatic, the form renders from the catalog.
+- **IPC surface** (in [shared/ipc-types.ts](apps/desktop/src/shared/ipc-types.ts)): `providers:list | save | delete | test`. Renderer types live in [shared/provider-config.ts](apps/desktop/src/shared/provider-config.ts) — `ProviderListItem`, `ProviderSaveRequest`, `ProviderTestResult`, `ProviderConfigIssue`.
+- **Test-connection is a free `GET`**, not a chat call. Per-provider endpoint dispatch:
+  - OpenAI / xAI / Mistral / OpenRouter (`/auth/key` for OR) → `GET {base}/...` with `Authorization: Bearer`
+  - Anthropic → `GET {base}/models` with `x-api-key` + `anthropic-version`
+  - Google → `GET {base}/{apiVersion}/models?key=...` (query-string auth, no header)
+  - Ollama → `GET {base}/api/tags` (no auth)
 
-### Vitest alias requirement (load-bearing — easy to miss)
+  See [apps/desktop/src/main/providers/catalog.ts:73-225](apps/desktop/src/main/providers/catalog.ts#L73). The generic classifier in [ping.ts](apps/desktop/src/main/providers/ping.ts) treats 401/403 → `auth`, other non-2xx → `http`, throw → `network`, abort → `timeout`.
 
-`vitest.config.ts` now has an explicit `resolve.alias` map for every `@opencodex/*` package because their `package.json` `main` points at unbuilt `dist/`. Without aliases, any test that triggers a runtime _value_ import of a `@opencodex/*` package (not just `import type`) fails with `Failed to resolve entry for package`. When you add provider-anthropic etc., add an alias entry next to the existing ones. The old `vitest.workspace.ts` was deleted — it isolated each package's resolver from the root config's aliases. The root `vitest.config.ts` now drives all test discovery via `include: ['**/*.{test,spec}.{ts,tsx}']`.
+- **API key dirty-tracking**: the renderer ([ProvidersPanel.tsx](apps/desktop/src/renderer/views/ProvidersPanel.tsx)) tracks `apiKeyDirty` per draft; Save only sends `apiKey` when the field was edited. If user types and clears, that's a delete intent (`apiKey: null`).
 
-### Reusable helpers from OpenAI adapter
+- **Validation**: handler runs `buildProviderConfig(entry, ...)` → `factory.configSchema.parse(raw)` before persisting. On `ZodError`, returns `{item, errors: ProviderConfigIssue[]}` instead of throwing — renderer displays them inline. Successful save returns `{item, errors: []}`.
 
-The xAI and OpenRouter adapters will be OpenAI-compatible. The current helpers worth reusing:
+### React/lint gotcha
 
-- `packages/provider-openai/src/sse.ts` — generic SSE event-stream → string async generator (decoder + buffer + CRLF normalize).
-- `packages/provider-openai/src/translate-request.ts` — `translateMessages`, `translateTools`, `buildChatRequestBody`.
-- `packages/provider-openai/src/translate-stream.ts` — `streamChunksToEvents` (tool-call accumulation by `index`, `finish_reason` mapping).
-- `packages/provider-openai/src/response-schemas.ts` — `chatChunkSchema` for the wire body shape.
+- ESLint rule `react-hooks/set-state-in-effect` (React 19 hooks plugin) flags `void load()` calls inside `useEffect` when `load` does `setState`. Fix is to inline the async IIFE inside the effect body with a `cancelled` flag, and use a `reloadKey` counter (`setReloadKey(k => k + 1)`) to trigger re-fetch from a Retry button. Same pattern will likely come up again for Model picker and chat view.
 
-Decide later whether to extract these to a shared `@opencodex/provider-openai-compat` package or just import directly from `@opencodex/provider-openai`. For two consumers (xAI + OpenRouter), direct import is fine.
+### Adapter-side details still relevant
 
-### No SDKs, raw fetch
+- **Wrap-vs-copy adapter split**: xAI + OpenRouter wrap `@opencodex/provider-openai` (re-exported helpers are semi-public — any change there must check xAI + OpenRouter still build); Mistral + Ollama copy+adapt because of wire quirks (Mistral: optional `index` on tool-call chunks, no `stream_options`; Ollama: NDJSON not SSE, synthesizes tool-call IDs, `keepAlive` → `keep_alive`).
+- **Embeddings**: only Mistral and Ollama implement `embed()` today; Anthropic / Google / xAI / OpenRouter throw.
 
-The OpenAI adapter uses `fetch` directly — no `openai` npm package. Keeps deps lean and makes fixture-based tests trivial (mock `globalThis.fetch`, return synthetic SSE bodies). Apply the same approach to other adapters unless an SDK gives meaningful leverage. Per CLAUDE.md carry-over: install provider SDKs in the adapter package's `package.json`, not at the root.
+### Carry-overs
 
-### Adapter pattern to follow
-
-For each new provider adapter:
-
-1. Add provider-specific config fields (if any) by extending `providerConfigSchema` in `config.ts`. Set `configSchema` on the factory to the extended schema so registry validation is narrow.
-2. Build the request body in a `translate-request.ts`; messages flow main → adapter as our internal `Message` type.
-3. Validate every wire response (stream chunk or JSON body) with Zod in `response-schemas.ts` _before_ touching it. This is the "external boundary" per CLAUDE.md.
-4. Translate provider events → `ChatEvent` discriminated-union in `translate-stream.ts`. The accumulation pattern (Map keyed by tool-call index, flush at end) handles streamed tool-call fragments cleanly.
-5. Capabilities live in a hard-coded `models.ts` table. `listModels()` returns it; `capabilities(id)` is a lookup.
-6. Class implementation in `provider.ts`. Pre-2xx errors yield an `error` event followed by `done` with `stopReason: 'error'` — do NOT throw from the generator.
-7. Tests: at minimum one fixture-based provider test plus translator/stream unit tests. Mock `globalThis.fetch` via a small `stubFetch` helper (see [provider.test.ts](packages/provider-openai/src/provider.test.ts)); `vi.fn` of a `()=>Response` impl infers args as `[]` and breaks `mock.calls[0]?.[1]` indexing under `noUncheckedIndexedAccess`.
-
-### Where ChatRequest is NOT validated
-
-Still no Zod on `ChatRequest` — that's an internal boundary (main → adapter, same process). Per prior session and CLAUDE.md, Zod is only at external boundaries: provider responses, IPC payloads, plugin manifests, MCP messages.
-
-### Carry-overs from prior sessions (still relevant)
-
-- Folder path has a space + period (`OPEN UI.UX`). Quote in shell commands.
-- `packages/*` `tsconfig` is `noEmit: true`. Consumers use path mappings to `src/`. Before any `pnpm publish`, swap to `tsup` per package — irrelevant for now.
+- Folder path has a space + period (`OPEN UI.UX`) — quote in shell.
+- `packages/*` tsconfig is `noEmit: true`. Before any `pnpm publish`, swap to `tsup` per package.
+- `.github/workflows/ci.yml` still doesn't run `pnpm build`. With 20 test files / 171 tests now, double-check it actually runs them.
 - Placeholders to fill before going public: `@TODO-set-github-handle` (CODEOWNERS), `security@TODO-set-domain` (SECURITY.md), `github.com/TODO-org/TODO-repo` (issue template config).
-- CI workflow (`.github/workflows/ci.yml`) still doesn't run `pnpm build`. Now that 45 tests exist, double-check it runs them (the prior session said yes; reverify if you touch CI).
-- `packages/core/src/tool.ts` still has both `ToolDefinition.inputSchema: Record<string, unknown>` (JSON Schema for provider) and `Tool.inputZod: z.ZodType<TInput>` — intentionally separate, defer unification to Phase 2.
+- OpenAI Responses API still deferred — Chat Completions is enough for the agent loop and now the UI.
+- [packages/core/src/tool.ts](packages/core/src/tool.ts) still has both `ToolDefinition.inputSchema` (JSON Schema) and `Tool.inputZod` — intentionally separate, defer unification to Phase 2.

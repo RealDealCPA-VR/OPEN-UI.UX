@@ -17,7 +17,14 @@
       "Bash(pnpm lint *)",
       "Bash(pnpm typecheck *)",
       "Bash(pnpm build *)",
-      "Bash(pnpm prettier *)"
+      "Bash(pnpm prettier *)",
+      "Bash(pnpx prettier *)",
+      "Bash(pnpm --filter @opencodex/provider-google typecheck)",
+      "Bash(pnpm --filter @opencodex/provider-google test)",
+      "Bash(git diff *)",
+      "Read(//tmp/**)",
+      "Bash(pnpm --filter @opencodex/desktop typecheck)",
+      "Bash(pnpm --filter @opencodex/desktop lint)"
     ]
   }
 }

@@ -1,0 +1,113 @@
+import type { ModelCapabilities } from '@opencodex/core';
+
+const KNOWN: ReadonlyArray<ModelCapabilities> = [
+  {
+    id: 'anthropic/claude-opus-4-7',
+    providerId: 'openrouter',
+    displayName: 'Claude Opus 4.7 (via OpenRouter)',
+    contextWindow: 200_000,
+    maxOutputTokens: 64_000,
+    toolUse: true,
+    vision: true,
+    streaming: true,
+    embeddings: false,
+    promptCaching: true,
+  },
+  {
+    id: 'anthropic/claude-sonnet-4-6',
+    providerId: 'openrouter',
+    displayName: 'Claude Sonnet 4.6 (via OpenRouter)',
+    contextWindow: 200_000,
+    maxOutputTokens: 64_000,
+    toolUse: true,
+    vision: true,
+    streaming: true,
+    embeddings: false,
+    promptCaching: true,
+  },
+  {
+    id: 'openai/gpt-4o',
+    providerId: 'openrouter',
+    displayName: 'GPT-4o (via OpenRouter)',
+    contextWindow: 128_000,
+    maxOutputTokens: 16_384,
+    toolUse: true,
+    vision: true,
+    streaming: true,
+    embeddings: false,
+  },
+  {
+    id: 'openai/gpt-4o-mini',
+    providerId: 'openrouter',
+    displayName: 'GPT-4o mini (via OpenRouter)',
+    contextWindow: 128_000,
+    maxOutputTokens: 16_384,
+    toolUse: true,
+    vision: true,
+    streaming: true,
+    embeddings: false,
+  },
+  {
+    id: 'google/gemini-2.5-pro',
+    providerId: 'openrouter',
+    displayName: 'Gemini 2.5 Pro (via OpenRouter)',
+    contextWindow: 2_000_000,
+    maxOutputTokens: 65_536,
+    toolUse: true,
+    vision: true,
+    streaming: true,
+    embeddings: false,
+    promptCaching: true,
+  },
+  {
+    id: 'google/gemini-2.5-flash',
+    providerId: 'openrouter',
+    displayName: 'Gemini 2.5 Flash (via OpenRouter)',
+    contextWindow: 1_000_000,
+    maxOutputTokens: 65_536,
+    toolUse: true,
+    vision: true,
+    streaming: true,
+    embeddings: false,
+    promptCaching: true,
+  },
+  {
+    id: 'x-ai/grok-4',
+    providerId: 'openrouter',
+    displayName: 'Grok 4 (via OpenRouter)',
+    contextWindow: 256_000,
+    maxOutputTokens: 16_384,
+    toolUse: true,
+    vision: true,
+    streaming: true,
+    embeddings: false,
+  },
+  {
+    id: 'meta-llama/llama-3.1-405b-instruct',
+    providerId: 'openrouter',
+    displayName: 'Llama 3.1 405B Instruct (via OpenRouter)',
+    contextWindow: 128_000,
+    toolUse: true,
+    vision: false,
+    streaming: true,
+    embeddings: false,
+  },
+  {
+    id: 'mistralai/mistral-large',
+    providerId: 'openrouter',
+    displayName: 'Mistral Large (via OpenRouter)',
+    contextWindow: 128_000,
+    toolUse: true,
+    vision: false,
+    streaming: true,
+    embeddings: false,
+  },
+];
+
+export function knownModels(): ModelCapabilities[] {
+  return KNOWN.map((m) => ({ ...m }));
+}
+
+export function findModel(id: string): ModelCapabilities | undefined {
+  return KNOWN.find((m) => m.id === id);
+}

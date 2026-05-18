@@ -51,17 +51,17 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 ### Adapters
 
 - [ ] `packages/providers/openai`: Chat Completions + Responses API, streaming, tool calls _(Chat Completions done with streaming + tool calls + embeddings; Responses API not implemented yet)_
-- [ ] `packages/providers/anthropic`: Messages API with prompt caching, tool use, vision
-- [ ] `packages/providers/google`: Gemini API, tool calls, vision
-- [ ] `packages/providers/xai`: Grok API (OpenAI-compatible)
-- [ ] `packages/providers/mistral`: Mistral API, tool calls
-- [ ] `packages/providers/ollama`: Local Ollama HTTP, streaming, tool-call JSON-mode fallback
-- [ ] `packages/providers/openrouter`: OpenRouter unified API (covers fallback "any model")
+- [x] `packages/providers/anthropic`: Messages API with prompt caching, tool use, vision _(streaming + tool use + vision + caching capability done; no embeddings — Anthropic has no embeddings endpoint)_
+- [x] `packages/providers/google`: Gemini API, tool calls, vision _(streaming + tool calls + vision done; embed() throws — Gemini has embeddings but deferred to a future task)_
+- [x] `packages/providers/xai`: Grok API (OpenAI-compatible) _(wraps `@opencodex/provider-openai` helpers; embed throws — xAI has no embeddings API)_
+- [x] `packages/providers/mistral`: Mistral API, tool calls _(copy+adapt path with own sse/translate; embeddings via /v1/embeddings work)_
+- [x] `packages/providers/ollama`: Local Ollama HTTP, streaming, tool-call JSON-mode fallback _(HTTP + NDJSON streaming + native tools for llama3.1+/qwen2.5+ + embeddings done; JSON-mode prompt-injection fallback for legacy non-tool-capable models deferred)_
+- [x] `packages/providers/openrouter`: OpenRouter unified API (covers fallback "any model") _(wraps `@opencodex/provider-openai` helpers; HTTP-Referer + X-Title config headers; embed throws — no unified embeddings)_
 - [ ] Per-adapter unit tests with recorded fixtures (no live API in CI)
 
 ### UI
 
-- [ ] Provider config UI (add/remove keys, test connection)
+- [x] Provider config UI (add/remove keys, test connection)
 - [ ] Model picker with cost + context window display + capabilities badges
 - [ ] Capabilities-driven UI gating (hide tools toggle if `!toolUse`)
 - [ ] Streaming chat view (markdown + syntax-highlighted code + copy buttons)

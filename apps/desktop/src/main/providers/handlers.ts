@@ -1,0 +1,164 @@
+import { z } from 'zod';
+import { registerInvoke } from '../ipc/registry';
+import { logger } from '../logger';
+import { deleteSecret, getSecret, setSecret } from '../storage/secrets';
+import { deleteProviderEntry, getProviderEntry, setProviderEntry } from '../storage/settings';
+import type {
+  ProviderConfigIssue,
+  ProviderListItem,
+  ProviderSaveResponse,
+  ProviderStatus,
+  ProviderTestResult,
+} from '../../shared/provider-config';
+import { buildProviderConfig, catalog, catalogById, getProviderInfo } from './catalog';
+import { ping } from './ping';
+
+const apiKeyAccount = (id: string): string => `provider:${id}:apiKey`;
+
+async function buildStatus(id: string): Promise<ProviderStatus> {
+  const entry = getProviderEntry(id);
+  const apiKey = await getSecret(apiKeyAccount(id));
+  return {
+    hasApiKey: apiKey !== null && apiKey.length > 0,
+    baseUrl: entry.baseUrl,
+    extra: entry.extra,
+    lastTestedAt: entry.lastTestedAt,
+    lastTestResult: entry.lastTestResult,
+  };
+}
+
+async function buildItem(id: string): Promise<ProviderListItem | null> {
+  const info = await getProviderInfo(id);
+  if (!info) return null;
+  return { info, status: await buildStatus(id) };
+}
+
+export function registerProviderHandlers(): void {
+  registerInvoke('providers:list', z.void(), async () => {
+    const items: ProviderListItem[] = [];
+    for (const entry of catalog) {
+      const item = await buildItem(entry.id);
+      if (item) items.push(item);
+    }
+    return items;
+  });
+
+  registerInvoke(
+    'providers:save',
+    z.object({
+      id: z.string(),
+      apiKey: z.string().nullable().optional(),
+      baseUrl: z.string().nullable().optional(),
+      extra: z.record(z.string()).optional(),
+    }),
+    async (req): Promise<ProviderSaveResponse> => {
+      const entry = catalogById.get(req.id);
+      if (!entry) throw new Error(`Unknown provider "${req.id}"`);
+
+      const current = getProviderEntry(req.id);
+      const existingKey = await getSecret(apiKeyAccount(req.id));
+
+      const nextBaseUrl = req.baseUrl === undefined ? current.baseUrl : req.baseUrl || null;
+      const nextExtra = req.extra ?? current.extra;
+      const nextKey =
+        req.apiKey === undefined
+          ? existingKey
+          : req.apiKey && req.apiKey.length > 0
+            ? req.apiKey
+            : null;
+
+      try {
+        buildProviderConfig(entry, {
+          apiKey: nextKey ?? undefined,
+          baseUrl: nextBaseUrl,
+          extra: nextExtra,
+        });
+      } catch (err) {
+        const errors: ProviderConfigIssue[] = [];
+        if (err instanceof z.ZodError) {
+          for (const issue of err.issues) {
+            errors.push({ path: issue.path.join('.') || '(root)', message: issue.message });
+          }
+        } else {
+          errors.push({
+            path: '(root)',
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+        const item = await buildItem(req.id);
+        if (!item) throw new Error(`Unknown provider "${req.id}"`);
+        return { item, errors };
+      }
+
+      if (req.apiKey !== undefined) {
+        if (req.apiKey && req.apiKey.length > 0) {
+          await setSecret(apiKeyAccount(req.id), req.apiKey);
+        } else {
+          await deleteSecret(apiKeyAccount(req.id));
+        }
+      }
+
+      setProviderEntry(req.id, {
+        baseUrl: nextBaseUrl,
+        extra: nextExtra,
+      });
+
+      const item = await buildItem(req.id);
+      if (!item) throw new Error(`Unknown provider "${req.id}"`);
+      logger.info({ id: req.id }, 'provider config saved');
+      return { item, errors: [] };
+    },
+  );
+
+  registerInvoke(
+    'providers:delete',
+    z.object({ id: z.string() }),
+    async (req): Promise<ProviderListItem> => {
+      const entry = catalogById.get(req.id);
+      if (!entry) throw new Error(`Unknown provider "${req.id}"`);
+
+      await deleteSecret(apiKeyAccount(req.id));
+      deleteProviderEntry(req.id);
+      logger.info({ id: req.id }, 'provider config cleared');
+      const item = await buildItem(req.id);
+      if (!item) throw new Error(`Unknown provider "${req.id}"`);
+      return item;
+    },
+  );
+
+  registerInvoke(
+    'providers:test',
+    z.object({ id: z.string() }),
+    async (req): Promise<ProviderTestResult> => {
+      const entry = catalogById.get(req.id);
+      if (!entry) throw new Error(`Unknown provider "${req.id}"`);
+      const stored = getProviderEntry(req.id);
+      const apiKey = (await getSecret(apiKeyAccount(req.id))) ?? undefined;
+
+      if (entry.requiresApiKey && !apiKey) {
+        const result: ProviderTestResult = {
+          ok: false,
+          code: 'config',
+          message: 'No API key configured',
+        };
+        setProviderEntry(req.id, {
+          lastTestedAt: new Date().toISOString(),
+          lastTestResult: result,
+        });
+        return result;
+      }
+
+      const spec = entry.buildPingSpec({
+        apiKey,
+        baseUrl: stored.baseUrl ?? undefined,
+        extra: stored.extra,
+      });
+      const result = await ping(spec);
+      setProviderEntry(req.id, {
+        lastTestedAt: new Date().toISOString(),
+        lastTestResult: result,
+      });
+      return result;
+    },
+  );
+}

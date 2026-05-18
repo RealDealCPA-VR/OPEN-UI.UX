@@ -291,6 +291,9 @@ importers:
       '@opencodex/core':
         specifier: workspace:*
         version: link:../core
+      '@opencodex/provider-openai':
+        specifier: workspace:*
+        version: link:../provider-openai
       zod:
         specifier: ^3.22.0
         version: 3.25.76
@@ -307,6 +310,9 @@ importers:
       '@opencodex/core':
         specifier: workspace:*
         version: link:../core
+      '@opencodex/provider-openai':
+        specifier: workspace:*
+        version: link:../provider-openai
       zod:
         specifier: ^3.22.0
         version: 3.25.76

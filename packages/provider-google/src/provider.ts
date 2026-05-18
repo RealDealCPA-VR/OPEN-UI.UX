@@ -1,0 +1,103 @@
+import type {
+  ChatEvent,
+  ChatRequest,
+  EmbedRequest,
+  EmbedResult,
+  LLMProvider,
+  ModelCapabilities,
+  ProviderFactory,
+} from '@opencodex/core';
+import { googleConfigSchema, type GoogleConfig } from './config';
+import { findModel, knownModels } from './models';
+import { sseEvents } from './sse';
+import { buildChatRequestBody } from './translate-request';
+import { streamChunksToEvents } from './translate-stream';
+import { streamChunkSchema, type StreamChunk } from './response-schemas';
+
+const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
+const DEFAULT_API_VERSION = 'v1beta';
+
+class GoogleProvider implements LLMProvider {
+  readonly id = 'google';
+  readonly displayName = 'Google Gemini';
+
+  constructor(private readonly config: GoogleConfig) {}
+
+  async *chat(req: ChatRequest): AsyncIterable<ChatEvent> {
+    const body = buildChatRequestBody(req);
+    const path = `/models/${encodeURIComponent(req.model)}:streamGenerateContent?alt=sse`;
+    const response = await this.post(path, body, req.signal);
+    if (!response.ok || !response.body) {
+      const detail = await this.safeReadText(response);
+      yield {
+        type: 'error',
+        message: `Google chat HTTP ${response.status}: ${detail}`,
+        retryable: response.status >= 500 || response.status === 429,
+      };
+      yield { type: 'done', stopReason: 'error' };
+      return;
+    }
+    yield* streamChunksToEvents(this.chunksFromBody(response.body));
+  }
+
+  async embed(_req: EmbedRequest): Promise<EmbedResult> {
+    throw new Error('Google embeddings not implemented yet');
+  }
+
+  async listModels(): Promise<ModelCapabilities[]> {
+    return knownModels();
+  }
+
+  async capabilities(model: string): Promise<ModelCapabilities | undefined> {
+    return findModel(model);
+  }
+
+  private async *chunksFromBody(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamChunk> {
+    for await (const data of sseEvents(body)) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(data);
+      } catch {
+        continue;
+      }
+      const result = streamChunkSchema.safeParse(parsed);
+      if (result.success) yield result.data;
+    }
+  }
+
+  private async post(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+    const base = this.config.baseUrl ?? DEFAULT_BASE_URL;
+    const apiVersion = this.config.apiVersion ?? DEFAULT_API_VERSION;
+    const url = `${base.replace(/\/$/, '')}/${apiVersion}${path}`;
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+    };
+    if (this.config.apiKey) headers['x-goog-api-key'] = this.config.apiKey;
+    if (this.config.headers) Object.assign(headers, this.config.headers);
+
+    const init: RequestInit = {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    };
+    if (signal) init.signal = signal;
+    return fetch(url, init);
+  }
+
+  private async safeReadText(response: Response): Promise<string> {
+    try {
+      return await response.text();
+    } catch {
+      return '<unreadable body>';
+    }
+  }
+}
+
+export const googleProvider: ProviderFactory<GoogleConfig> = {
+  id: 'google',
+  displayName: 'Google Gemini',
+  configSchema: googleConfigSchema,
+  create(config) {
+    return new GoogleProvider(config);
+  },
+};
