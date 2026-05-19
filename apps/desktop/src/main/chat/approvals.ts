@@ -17,12 +17,19 @@ export interface RequestApprovalArgs {
   signal: AbortSignal;
 }
 
+export type ApprovalSource = 'policy' | 'prompt-once' | 'prompt-session' | 'prompt-always';
+
+export interface ApprovalOutcome {
+  decision: ApprovalDecision;
+  source: ApprovalSource;
+}
+
 export type ApprovalBroadcaster = (req: ApprovalRequest) => void;
 export type PolicyReader = () => ApprovalPolicies;
 export type PolicyWriter = (next: ApprovalPolicies) => void;
 
 interface Pending {
-  resolve: (decision: ApprovalDecision) => void;
+  resolve: (outcome: ApprovalOutcome) => void;
   reject: (err: Error) => void;
   streamId: string;
   toolName: string;
@@ -40,18 +47,18 @@ export class ApprovalManager {
     private writePolicies: PolicyWriter,
   ) {}
 
-  async requestApproval(args: RequestApprovalArgs): Promise<ApprovalDecision> {
+  async requestApproval(args: RequestApprovalArgs): Promise<ApprovalOutcome> {
     const sessionDecision = this.sessionOverrides.get(args.streamId)?.get(args.toolName);
-    if (sessionDecision) return sessionDecision;
+    if (sessionDecision) return { decision: sessionDecision, source: 'prompt-session' };
 
     const policy = effectivePolicy(this.readPolicies(), args.toolName, args.permissionTier);
-    if (policy === 'auto') return 'allow';
-    if (policy === 'deny') return 'deny';
+    if (policy === 'auto') return { decision: 'allow', source: 'policy' };
+    if (policy === 'deny') return { decision: 'deny', source: 'policy' };
 
     if (args.signal.aborted) throw abortError();
 
     const requestId = randomUUID();
-    return new Promise<ApprovalDecision>((resolve, reject) => {
+    return new Promise<ApprovalOutcome>((resolve, reject) => {
       const onAbort = () => {
         const entry = this.pending.get(requestId);
         if (!entry) return;
@@ -98,7 +105,7 @@ export class ApprovalManager {
       };
       this.writePolicies(next);
     }
-    entry.resolve(response.decision);
+    entry.resolve({ decision: response.decision, source: scopeToSource(response.scope) });
   }
 
   clearSession(streamId: string): void {
@@ -133,6 +140,17 @@ export function effectivePolicy(
   return (
     policies.toolOverrides[toolName] ?? policies.tierDefaults[tier] ?? DEFAULT_TIER_POLICIES[tier]
   );
+}
+
+function scopeToSource(scope: ApprovalResponse['scope']): ApprovalSource {
+  switch (scope) {
+    case 'once':
+      return 'prompt-once';
+    case 'session':
+      return 'prompt-session';
+    case 'always':
+      return 'prompt-always';
+  }
 }
 
 function abortError(): Error {

@@ -1052,18 +1052,50 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 4px 12px 4px 0;
   background: #14171c;
-  border: 0;
   color: #e6e8eb;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
   font-size: 13px;
 }
 
-.tool-card-head:hover {
+.tool-card-head-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-card-head-toggle:hover {
   background: #1a1e24;
+}
+
+.tool-card-rerun {
+  background: transparent;
+  border: 1px solid #2a2f37;
+  color: #aab0b8;
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tool-card-rerun:hover:not(:disabled) {
+  color: #e6e8eb;
+  background: #1a1e24;
+}
+
+.tool-card-rerun:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .tool-card-chevron {

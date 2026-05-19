@@ -50,7 +50,7 @@ describe('ApprovalManager', () => {
 
   it('auto-allows when policy is auto (no broadcast)', async () => {
     const ac = new AbortController();
-    const decision = await manager.requestApproval({
+    const outcome = await manager.requestApproval({
       streamId: 's1',
       toolName: 'read_file',
       toolDescription: 'read',
@@ -58,14 +58,14 @@ describe('ApprovalManager', () => {
       arguments: { path: 'x' },
       signal: ac.signal,
     });
-    expect(decision).toBe('allow');
+    expect(outcome).toEqual({ decision: 'allow', source: 'policy' });
     expect(broadcasts).toHaveLength(0);
   });
 
   it('auto-denies when policy is deny (no broadcast)', async () => {
     stored = makePolicies({ tierDefaults: { ...DEFAULT_TIER_POLICIES, execute: 'deny' } });
     const ac = new AbortController();
-    const decision = await manager.requestApproval({
+    const outcome = await manager.requestApproval({
       streamId: 's1',
       toolName: 'run_shell',
       toolDescription: 'shell',
@@ -73,7 +73,7 @@ describe('ApprovalManager', () => {
       arguments: { command: 'ls' },
       signal: ac.signal,
     });
-    expect(decision).toBe('deny');
+    expect(outcome).toEqual({ decision: 'deny', source: 'policy' });
     expect(broadcasts).toHaveLength(0);
   });
 
@@ -90,7 +90,21 @@ describe('ApprovalManager', () => {
     expect(broadcasts).toHaveLength(1);
     const requestId = broadcasts[0]!.requestId;
     manager.respond({ requestId, decision: 'allow', scope: 'once' });
-    expect(await promise).toBe('allow');
+    expect(await promise).toEqual({ decision: 'allow', source: 'prompt-once' });
+  });
+
+  it('prompt source reflects the scope the user picked', async () => {
+    const ac = new AbortController();
+    const promise = manager.requestApproval({
+      streamId: 's1',
+      toolName: 'write_file',
+      toolDescription: 'write',
+      permissionTier: 'write',
+      arguments: { path: 'x' },
+      signal: ac.signal,
+    });
+    manager.respond({ requestId: broadcasts[0]!.requestId, decision: 'allow', scope: 'always' });
+    expect(await promise).toEqual({ decision: 'allow', source: 'prompt-always' });
   });
 
   it('session scope: subsequent calls for same tool/stream skip the prompt', async () => {
@@ -106,9 +120,9 @@ describe('ApprovalManager', () => {
     manager.respond({ requestId: broadcasts[0]!.requestId, decision: 'allow', scope: 'session' });
     await p1;
 
-    // Second call: no broadcast, returns immediately
+    // Second call: no broadcast, returns immediately, source preserved as prompt-session
     broadcasts = [];
-    const decision2 = await manager.requestApproval({
+    const outcome2 = await manager.requestApproval({
       streamId: 's1',
       toolName: 'write_file',
       toolDescription: 'write',
@@ -116,7 +130,7 @@ describe('ApprovalManager', () => {
       arguments: { path: 'y' },
       signal: ac.signal,
     });
-    expect(decision2).toBe('allow');
+    expect(outcome2).toEqual({ decision: 'allow', source: 'prompt-session' });
     expect(broadcasts).toHaveLength(0);
 
     // Different stream should still prompt
@@ -130,7 +144,7 @@ describe('ApprovalManager', () => {
     });
     expect(broadcasts).toHaveLength(1);
     manager.respond({ requestId: broadcasts[0]!.requestId, decision: 'deny', scope: 'once' });
-    expect(await p3).toBe('deny');
+    expect(await p3).toEqual({ decision: 'deny', source: 'prompt-once' });
   });
 
   it('always scope: writes tool override into policies', async () => {

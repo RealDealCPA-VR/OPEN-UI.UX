@@ -7,6 +7,7 @@ import type { ChatStreamEvent } from '../../shared/chat';
 import { createConversation } from '../storage/conversations';
 import { applyMigrations, setDbForTesting } from '../storage/db';
 import { listMessages } from '../storage/conversations';
+import { listToolCallsForMessage } from '../storage/tool-audit';
 import {
   activeStreamCount,
   cancelChatStream,
@@ -400,6 +401,179 @@ describe('startChatStream', () => {
     expect(broadcasts).toHaveLength(1);
     expect(broadcasts[0]?.toolName).toBe('fake_write');
     expect(writeCalls).toBe(1);
+  });
+
+  it('records an audit row per tool call with decision=auto for read-tier tools', async () => {
+    const conv = createConversation({});
+    const registry = new ToolRegistry();
+    registry.register(
+      defineTool({
+        name: 'fake_lookup',
+        description: 'lookup',
+        inputZod: z.object({ q: z.string() }),
+        permissionTier: 'read',
+        execute: async ({ q }) => ({ answer: `for-${q}` }),
+      }),
+    );
+
+    let turn = 0;
+    const provider: LLMProvider = {
+      id: 'fake',
+      displayName: 'Fake',
+      async *chat(): AsyncIterable<ChatEvent> {
+        const t = turn++;
+        if (t === 0) {
+          yield { type: 'tool_call', id: 'c1', name: 'fake_lookup', arguments: { q: 'hi' } };
+          yield { type: 'done', stopReason: 'tool_use' };
+        } else {
+          yield { type: 'text_delta', delta: 'done' };
+          yield { type: 'done', stopReason: 'end_turn' };
+        }
+      },
+      embed: vi.fn(),
+      listModels: vi.fn(),
+      capabilities: vi.fn(),
+    } as unknown as LLMProvider;
+
+    const { sink } = collectSink();
+    const { assistantMessageId } = await startChatStream({
+      conversationId: conv.id,
+      providerId: 'fake',
+      modelId: 'fake-1',
+      userMessage: 'hi',
+      sink,
+      buildProvider: async () => provider,
+      toolRegistry: registry,
+      workspaceRoot: '/tmp',
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    const audit = listToolCallsForMessage(assistantMessageId);
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({
+      toolName: 'fake_lookup',
+      input: { q: 'hi' },
+      output: { answer: 'for-hi' },
+      decision: 'auto',
+      isError: false,
+    });
+    expect(audit[0]?.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('records prompt-allowed-session for write tools approved with session scope', async () => {
+    const conv = createConversation({});
+    const registry = new ToolRegistry();
+    registry.register(
+      defineTool({
+        name: 'fake_write',
+        description: 'write',
+        inputZod: z.object({ path: z.string() }),
+        permissionTier: 'write',
+        execute: async () => ({ ok: true }),
+      }),
+    );
+
+    const policies = {
+      tierDefaults: { ...DEFAULT_TIER_POLICIES },
+      toolOverrides: {},
+    };
+    const manager = new ApprovalManager(
+      (req) => {
+        queueMicrotask(() =>
+          manager.respond({ requestId: req.requestId, decision: 'allow', scope: 'session' }),
+        );
+      },
+      () => policies,
+      () => {},
+    );
+
+    let turn = 0;
+    const provider: LLMProvider = {
+      id: 'fake',
+      displayName: 'Fake',
+      async *chat(): AsyncIterable<ChatEvent> {
+        const t = turn++;
+        if (t === 0) {
+          yield { type: 'tool_call', id: 'w1', name: 'fake_write', arguments: { path: 'x' } };
+          yield { type: 'done', stopReason: 'tool_use' };
+        } else {
+          yield { type: 'done', stopReason: 'end_turn' };
+        }
+      },
+      embed: vi.fn(),
+      listModels: vi.fn(),
+      capabilities: vi.fn(),
+    } as unknown as LLMProvider;
+
+    const { sink } = collectSink();
+    const { assistantMessageId } = await startChatStream({
+      conversationId: conv.id,
+      providerId: 'fake',
+      modelId: 'fake-1',
+      userMessage: 'hi',
+      sink,
+      buildProvider: async () => provider,
+      toolRegistry: registry,
+      approvalManager: manager,
+      workspaceRoot: '/tmp',
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    const audit = listToolCallsForMessage(assistantMessageId);
+    expect(audit).toHaveLength(1);
+    expect(audit[0]?.decision).toBe('prompt-allowed-session');
+    expect(audit[0]?.isError).toBe(false);
+  });
+
+  it('records denied for tools blocked because no approval manager is configured', async () => {
+    const conv = createConversation({});
+    const registry = new ToolRegistry();
+    registry.register(
+      defineTool({
+        name: 'fake_write',
+        description: 'write',
+        inputZod: z.object({ path: z.string() }),
+        permissionTier: 'write',
+        execute: async () => ({ ok: true }),
+      }),
+    );
+
+    let turn = 0;
+    const provider: LLMProvider = {
+      id: 'fake',
+      displayName: 'Fake',
+      async *chat(): AsyncIterable<ChatEvent> {
+        const t = turn++;
+        if (t === 0) {
+          yield { type: 'tool_call', id: 'w1', name: 'fake_write', arguments: { path: 'x' } };
+          yield { type: 'done', stopReason: 'tool_use' };
+        } else {
+          yield { type: 'done', stopReason: 'end_turn' };
+        }
+      },
+      embed: vi.fn(),
+      listModels: vi.fn(),
+      capabilities: vi.fn(),
+    } as unknown as LLMProvider;
+
+    const { sink } = collectSink();
+    const { assistantMessageId } = await startChatStream({
+      conversationId: conv.id,
+      providerId: 'fake',
+      modelId: 'fake-1',
+      userMessage: 'hi',
+      sink,
+      buildProvider: async () => provider,
+      toolRegistry: registry,
+      workspaceRoot: '/tmp',
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    const audit = listToolCallsForMessage(assistantMessageId);
+    expect(audit).toHaveLength(1);
+    expect(audit[0]?.decision).toBe('denied');
+    expect(audit[0]?.isError).toBe(true);
+    expect(audit[0]?.durationMs).toBeNull();
   });
 
   it('cancelChatStream aborts mid-stream', async () => {

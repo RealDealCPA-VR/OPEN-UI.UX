@@ -138,6 +138,7 @@ function ChatPane({
   const [input, setInput] = useState('');
   const [toolsEnabled, setToolsEnabled] = useState(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -157,6 +158,16 @@ function ChatPane({
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
+    }
+  };
+
+  const handleRerun = (prompt: string): void => {
+    setInput(prompt);
+    const el = inputRef.current;
+    if (el) {
+      el.focus();
+      const len = prompt.length;
+      el.setSelectionRange(len, len);
     }
   };
 
@@ -183,14 +194,15 @@ function ChatPane({
         ) : (
           <div className="chat-messages">
             {visibleMessages.map((m) => (
-              <MessageBubble key={m.id} message={m} />
+              <MessageBubble key={m.id} message={m} onRerun={handleRerun} />
             ))}
-            {chat.draft ? <DraftBubble draft={chat.draft} /> : null}
+            {chat.draft ? <DraftBubble draft={chat.draft} onRerun={handleRerun} /> : null}
           </div>
         )}
       </div>
       <form className="chat-composer" onSubmit={handleSubmit}>
         <textarea
+          ref={inputRef}
           className="chat-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -311,13 +323,19 @@ function ExportMenu({
   );
 }
 
-function MessageBubble({ message }: { message: StoredMessage }): JSX.Element {
+function MessageBubble({
+  message,
+  onRerun,
+}: {
+  message: StoredMessage;
+  onRerun: (prompt: string) => void;
+}): JSX.Element {
   const hasBlocks = message.contentBlocks !== null && message.contentBlocks.length > 0;
   return (
     <article className={`chat-bubble chat-bubble-${message.role}`}>
       <header className="chat-bubble-head">{roleLabel(message.role)}</header>
       {hasBlocks ? (
-        <BlockSequence blocks={message.contentBlocks ?? []} />
+        <BlockSequence blocks={message.contentBlocks ?? []} onRerun={onRerun} />
       ) : (
         <Markdown text={message.content} />
       )}
@@ -334,13 +352,19 @@ function MessageBubble({ message }: { message: StoredMessage }): JSX.Element {
   );
 }
 
-function DraftBubble({ draft }: { draft: AssistantDraft }): JSX.Element {
+function DraftBubble({
+  draft,
+  onRerun,
+}: {
+  draft: AssistantDraft;
+  onRerun: (prompt: string) => void;
+}): JSX.Element {
   const hasBlocks = draft.blocks.length > 0;
   return (
     <article className="chat-bubble chat-bubble-assistant chat-bubble-draft">
       <header className="chat-bubble-head">Assistant{!draft.done ? <CaretBlink /> : null}</header>
       {hasBlocks ? (
-        <BlockSequence blocks={draft.blocks} />
+        <BlockSequence blocks={draft.blocks} onRerun={onRerun} />
       ) : (
         <Markdown text={draft.done ? '' : '…'} />
       )}
@@ -355,7 +379,13 @@ function DraftBubble({ draft }: { draft: AssistantDraft }): JSX.Element {
   );
 }
 
-function BlockSequence({ blocks }: { blocks: ContentBlock[] }): JSX.Element {
+function BlockSequence({
+  blocks,
+  onRerun,
+}: {
+  blocks: ContentBlock[];
+  onRerun: (prompt: string) => void;
+}): JSX.Element {
   const items = groupContentBlocks(blocks);
   return (
     <div className="chat-bubble-body">
@@ -364,7 +394,14 @@ function BlockSequence({ blocks }: { blocks: ContentBlock[] }): JSX.Element {
           return <Markdown key={idx} text={item.text} />;
         }
         if (item.kind === 'tool') {
-          return <ToolCallCard key={item.use.id || idx} use={item.use} result={item.result} />;
+          return (
+            <ToolCallCard
+              key={item.use.id || idx}
+              use={item.use}
+              result={item.result}
+              onRerun={onRerun}
+            />
+          );
         }
         return null;
       })}

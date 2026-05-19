@@ -93,14 +93,14 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 - [x] Per-session approval overrides ("trust this session") _(session map keyed by streamId → toolName → allow/deny; cleared in `runStream` finally via `clearSession(streamId)`)_
 - [x] Approval UI: modal queue with diff preview for write ops, command preview for exec _(basic queue UI with 6 buttons — Allow/Deny × once/session/always — and JSON args preview; per-tool diff/command previews still future)_
 - [x] Shell sandbox: cwd lock, env scrub, timeout, output size cap, PATH allowlist _(PATH/HOME/USER/etc allow-listed by default; user extensions via `OPENCODEX_SHELL_ENV_KEEP`; explicit positive PATH allowlist still future)_
-- [ ] Audit log of every tool call (input, output, decision, timestamp) in SQLite _(tool blocks are persisted on the assistant message row via `content_blocks_json`; a dedicated `tool_calls` audit table exists in migration 1 but is not yet written to)_
+- [x] Audit log of every tool call (input, output, decision, timestamp) in SQLite _(every `executeToolCall` writes a row to `tool_calls` keyed by assistant message id. Migration 4 added `duration_ms` + `is_error` columns and indexes on `message_id` and `tool_name`. Decisions: `auto` / `prompt-allowed` / `prompt-allowed-session` / `prompt-allowed-always` / `denied`)_
 
 ### UI
 
 - [ ] Diff viewer (Monaco diff editor) with hunk-level accept/reject
 - [ ] File tree with agent edit annotations (pending / applied / rejected)
 - [ ] Embedded terminal (`xterm.js`) tailing `run_shell` output
-- [ ] Tool-call cards in chat with expand/collapse, copy, re-run
+- [x] Tool-call cards in chat with expand/collapse, copy, re-run _(re-run prefills the composer with `Re-run this tool call: <name>(<args>)` and focuses the textarea; disabled while the original call is in flight)_
 - [ ] Status bar with agent state, current tool, tokens used
 - [ ] Workspace picker (recent + browse)
 

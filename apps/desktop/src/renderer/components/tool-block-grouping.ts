@@ -74,3 +74,10 @@ export function formatToolArguments(args: unknown): string {
     return String(args);
   }
 }
+
+export function formatRerunPrompt(toolName: string, args: unknown): string {
+  const argsText = formatToolArguments(args);
+  return argsText.length > 0
+    ? `Re-run this tool call: ${toolName}(${argsText})`
+    : `Re-run this tool call: ${toolName}()`;
+}

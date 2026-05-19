@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import type { ToolResultBlock, ToolUseBlock } from '@opencodex/core';
-import { formatToolArguments, formatToolOutput } from './tool-block-grouping';
+import { formatRerunPrompt, formatToolArguments, formatToolOutput } from './tool-block-grouping';
 
 interface ToolCallCardProps {
   use: ToolUseBlock;
   result: ToolResultBlock | null;
   defaultExpanded?: boolean;
+  onRerun?: (prompt: string) => void;
 }
 
 type Status = 'pending' | 'done' | 'error';
@@ -14,6 +15,7 @@ export function ToolCallCard({
   use,
   result,
   defaultExpanded = false,
+  onRerun,
 }: ToolCallCardProps): JSX.Element {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const status: Status = result === null ? 'pending' : result.isError ? 'error' : 'done';
@@ -22,18 +24,36 @@ export function ToolCallCard({
 
   return (
     <div className={`tool-card tool-card-${status}`}>
-      <button
-        type="button"
-        className="tool-card-head"
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
-      >
-        <span className="tool-card-chevron" aria-hidden="true">
-          {expanded ? '▾' : '▸'}
-        </span>
-        <span className="tool-card-name">{use.name}</span>
+      <div className="tool-card-head">
+        <button
+          type="button"
+          className="tool-card-head-toggle"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+        >
+          <span className="tool-card-chevron" aria-hidden="true">
+            {expanded ? '▾' : '▸'}
+          </span>
+          <span className="tool-card-name">{use.name}</span>
+        </button>
         <ToolStatusPill status={status} />
-      </button>
+        {onRerun ? (
+          <button
+            type="button"
+            className="tool-card-rerun"
+            onClick={() => onRerun(formatRerunPrompt(use.name, use.arguments))}
+            disabled={status === 'pending'}
+            aria-label={`Re-run ${use.name}`}
+            title={
+              status === 'pending'
+                ? 'Re-run available once this call finishes'
+                : 'Prefill the composer with this tool call'
+            }
+          >
+            Re-run
+          </button>
+        ) : null}
+      </div>
       {expanded ? (
         <div className="tool-card-body">
           {argsText.length > 0 ? (

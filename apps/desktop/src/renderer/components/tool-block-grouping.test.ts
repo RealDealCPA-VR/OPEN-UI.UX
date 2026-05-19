@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { ContentBlock } from '@opencodex/core';
-import { formatToolArguments, formatToolOutput, groupContentBlocks } from './tool-block-grouping';
+import {
+  formatRerunPrompt,
+  formatToolArguments,
+  formatToolOutput,
+  groupContentBlocks,
+} from './tool-block-grouping';
 
 describe('groupContentBlocks', () => {
   it('pairs tool_use with its matching tool_result by id', () => {
@@ -106,5 +111,22 @@ describe('formatToolArguments', () => {
 
   it('returns strings as-is', () => {
     expect(formatToolArguments('raw')).toBe('raw');
+  });
+});
+
+describe('formatRerunPrompt', () => {
+  it('wraps tool name and pretty-JSON args in a re-run prompt', () => {
+    expect(formatRerunPrompt('read_file', { path: 'a.ts' })).toBe(
+      'Re-run this tool call: read_file({\n  "path": "a.ts"\n})',
+    );
+  });
+
+  it('uses empty parens when args are null or undefined', () => {
+    expect(formatRerunPrompt('list_dir', null)).toBe('Re-run this tool call: list_dir()');
+    expect(formatRerunPrompt('list_dir', undefined)).toBe('Re-run this tool call: list_dir()');
+  });
+
+  it('passes string args through verbatim', () => {
+    expect(formatRerunPrompt('grep', 'pattern')).toBe('Re-run this tool call: grep(pattern)');
   });
 });

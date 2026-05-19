@@ -14,7 +14,8 @@ import type { StoredMessage } from '../../shared/conversation';
 import { logger } from '../logger';
 import { getToolRegistry } from '../tools/registry';
 import { appendMessage, listMessages, updateAssistantMessage } from '../storage/conversations';
-import { type ApprovalManager, getApprovalManager } from './approvals';
+import { recordToolCall, type ToolCallAuditDecision } from '../storage/tool-audit';
+import { type ApprovalManager, type ApprovalOutcome, getApprovalManager } from './approvals';
 
 const MAX_TOOL_ITERATIONS = 10;
 
@@ -312,21 +313,25 @@ async function executeToolCall(
 ): Promise<ToolExecutionResult> {
   const registry = args.toolRegistry;
   if (!registry) {
-    return { output: `Tool "${tc.name}" is not available`, isError: true };
+    const output = `Tool "${tc.name}" is not available`;
+    auditToolCall(args, tc, { output, isError: true, decision: 'denied', durationMs: null });
+    return { output, isError: true };
   }
   const tool = registry.get(tc.name);
   if (!tool) {
-    return { output: `Tool "${tc.name}" is not registered`, isError: true };
+    const output = `Tool "${tc.name}" is not registered`;
+    auditToolCall(args, tc, { output, isError: true, decision: 'denied', durationMs: null });
+    return { output, isError: true };
   }
+  let outcome: ApprovalOutcome = { decision: 'allow', source: 'policy' };
   if (tool.permissionTier !== 'read') {
     if (!args.approvalManager) {
-      return {
-        output: `Tool "${tc.name}" requires approval (tier "${tool.permissionTier}") but no approval manager is configured`,
-        isError: true,
-      };
+      const output = `Tool "${tc.name}" requires approval (tier "${tool.permissionTier}") but no approval manager is configured`;
+      auditToolCall(args, tc, { output, isError: true, decision: 'denied', durationMs: null });
+      return { output, isError: true };
     }
     try {
-      const decision = await args.approvalManager.requestApproval({
+      outcome = await args.approvalManager.requestApproval({
         streamId: args.streamId,
         toolName: tc.name,
         toolDescription: tool.description,
@@ -334,17 +339,19 @@ async function executeToolCall(
         arguments: tc.arguments,
         signal: args.signal,
       });
-      if (decision === 'deny') {
-        return {
-          output: `Tool "${tc.name}" was denied by user policy`,
-          isError: true,
-        };
+      if (outcome.decision === 'deny') {
+        const output = `Tool "${tc.name}" was denied by user policy`;
+        auditToolCall(args, tc, { output, isError: true, decision: 'denied', durationMs: null });
+        return { output, isError: true };
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { output: `Tool "${tc.name}" approval failed: ${msg}`, isError: true };
+      const output = `Tool "${tc.name}" approval failed: ${msg}`;
+      auditToolCall(args, tc, { output, isError: true, decision: 'denied', durationMs: null });
+      return { output, isError: true };
     }
   }
+  const startedAt = Date.now();
   try {
     const output = await registry.execute(tc.name, tc.arguments, {
       workspaceRoot: args.workspaceRoot,
@@ -354,10 +361,62 @@ async function executeToolCall(
         error: (msg, meta) => logger.error({ tool: tc.name, meta }, msg),
       },
     });
+    auditToolCall(args, tc, {
+      output,
+      isError: false,
+      decision: outcomeToAuditDecision(outcome),
+      durationMs: Date.now() - startedAt,
+    });
     return { output, isError: false };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error({ err, tool: tc.name, streamId: args.streamId }, 'tool execution failed');
+    auditToolCall(args, tc, {
+      output: msg,
+      isError: true,
+      decision: outcomeToAuditDecision(outcome),
+      durationMs: Date.now() - startedAt,
+    });
     return { output: msg, isError: true };
+  }
+}
+
+function outcomeToAuditDecision(outcome: ApprovalOutcome): ToolCallAuditDecision {
+  if (outcome.decision === 'deny') return 'denied';
+  switch (outcome.source) {
+    case 'policy':
+      return 'auto';
+    case 'prompt-once':
+      return 'prompt-allowed';
+    case 'prompt-session':
+      return 'prompt-allowed-session';
+    case 'prompt-always':
+      return 'prompt-allowed-always';
+  }
+}
+
+interface AuditPatch {
+  output: unknown;
+  isError: boolean;
+  decision: ToolCallAuditDecision;
+  durationMs: number | null;
+}
+
+function auditToolCall(args: RunStreamArgs, tc: ToolCallEvent, patch: AuditPatch): void {
+  try {
+    recordToolCall({
+      messageId: args.assistantMessageId,
+      toolName: tc.name,
+      input: tc.arguments,
+      output: patch.output,
+      decision: patch.decision,
+      isError: patch.isError,
+      durationMs: patch.durationMs,
+    });
+  } catch (err) {
+    logger.error(
+      { err, tool: tc.name, streamId: args.streamId },
+      'failed to record tool call audit row',
+    );
   }
 }

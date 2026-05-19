@@ -59,6 +59,16 @@ const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE messages ADD COLUMN content_blocks_json TEXT;
     `,
   },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE tool_calls ADD COLUMN duration_ms INTEGER;
+      ALTER TABLE tool_calls ADD COLUMN is_error INTEGER NOT NULL DEFAULT 0;
+
+      CREATE INDEX idx_tool_calls_message ON tool_calls(message_id);
+      CREATE INDEX idx_tool_calls_tool_name ON tool_calls(tool_name);
+    `,
+  },
 ];
 
 let db: Database.Database | null = null;
