@@ -1,6 +1,7 @@
 import { ApprovalsPanel } from './ApprovalsPanel';
 import { AuditLogPanel } from './AuditLogPanel';
 import { ProvidersPanel } from './ProvidersPanel';
+import { ThemePanel } from './ThemePanel';
 import { WorkspacePanel } from './WorkspacePanel';
 
 export function SettingsView(): JSX.Element {
@@ -10,6 +11,13 @@ export function SettingsView(): JSX.Element {
         <h1>Settings</h1>
         <p>Workspace, providers, approvals, MCP servers, plugins, theme, indexing.</p>
       </header>
+      <section className="settings-section">
+        <h2>Theme</h2>
+        <p className="settings-section-desc">
+          Light, dark, or follow the OS preference. Applied immediately.
+        </p>
+        <ThemePanel />
+      </section>
       <section className="settings-section">
         <h2>Workspace</h2>
         <p className="settings-section-desc">

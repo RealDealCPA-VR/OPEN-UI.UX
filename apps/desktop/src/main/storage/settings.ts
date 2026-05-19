@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { type ApprovalPolicies, DEFAULT_TIER_POLICIES } from '../../shared/approvals';
 import type { ProviderTestResult } from '../../shared/provider-config';
 import type { SelectedModel } from '../../shared/selected-model';
+import type { ThemePreference } from '../../shared/theme';
 import { applyRemove, applySetActive, type WorkspaceState } from '../../shared/workspace';
 
 const providerTestResultSchema: z.ZodType<ProviderTestResult> = z.object({
@@ -112,6 +113,15 @@ export function getApprovalPolicies(): ApprovalPolicies {
 export function setApprovalPolicies(patch: ApprovalPolicies): ApprovalPolicies {
   const next = updateSettings({ approvals: patch });
   return next.approvals;
+}
+
+export function getTheme(): ThemePreference {
+  return getSettings().theme;
+}
+
+export function setTheme(preference: ThemePreference): ThemePreference {
+  const next = updateSettings({ theme: preference });
+  return next.theme;
 }
 
 export function getAuditRetentionDays(): number | null {

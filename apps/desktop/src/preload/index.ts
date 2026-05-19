@@ -31,6 +31,13 @@ import type {
   ProviderTestResult,
 } from '../shared/provider-config';
 import type { SelectedModel } from '../shared/selected-model';
+import {
+  parseInitialThemeArg,
+  resolveEffectiveTheme,
+  type SetThemeRequest,
+  type ThemeChangedEvent,
+  type ThemePreference,
+} from '../shared/theme';
 import type {
   ToolCallAuditPurgeResult,
   ToolCallAuditQuery,
@@ -47,6 +54,28 @@ import type {
 type DeepLinkListener = (url: string) => void;
 type ChatEventListener = (payload: ChatStreamEvent) => void;
 type ApprovalRequestListener = (req: ApprovalRequest) => void;
+type ThemeChangedListener = (payload: ThemeChangedEvent) => void;
+
+const initialThemePreference = parseInitialThemeArg(process.argv);
+
+function systemPrefersDark(): boolean {
+  try {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  } catch {
+    return true;
+  }
+}
+
+function applyEffectiveTheme(preference: ThemePreference): void {
+  const effective = resolveEffectiveTheme(preference, systemPrefersDark());
+  try {
+    document.documentElement.setAttribute('data-theme', effective);
+  } catch {
+    // document may not yet be available in extremely early preload phases
+  }
+}
+
+applyEffectiveTheme(initialThemePreference);
 
 const providers = {
   list: (): Promise<ProviderListItem[]> => ipcRenderer.invoke('providers:list'),
@@ -125,6 +154,19 @@ const toolAudit = {
   clear: (): Promise<ToolCallAuditPurgeResult> => ipcRenderer.invoke('tool-audit:clear'),
 };
 
+const theme = {
+  getInitialPreference: (): ThemePreference => initialThemePreference,
+  get: (): Promise<ThemePreference> => ipcRenderer.invoke('settings:get-theme'),
+  set: (req: SetThemeRequest): Promise<ThemePreference> =>
+    ipcRenderer.invoke('settings:set-theme', req),
+  onChanged: (listener: ThemeChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: ThemeChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('settings:theme-changed', wrapped);
+    return () => ipcRenderer.off('settings:theme-changed', wrapped);
+  },
+};
+
 const workspace = {
   get: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:get'),
   setActive: (req: SetActiveWorkspaceRequest): Promise<WorkspaceState> =>
@@ -149,6 +191,7 @@ const api = {
   approvals,
   tools,
   toolAudit,
+  theme,
   workspace,
 } as const;
 

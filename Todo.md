@@ -166,7 +166,7 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 
 ## Phase 6 — Polish & ship v0.1
 
-- [ ] Theme system (light / dark / system) with CSS variables
+- [x] Theme system (light / dark / system) with CSS variables _(stored preference at `settings.theme`; `settings:get-theme`/`settings:set-theme` IPC + `settings:theme-changed` event; main passes `--initial-theme` via `additionalArguments` and preload applies `data-theme` before renderer JS runs for zero-flash boot; `ThemeApplier` reacts to IPC changes + `prefers-color-scheme` media query when preference is `system`; Theme section in Settings; ~75 semantic CSS vars on `:root` with GH-light overrides on `:root[data-theme='light']`)_
 - [ ] Onboarding wizard (provider setup → first API key → workspace pick → first chat)
 - [ ] Settings UI (providers, approvals, MCP servers, plugins, theme, indexing)
 - [ ] `electron-updater` wired with GitHub Releases

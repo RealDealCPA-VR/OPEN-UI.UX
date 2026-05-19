@@ -9,13 +9,15 @@ import { registerInvoke } from './ipc/registry';
 import { registerProviderHandlers } from './providers/handlers';
 import { registerSelectedModelHandlers } from './selected-model/handlers';
 import { openDb, closeDb } from './storage/db';
-import { getAuditRetentionDays } from './storage/settings';
+import { getAuditRetentionDays, getTheme } from './storage/settings';
 import { purgeToolCallsOlderThan } from './storage/tool-audit';
+import { registerThemeHandlers } from './theme/handlers';
 import { registerToolAuditHandlers } from './tool-audit/handlers';
 import { registerToolHandlers } from './tools/handlers';
 import { createTray, destroyTray } from './tray';
 import { initAutoUpdater } from './updater';
 import { registerWorkspaceHandlers } from './workspace/handlers';
+import { INITIAL_THEME_ARG_PREFIX } from '../shared/theme';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -72,6 +74,7 @@ app.on('open-url', (event, url) => {
 });
 
 function createWindow(): void {
+  const initialTheme = getTheme();
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -83,6 +86,7 @@ function createWindow(): void {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      additionalArguments: [`${INITIAL_THEME_ARG_PREFIX}${initialTheme}`],
     },
   });
 
@@ -148,6 +152,7 @@ function registerIpcHandlers(): void {
   registerApprovalHandlers();
   registerToolHandlers();
   registerToolAuditHandlers();
+  registerThemeHandlers();
   registerWorkspaceHandlers();
   registerChatHandlers();
 }

@@ -34,6 +34,7 @@ import type {
   ProviderTestResult,
 } from './provider-config';
 import type { SelectedModel } from './selected-model';
+import type { SetThemeRequest, ThemeChangedEvent, ThemePreference } from './theme';
 import type {
   ToolCallAuditPurgeResult,
   ToolCallAuditQuery,
@@ -152,6 +153,14 @@ export interface IpcInvokeChannels {
     request: void;
     response: ToolCallAuditPurgeResult;
   };
+  'settings:get-theme': {
+    request: void;
+    response: ThemePreference;
+  };
+  'settings:set-theme': {
+    request: SetThemeRequest;
+    response: ThemePreference;
+  };
   'workspace:get': {
     request: void;
     response: WorkspaceState;
@@ -178,6 +187,7 @@ export interface IpcEventChannels {
   'app:deep-link': string;
   'chat:event': ChatStreamEvent;
   'chat:approval-request': ApprovalRequest;
+  'settings:theme-changed': ThemeChangedEvent;
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;
