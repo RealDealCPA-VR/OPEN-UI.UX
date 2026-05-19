@@ -1,12 +1,23 @@
+import { ApprovalsPanel } from './ApprovalsPanel';
+import { AuditLogPanel } from './AuditLogPanel';
 import { ProvidersPanel } from './ProvidersPanel';
+import { WorkspacePanel } from './WorkspacePanel';
 
 export function SettingsView(): JSX.Element {
   return (
     <section className="view settings-view">
       <header className="settings-section-head">
         <h1>Settings</h1>
-        <p>Providers, approvals, MCP servers, plugins, theme, indexing.</p>
+        <p>Workspace, providers, approvals, MCP servers, plugins, theme, indexing.</p>
       </header>
+      <section className="settings-section">
+        <h2>Workspace</h2>
+        <p className="settings-section-desc">
+          Pick the folder the agent operates in. File-system tools (read, write, edit, glob, grep,
+          run_shell) are sandboxed to this directory.
+        </p>
+        <WorkspacePanel />
+      </section>
       <section className="settings-section">
         <h2>Providers</h2>
         <p className="settings-section-desc">
@@ -14,6 +25,22 @@ export function SettingsView(): JSX.Element {
           lives in the local settings file.
         </p>
         <ProvidersPanel />
+      </section>
+      <section className="settings-section">
+        <h2>Approvals</h2>
+        <p className="settings-section-desc">
+          Control which tool calls run automatically, which ask first, and which are blocked. Tier
+          defaults apply to every tool in that tier; per-tool overrides take precedence.
+        </p>
+        <ApprovalsPanel />
+      </section>
+      <section className="settings-section">
+        <h2>Audit log</h2>
+        <p className="settings-section-desc">
+          Every tool call the agent runs is recorded here. Filter by tool, decision, result, or time
+          range. Click a row to inspect the input and output.
+        </p>
+        <AuditLogPanel />
       </section>
     </section>
   );

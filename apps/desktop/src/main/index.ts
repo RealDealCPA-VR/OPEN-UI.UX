@@ -9,8 +9,13 @@ import { registerInvoke } from './ipc/registry';
 import { registerProviderHandlers } from './providers/handlers';
 import { registerSelectedModelHandlers } from './selected-model/handlers';
 import { openDb, closeDb } from './storage/db';
+import { getAuditRetentionDays } from './storage/settings';
+import { purgeToolCallsOlderThan } from './storage/tool-audit';
+import { registerToolAuditHandlers } from './tool-audit/handlers';
+import { registerToolHandlers } from './tools/handlers';
 import { createTray, destroyTray } from './tray';
 import { initAutoUpdater } from './updater';
+import { registerWorkspaceHandlers } from './workspace/handlers';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -104,6 +109,18 @@ app.whenReady().then(() => {
     logger.error({ err }, 'failed to open database');
   }
 
+  try {
+    const retentionDays = getAuditRetentionDays();
+    if (retentionDays !== null) {
+      const { deletedCount } = purgeToolCallsOlderThan(retentionDays);
+      if (deletedCount > 0) {
+        logger.info({ retentionDays, deletedCount }, 'audit log retention purge');
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, 'audit log retention purge failed');
+  }
+
   registerIpcHandlers();
   createWindow();
   createTray(() => mainWindow);
@@ -129,5 +146,8 @@ function registerIpcHandlers(): void {
   registerProviderHandlers();
   registerSelectedModelHandlers();
   registerApprovalHandlers();
+  registerToolHandlers();
+  registerToolAuditHandlers();
+  registerWorkspaceHandlers();
   registerChatHandlers();
 }

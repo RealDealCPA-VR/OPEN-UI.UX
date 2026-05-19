@@ -36,3 +36,16 @@ export const DEFAULT_TIER_POLICIES: Record<PermissionTier, ApprovalPolicy> = {
   execute: 'prompt',
   network: 'prompt',
 };
+
+export interface FilePreviewRequest {
+  path: string;
+}
+
+export interface FilePreviewResult {
+  exists: boolean;
+  content: string;
+  truncated: boolean;
+  sizeBytes: number;
+}
+
+export const FILE_PREVIEW_MAX_BYTES = 256 * 1024;

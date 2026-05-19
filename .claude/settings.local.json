@@ -41,7 +41,16 @@
       "Bash(pnpm --filter @opencodex/tools lint)",
       "Bash(pnpm --filter @opencodex/tools test web-fetch)",
       "Bash(pnpm --filter @opencodex/core typecheck)",
-      "Bash(pnpm --filter @opencodex/tools test run-shell)"
+      "Bash(pnpm --filter @opencodex/tools test run-shell)",
+      "Bash(pnpm --filter @opencodex/tools test -- run-shell)",
+      "Bash(pnpm --filter @opencodex/tools test -- web-fetch)",
+      "Bash(npx prettier *)",
+      "PowerShell(pnpm exec prettier --check HANDOFF.md 2>&1)",
+      "PowerShell(try { $diff = pnpm exec prettier HANDOFF.md 2>$null; $orig = Get-Content -Raw HANDOFF.md; if \\($diff -eq $orig\\) { Write-Output \"identical\" } else { Write-Output \"differs\"; $tmp = [System.IO.Path]::GetTempFileName\\(\\); Set-Content -Path $tmp -Value $diff -NoNewline; git diff --no-index --color=never HANDOFF.md $tmp | Select-Object -First 60; Remove-Item $tmp } } catch { $_ })",
+      "PowerShell(pnpm build 2>&1)",
+      "PowerShell(pnpm --filter @opencodex/tools test -- run-shell.test 2>&1)",
+      "PowerShell(pnpm exec prettier --write HANDOFF.md)",
+      "PowerShell(pnpm exec prettier --check HANDOFF.md Todo.md packages/tools/src/run-shell.ts packages/tools/src/run-shell.test.ts)"
     ]
   }
 }

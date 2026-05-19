@@ -2,80 +2,120 @@
 
 ## Last Session Summary
 
-- **Tool-call audit log shipped — completes [Todo.md:96](Todo.md#L96).** Every `executeToolCall` in [`runner.ts`](apps/desktop/src/main/chat/runner.ts) now writes one row to the `tool_calls` table, attached to `args.assistantMessageId`. New helper [`recordToolCall`](apps/desktop/src/main/storage/tool-audit.ts) handles the insert; [`listToolCallsForMessage`](apps/desktop/src/main/storage/tool-audit.ts) reads rows back for audit queries. Decision column uses the 5-value enum from last session's plan: `auto` / `prompt-allowed` / `prompt-allowed-session` / `prompt-allowed-always` / `denied`. Latency captured around the `registry.execute()` call; denials get `durationMs: null`. Audit-write failures are logged but do not break the stream.
-- **Migration 4** in [`db.ts`](apps/desktop/src/main/storage/db.ts) adds `duration_ms INTEGER` + `is_error INTEGER NOT NULL DEFAULT 0` to `tool_calls`, plus `idx_tool_calls_message` and `idx_tool_calls_tool_name` indexes for future audit queries.
-- **`ApprovalManager.requestApproval` return type widened** from `Promise<ApprovalDecision>` to `Promise<ApprovalOutcome>` (`{decision, source}`). `source` ∈ `'policy' | 'prompt-once' | 'prompt-session' | 'prompt-always'`. Session-cache hits preserve `source: 'prompt-session'` — re-uses after Allow-for-Session still log under the user's original intent rather than collapsing to `auto`. Only caller (runner) updated; [`approvals.test.ts`](apps/desktop/src/main/chat/approvals.test.ts) updated with new `toEqual` shape + a new `prompt-always` test.
-- **New tests.** [`tool-audit.test.ts`](apps/desktop/src/main/storage/tool-audit.test.ts) (4 tests: round-trip, error+denial+null-duration, insertion order, `ON DELETE CASCADE` from `conversations`). Three new tests in [`runner.test.ts`](apps/desktop/src/main/chat/runner.test.ts) cover read-tier `auto` audit row, write-tier `prompt-allowed-session` (queueMicrotask-respond pattern), and the "no approval manager configured" denial path.
+- **Workspace picker shipped.** Settings → Workspace: Browse… opens a native folder picker; active path shown with Clear; Recent list with Open/Remove per row. MRU dedupe + 10-item cap. Active path validated as an existing directory before save; setting a path that no longer exists auto-removes it from history (cleanup). Pure helpers (`applySetActive`, `applyRemove`) in [shared/workspace.ts](apps/desktop/src/shared/workspace.ts) keep the storage wrappers in [storage/settings.ts](apps/desktop/src/main/storage/settings.ts) trivial.
+- **5 new IPC channels** — `workspace:get`, `workspace:set-active`, `workspace:browse`, `workspace:remove`, `workspace:clear-active`. Handlers in [main/workspace/handlers.ts](apps/desktop/src/main/workspace/handlers.ts); preload bridge `window.opencodex.workspace.*`; registered in [main/index.ts](apps/desktop/src/main/index.ts#L153).
+- **7 new tests** in [shared/workspace.test.ts](apps/desktop/src/shared/workspace.test.ts) covering MRU prepend, no-duplicate-on-re-set, history cap, removal, and active-clearing-on-remove. Full suite **400 passed + 7 skipped across 45 files** (+1 file, +7 tests from prior session's 393).
 
 ## Verify Before Continuing
 
-- [ ] **Full CI green** — `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check && pnpm build`. Expect **333 passing + 7 skipped tests across 40 files** (was 325/7/39; added 4 tool-audit tests + 3 runner audit tests + 1 approvals `prompt-always` test = 8 new tests, 1 new file). Bundle sizes: main `56.52 kB` (was 53.45, **+3.07 kB** for `tool-audit.ts` + audit wiring in runner), preload `2.18 kB` (unchanged), renderer JS `333.46 kB` (unchanged — audit is main-process only), renderer CSS `18.21 kB` (unchanged), provider-builder chunk `1.70 kB` (unchanged).
-- [ ] **Visual check audit rows actually land in real SQLite** — harness uses `:memory:`. Run `pnpm dev`, trigger a chat with at least one tool call, quit, then open `%APPDATA%/opencodex/opencodex.db` (or sqlite3 it) and `SELECT id, tool_name, decision, is_error, duration_ms FROM tool_calls ORDER BY created_at DESC LIMIT 5;` — confirm rows match what just ran. Trigger a write tool, deny it, confirm `decision='denied'` and `is_error=1` with `duration_ms` NULL. Important: pre-existing dev DBs have schema_migrations version=3; migration 4 should apply on next open and `ALTER TABLE` won't fail because `tool_calls` is currently empty.
-- [ ] **Carry-over from prior session — Re-run button visual check** — still not visually verified. Run `pnpm dev`, trigger any tool call, confirm: (a) **Re-run** appears in card head; (b) disabled while pill says `Running`; (c) clicking fills composer with `Re-run this tool call: <name>({...})` and focuses textarea with caret at end; (d) head toggle still expands/collapses body when clicking chevron/name (not Re-run). Confirm Re-run still works for errored calls.
-- [ ] **Carry-over — tool cards & modal UI visual check** — still not visually verified. Confirm `ToolCallCard` expand/collapse, status pill flips, Copy works, modal Allow-for-session suppresses subsequent prompts for that tool, Allow-always writes `toolOverrides[<tool>] = "auto"` into `%APPDATA%/opencodex/settings.json`.
-- [ ] **Carry-over — run-shell process-tree kill on POSIX** — [`run-shell.test.ts`](packages/tools/src/run-shell.test.ts) "times out a hanging command" still only tested on Windows; needs macOS/Linux CI run.
-- [ ] **Carry-over — ripgrep tests** — 7 tests in [`ripgrep.test.ts`](packages/tools/src/ripgrep.test.ts) skipped locally because `rg` isn't installed on the dev box; verify they run + pass on a CI machine with `rg`.
+- [ ] **Full CI green** — `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check && pnpm build`. Expect **400 passing + 7 skipped across 45 files**. Bundle sizes: main `67.34 kB` (+2.88), preload `2.98 kB` (+0.34), renderer JS `404.89 kB` (+6.62), renderer CSS `36.13 kB` (+2.03), provider-builder `1.72 kB` (unchanged).
+- [ ] **Workspace picker actually works at runtime.** From `pnpm dev`: open Settings, scroll to the new "Workspace" section. Click **Browse…**, pick any folder. Expected: active path updates immediately, the folder appears at the top of Recent on next picker round-trip. Click **Browse…** again, pick a second folder. Expected: first folder moves to Recent, second becomes active. In Recent, click **Open** on the first — it should swap back to active. Click **Remove** — it disappears from Recent. Click **Clear** on the active — active goes to "(none — using launch directory)" without dropping anything from Recent. Restart the app; active + recent persist.
+- [ ] **Workspace actually drives tool sandbox.** With a non-cwd workspace active, ask the agent to `read_file` something inside it (relative path) and confirm it resolves correctly. The consumers are [main/chat/handlers.ts:124](apps/desktop/src/main/chat/handlers.ts#L124) (`runStream` workspaceRoot) and [main/chat/approval-handlers.ts:59](apps/desktop/src/main/chat/approval-handlers.ts#L59) (`readFilePreview` workspaceRoot).
+
+### Carry-over visual checks (still not done; not blocking)
+
+- [ ] **`OPENCODEX_SHELL_PATH` runtime check** (prior session) — set the env var, `pnpm dev`, trigger a `run_shell` with `node -e "console.log(process.env.PATH)"`. Output should equal the override, not the inherited PATH.
+- [ ] **Audit row → conversation jump** — click conversation title cell in Audit log, expect jump + scroll + flash.
+- [ ] **Audit row expand toggle** — clicking the row (not the title) still expands/collapses.
+- [ ] **Approval modal cleanup on cancel** — visually confirm Cancel mid-approval removes the modal.
+- [ ] **Tool result previews** (read_file, grep, run_shell, web_fetch, glob, list_dir, write_file, edit_file).
+- [ ] **Approval previews** (write_file/edit_file/run_shell/web_fetch header tier pill, diff stats, side-by-side, command box, method pill).
+- [ ] **`window.opencodex.approvals.readFilePreview`** in devtools.
+- [ ] **Retention UI** — change retention to 7 days, custom value passthrough, startup purge log.
+- [ ] **POSIX shell process-tree kill + ripgrep tests** on macOS/Linux CI.
 
 ## Next Task
 
-Pick one (default suggestion: **Settings UI for approval policies**, the next-largest unchecked Phase 2 line that has clear UI scope):
+Pick one (two carry-overs remaining, plus the new option):
 
-1. **Settings UI for approval policies** _([Todo.md:171](Todo.md#L171))_ — policies only editable via IPC. Add a panel to [`SettingsView.tsx`](apps/desktop/src/renderer/views/SettingsView.tsx) showing tier defaults + per-tool overrides with dropdowns. IPC channels `approvals:get-policies` / `approvals:set-policy` are already wired and listed in [`shared/ipc-types.ts`](apps/desktop/src/shared/ipc-types.ts).
-2. **Per-tool approval previews** _(refinement of [`ApprovalQueue.tsx`](apps/desktop/src/renderer/components/ApprovalQueue.tsx))_ — currently shows raw JSON args. For `write_file` show a diff preview, for `edit_file` show old/new strings, for `run_shell` show command + cwd prominently, for `web_fetch` show URL + method + hostname. Branch on `permissionTier` and `toolName`.
-3. **Per-tool body previews in ToolCallCard** _(refinement of cards themselves)_ — same idea as #2 but for the result panel: render `read_file` output as syntax-highlighted code, `grep` matches as a list, `run_shell` stdout/stderr in a terminal-styled block, `web_fetch` as headers table + body. Currently every result is generic JSON-stringified through [`formatToolOutput`](apps/desktop/src/renderer/components/tool-block-grouping.ts).
-4. **Real cancellation kills in-flight shell processes** _([Todo.md:91](Todo.md#L91))_ — runner's `chat:cancel` aborts `ctx.signal`; `run_shell` listens via `addEventListener('abort', ...)` and calls `tryKill(child)`. Verify end-to-end (test it!) and also that `web_fetch` + approval-modal-wait both cancel cleanly.
-5. **Explicit positive PATH allowlist** for `run_shell` _([Todo.md:95](Todo.md#L95))_ — current sandbox passes through parent `PATH`. Add `OPENCODEX_SHELL_PATH` env var; if set, override `PATH` in the scrubbed env.
-6. **Audit-log retention / viewing UI** _(natural follow-up to what shipped this session)_ — `tool_calls` rows accumulate forever. Decide whether to add a TTL/retention policy and/or a Settings panel that surfaces the audit log (filter by tool, decision, error status, time range). Could pair nicely with #1.
-7. **Richer Re-run** _(refinement of earlier session)_ — instead of prefilling the composer, call the tool registry directly with the same args through the approval system and emit synthetic `tool_call` / `tool_result` events. Open question: where does the synthetic call attach in message history.
+1. **Settings UI parent line** _([Todo.md:172](Todo.md#L172))_ — four subsections exist (workspace, providers, approvals, audit log); **three remaining**: MCP servers, plugins, theme, indexing. (MCP and plugins are gated by Phase 2.5/4; theme + indexing are independently doable.)
+2. **Status bar** _([Todo.md:104](Todo.md#L104))_ — agent state, current tool, tokens used. Status bar slot doesn't exist yet; would live below the chat composer or as a top-bar extension.
+3. **Workspace switch event** — currently `activeWorkspace` change doesn't broadcast; a live chat keeps the workspace it captured at `chat:start`. Probably fine (mid-stream switching is weird), but worth deciding explicitly. If you want a fix, emit a `workspace:changed` IPC event on `set-active`/`clear-active`/`browse` and refresh whatever the renderer needs.
 
 ## Context Notes
 
-### Audit-log data flow
+### Workspace picker invariants (now load-bearing)
 
-- **Insertion point.** All five exit branches of `executeToolCall` in [`runner.ts`](apps/desktop/src/main/chat/runner.ts) call `auditToolCall()` (the local wrapper) before returning. Branches: (a) registry missing → `denied`, (b) tool not registered → `denied`, (c) no approval manager for non-read tool → `denied`, (d) approval thrown/denied → `denied`, (e) execute success / execute throws → mapped from `outcome.source` via `outcomeToAuditDecision`. Latency is only captured in branch (e); the other branches log `durationMs: null`.
-- **`auditToolCall` is wrapped in try/catch** — audit-write failures log via `pino` but don't break the stream. If you ever want audit to be hard-required, remove the catch (but be careful: `recordToolCall` uses `getDb()` which throws if the DB isn't open, which would crash the runner).
-- **Output column** stores the **stringified JSON of the tool's output for success cases and the error message string for failure cases**. `safeStringify` falls back to `JSON.stringify(String(value))` if the value can't be cycled (shouldn't happen for tool outputs, but defensive).
-- **`is_error` column** is `0` / `1` INTEGER in SQLite; `rowToAudit` converts to boolean. Truthy `output` doesn't imply success — always check `isError`.
+- **Pure logic lives in [shared/workspace.ts](apps/desktop/src/shared/workspace.ts).** `applySetActive` and `applyRemove` take/return `WorkspaceState`; storage wrappers in `settings.ts` just call them around `updateSettings`. Tests target the pure helpers (no electron-store mocking). If you add fields to `WorkspaceState`, update the schema in [settings.ts](apps/desktop/src/main/storage/settings.ts) too.
+- **`workspace:set-active` validates dir-exists.** If the path no longer exists, the handler calls `removeWorkspaceFromHistory(resolved)` instead — so clicking **Open** on a deleted recent silently cleans it up. This is intentional cleanup behavior; if you ever want "fail loudly", branch in [main/workspace/handlers.ts](apps/desktop/src/main/workspace/handlers.ts).
+- **History cap = `WORKSPACE_HISTORY_LIMIT` (10).** Defined in shared so the renderer can display the right ceiling if needed.
+- **Recent list filters out the active path.** Done in the renderer ([WorkspacePanel.tsx](apps/desktop/src/renderer/views/WorkspacePanel.tsx)) — `state.history` still contains the active. If you ever surface history elsewhere, the active is always at index 0 (MRU).
+- **`activeWorkspace` was already wired upstream** — [main/chat/handlers.ts:124](apps/desktop/src/main/chat/handlers.ts#L124) and [main/chat/approval-handlers.ts:59](apps/desktop/src/main/chat/approval-handlers.ts#L59) both read `getSettings().activeWorkspace ?? process.cwd()`. No cascade needed; switching workspaces affects subsequent chat starts only.
 
-### Decision-string mapping (the one source of truth)
+### `OPENCODEX_SHELL_PATH` invariants (still load-bearing — from prior session)
 
-In [`runner.ts`](apps/desktop/src/main/chat/runner.ts) `outcomeToAuditDecision()`:
+- **Override applies AFTER the keep-list copy** in [scrubEnv](packages/tools/src/run-shell.ts#L203-L219). Order matters: the loop copies parent `PATH` (because `PATH` ∈ `DEFAULT_ENV_KEEP`), then the override line replaces it. If you reorder, the override will be clobbered.
+- **Empty/whitespace-only is treated as unset** (`.trim()` then truthiness). Intentional: `OPENCODEX_SHELL_PATH=` shouldn't zero `PATH`.
+- **Override var itself is NOT in `DEFAULT_ENV_KEEP`** — never reaches the child. Test guards this; don't add it.
+- **No UI exposure yet.** Operator-config-only.
 
-| `outcome.decision` | `outcome.source`   | Audit `decision`           |
-| ------------------ | ------------------ | -------------------------- |
-| `'allow'`          | `'policy'`         | `'auto'`                   |
-| `'allow'`          | `'prompt-once'`    | `'prompt-allowed'`         |
-| `'allow'`          | `'prompt-session'` | `'prompt-allowed-session'` |
-| `'allow'`          | `'prompt-always'`  | `'prompt-allowed-always'`  |
-| `'deny'`           | _any_              | `'denied'`                 |
+### Audit → chat jump invariants (still load-bearing)
 
-**Caveat:** denial cases lose source info (policy-deny, prompt-deny-once, prompt-deny-session, prompt-deny-always all collapse to `denied`). If you ever want to distinguish "policy denied" from "user denied this once", extend `ToolCallAuditDecision` and `outcomeToAuditDecision`; the source info is still on the `ApprovalOutcome` returned by `requestApproval`.
+- **URL contract: `/chat?conversationId=<id>&messageId=<id>`.** Both required to scroll-to-message.
+- **ChatPane uses refs, not state, to dedupe scroll triggers.** `consumedScrollRef` (Set), `skipBottomScrollRef` (boolean one-shot). Don't replace with `useState` — `react-hooks/set-state-in-effect` will fire.
+- **Scroll-to-target useLayoutEffect must come BEFORE bottom-scroll useLayoutEffect** in source order. See [ChatView.tsx:170-202](apps/desktop/src/renderer/views/ChatView.tsx#L170-L202).
+- **URL params cleared with `setSearchParams({}, { replace: true })`** after consume.
+- **MessageBubble `id="chat-message-{id}"`** is the load-bearing DOM hook.
 
-### ApprovalManager API breakage
+### CSS structure
 
-- **`requestApproval` return type changed** from `Promise<ApprovalDecision>` to `Promise<ApprovalOutcome>` (where `ApprovalOutcome = {decision: 'allow' | 'deny'; source: ApprovalSource}`). Only caller in the repo today is [`runner.ts`](apps/desktop/src/main/chat/runner.ts) `executeToolCall`. If you add a new caller, you must destructure `.decision` — don't compare the outcome to the string `'allow'` directly.
-- **Session-cache hits preserve `source: 'prompt-session'`**. The session map (`sessionOverrides`) still only stores the `ApprovalDecision`; the source is hardcoded on read because the only way an entry gets into the cache is `respond({scope: 'session'})`. If you ever add another path that writes to the cache, revisit `requestApproval` line 52.
-- **`respond()` resolves with `{decision, source}` via `scopeToSource()`** — `once`→`prompt-once`, `session`→`prompt-session`, `always`→`prompt-always`. Adding a new `ApprovalScope` requires updating this switch.
+- **`.audit-row-head` is a `<div>`, not a `<button>`.** 3-col grid: toggle | link | caret.
+- **`.chat-bubble-highlight`** uses `box-shadow` + `background` animation, 2s ease-out, runs once.
+- **`.workspace-*` styles mirror the `.approvals-*` idiom** — same row background `#14171c`, border `#1f232a`, primary button `#1a2c4a`/`#2a4778`, danger hover `#f08a8a`.
 
-### Why a column for `is_error` instead of inferring from `output_json`?
+### Retention invariants
 
-Output strings can legitimately contain words like "error" without being errors (e.g. `read_file` returns "error_log.ts"). Inferring would be brittle. The dedicated INTEGER column is one byte and lets us do `SELECT * FROM tool_calls WHERE is_error = 1` for audit queries.
+- **`purgeToolCallsOlderThan` is strict less-than the cutoff.** Equal-timestamp rows survive.
+- **Invalid retention is silent no-op.** `days < 1`, `NaN`, non-finite → `{ deletedCount: 0 }`.
+- **`auditRetentionDays` schema is `.min(1).max(36500).nullable().default(null)`.** Don't drop `.max`.
 
-### Why `durationMs: null` for denials rather than 0?
+### Cancellation invariants
 
-A denial isn't a 0ms execution — it's a non-execution. NULL distinguishes "we never ran the tool" from "we ran it and it returned instantly". The is_error column tells you it failed; NULL duration tells you it never ran.
+- **`taskkill /F /T` kills detached descendants on Windows.** Don't change `run-shell.ts`'s `detached: !isWindows` without updating the test.
+- **`waitForProcessDeath` polls every 50ms with a 5s budget.**
+- **`process.kill(pid, 0)` is a liveness probe on Windows** (Node ≥14).
+- **Web-fetch abort tests mock `fetch` by hand** so the mock honors `init.signal`.
 
-### Carry-overs still relevant (from prior sessions)
+### Other carry-overs
 
-- **`packages/*` tsconfig is `noEmit: true`** — before any `pnpm publish`, swap to `tsup` per package.
-- **`.github/workflows/ci.yml`** still doesn't run `pnpm build`.
-- **Block ordering is canonical.** Persisted: runner's `allBlocks` writes `[text1, tool_use1, tool_result1, text2, tool_use2, tool_result2, ..., final_text]` to `content_blocks_json`. Live: chat-context reducer mirrors this. Audit rows are written in the same order as `tool_use` blocks but in a separate table — they are not duplicated in `content_blocks_json`.
-- **Re-run head is sibling buttons, not nested.** From last session: `<div class="tool-card-head">` contains `<button class="tool-card-head-toggle">`, the pill `<span>`, and `<button class="tool-card-rerun">`. New head controls must stay siblings, not nest.
-- **Pending state is fuzzy.** `result === null` ⇒ pill says `Running`. Covers both "approval modal open" and "tool executing".
-- **Pre-existing dev DB version is 3** until first open after this change; migration 4 will apply automatically.
-- **`zodToJSONSchema` supported subset**: see prior handoff. `z.union()` / `z.date()` still require extending the converter.
-- **`resolveWithinWorkspace`** ([`path-guard.ts`](packages/tools/src/path-guard.ts)) is the single path-escape chokepoint.
+- **`packages/tools` exports `resolveWithinWorkspace` + `PathEscapesWorkspaceError`** from the package root.
+- **Audit-log denial cases lose source info.** `policy-deny` / `prompt-deny-*` all collapse to `decision: 'denied'`.
+- **`requestApproval` returns `Promise<ApprovalOutcome>`** (`{decision, source}`), not `Promise<ApprovalDecision>`.
+- **`durationMs: null` for denials** distinguishes "never ran" from "ran instantly".
+- **Tool-tier pill classes**: `.tool-tier-{read,write,execute,network}` in [styles.css](apps/desktop/src/renderer/styles.css).
+- **`packages/*` tsconfig is `noEmit: true`** — switch to `tsup` before any `pnpm publish`.
+- **`.github/workflows/ci.yml`** doesn't run `pnpm build`.
 - **Folder path has a space + period** (`OPEN UI.UX`) — quote in shell.
-- **OpenAI Responses API** still deferred — Chat Completions is enough.
-- **React lint canon**: `@typescript-eslint/consistent-type-imports` is strict — use `import { type Foo, bar }` when a name is both a type and a value (e.g., `ApprovalManager` is both a class and a type; `ApprovalOutcome` is type-only).
-- **Pre-public placeholders**: `@TODO-set-github-handle` (CODEOWNERS), `security@TODO-set-domain` (SECURITY.md), `github.com/TODO-org/TODO-repo` (issue template config).
+- **Pre-public placeholders**: `@TODO-set-github-handle`, `security@TODO-set-domain`, `github.com/TODO-org/TODO-repo`.
+
+### Untracked files at handoff (still uncommitted across ~10 sessions)
+
+```
+Modified: HANDOFF.md, Todo.md,
+          apps/desktop/src/main/chat/approval-handlers.ts,
+          apps/desktop/src/main/index.ts,                       (this session — registerWorkspaceHandlers)
+          apps/desktop/src/main/storage/tool-audit.{ts,test.ts},
+          apps/desktop/src/main/storage/settings.ts,            (this session — workspace storage helpers)
+          apps/desktop/src/preload/index.ts,                    (this session — workspace bridge)
+          apps/desktop/src/renderer/components/{ApprovalQueue,ToolCallCard}.tsx,
+          apps/desktop/src/renderer/styles.css,                 (this session — .workspace-* styles)
+          apps/desktop/src/renderer/views/{ChatView,SettingsView}.tsx,
+          apps/desktop/src/shared/{approvals,ipc-types}.ts,     (this session — workspace IPC contracts)
+          apps/desktop/src/shared/tool-audit.ts,
+          packages/tools/src/index.ts,
+          packages/tools/src/run-shell.ts,
+          packages/tools/src/run-shell.test.ts,
+          packages/tools/src/web-fetch.test.ts
+Untracked: apps/desktop/src/main/tool-audit/,
+          apps/desktop/src/main/tools/handlers.ts,
+          apps/desktop/src/main/workspace/handlers.ts,          (this session)
+          apps/desktop/src/main/chat/file-preview.{ts,test.ts},
+          apps/desktop/src/renderer/components/line-diff.{ts,test.ts},
+          apps/desktop/src/renderer/components/tool-result-preview.{tsx,test.ts},
+          apps/desktop/src/renderer/views/{ApprovalsPanel,AuditLogPanel,WorkspacePanel}.tsx,
+          apps/desktop/src/renderer/views/audit-log-link.test.ts,
+          apps/desktop/src/shared/{tool-audit,tools,workspace}.ts,
+          apps/desktop/src/shared/workspace.test.ts             (this session — 7 tests)
+```
+
+User has chosen to defer commits until the multi-session feature stack lands.

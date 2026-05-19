@@ -4,6 +4,8 @@ import type {
   ApprovalPolicies,
   ApprovalRequest,
   ApprovalResponse,
+  FilePreviewRequest,
+  FilePreviewResult,
   SetPolicyRequest,
 } from '../shared/approvals';
 import type {
@@ -29,6 +31,18 @@ import type {
   ProviderTestResult,
 } from '../shared/provider-config';
 import type { SelectedModel } from '../shared/selected-model';
+import type {
+  ToolCallAuditPurgeResult,
+  ToolCallAuditQuery,
+  ToolCallAuditQueryResult,
+  ToolCallAuditRetention,
+} from '../shared/tool-audit';
+import type { ToolListItem } from '../shared/tools';
+import type {
+  RemoveWorkspaceRequest,
+  SetActiveWorkspaceRequest,
+  WorkspaceState,
+} from '../shared/workspace';
 
 type DeepLinkListener = (url: string) => void;
 type ChatEventListener = (payload: ChatStreamEvent) => void;
@@ -86,11 +100,39 @@ const approvals = {
   setPolicy: (req: SetPolicyRequest): Promise<ApprovalPolicies> =>
     ipcRenderer.invoke('approvals:set-policy', req),
   respond: (res: ApprovalResponse): Promise<void> => ipcRenderer.invoke('approvals:respond', res),
+  readFilePreview: (req: FilePreviewRequest): Promise<FilePreviewResult> =>
+    ipcRenderer.invoke('approvals:read-file-preview', req),
   onRequest: (listener: ApprovalRequestListener): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: ApprovalRequest): void => listener(payload);
     ipcRenderer.on('chat:approval-request', wrapped);
     return () => ipcRenderer.off('chat:approval-request', wrapped);
   },
+};
+
+const tools = {
+  list: (): Promise<ToolListItem[]> => ipcRenderer.invoke('tools:list'),
+};
+
+const toolAudit = {
+  query: (req: ToolCallAuditQuery): Promise<ToolCallAuditQueryResult> =>
+    ipcRenderer.invoke('tool-audit:query', req),
+  getRetention: (): Promise<ToolCallAuditRetention> =>
+    ipcRenderer.invoke('tool-audit:get-retention'),
+  setRetention: (
+    req: ToolCallAuditRetention,
+  ): Promise<ToolCallAuditRetention & ToolCallAuditPurgeResult> =>
+    ipcRenderer.invoke('tool-audit:set-retention', req),
+  clear: (): Promise<ToolCallAuditPurgeResult> => ipcRenderer.invoke('tool-audit:clear'),
+};
+
+const workspace = {
+  get: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:get'),
+  setActive: (req: SetActiveWorkspaceRequest): Promise<WorkspaceState> =>
+    ipcRenderer.invoke('workspace:set-active', req),
+  browse: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:browse'),
+  remove: (req: RemoveWorkspaceRequest): Promise<WorkspaceState> =>
+    ipcRenderer.invoke('workspace:remove', req),
+  clearActive: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:clear-active'),
 };
 
 const api = {
@@ -105,6 +147,9 @@ const api = {
   conversations,
   chat,
   approvals,
+  tools,
+  toolAudit,
+  workspace,
 } as const;
 
 export type OpenCodexBridge = typeof api;

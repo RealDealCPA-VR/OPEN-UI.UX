@@ -2,8 +2,9 @@ import { BrowserWindow } from 'electron';
 import { z } from 'zod';
 import type { ApprovalRequest } from '../../shared/approvals';
 import { registerInvoke } from '../ipc/registry';
-import { getApprovalPolicies, setApprovalPolicies } from '../storage/settings';
+import { getApprovalPolicies, getSettings, setApprovalPolicies } from '../storage/settings';
 import { getApprovalManager, initApprovalManager } from './approvals';
+import { readFilePreview } from './file-preview';
 
 const tierEnum = z.enum(['read', 'write', 'execute', 'network']);
 const policyEnum = z.enum(['auto', 'prompt', 'deny']);
@@ -48,6 +49,15 @@ export function registerApprovalHandlers(): void {
     }),
     (req) => {
       getApprovalManager().respond(req);
+    },
+  );
+
+  registerInvoke(
+    'approvals:read-file-preview',
+    z.object({ path: z.string().min(1) }),
+    async (req) => {
+      const workspaceRoot = getSettings().activeWorkspace ?? process.cwd();
+      return readFilePreview(workspaceRoot, req.path);
     },
   );
 }

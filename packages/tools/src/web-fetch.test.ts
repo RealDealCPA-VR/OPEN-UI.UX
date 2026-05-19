@@ -120,4 +120,46 @@ describe('webFetchTool', () => {
     );
     expect(result.status).toBe(200);
   });
+
+  it('aborts when ctx.signal fires (AbortSignal.any composes both signals)', async () => {
+    vi.stubEnv('OPENCODEX_WEB_FETCH_ALLOWLIST', 'api.example.com');
+    fetchMock.mockImplementation(
+      (_url: string, init: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          const sig = init.signal;
+          if (!sig) return;
+          if (sig.aborted) {
+            reject(new DOMException('aborted', 'AbortError'));
+            return;
+          }
+          sig.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), {
+            once: true,
+          });
+        }),
+    );
+
+    const ac = new AbortController();
+    const callCtx = { ...makeCtx('/tmp'), signal: ac.signal };
+    const promise = webFetchTool.execute({ url: 'https://api.example.com/slow' }, callCtx);
+    setTimeout(() => ac.abort(), 20);
+    await expect(promise).rejects.toThrow(/abort/i);
+  });
+
+  it('aborts when timeout fires even if ctx.signal stays alive', async () => {
+    vi.stubEnv('OPENCODEX_WEB_FETCH_ALLOWLIST', 'api.example.com');
+    fetchMock.mockImplementation(
+      (_url: string, init: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          const sig = init.signal;
+          if (!sig) return;
+          sig.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), {
+            once: true,
+          });
+        }),
+    );
+
+    await expect(
+      webFetchTool.execute({ url: 'https://api.example.com/slow', timeoutMs: 30 }, ctx()),
+    ).rejects.toThrow(/abort/i);
+  });
 });

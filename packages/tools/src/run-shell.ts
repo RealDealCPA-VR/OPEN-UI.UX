@@ -211,5 +211,9 @@ export function scrubEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     const value = env[key];
     if (value !== undefined) out[key] = value;
   }
+  const pathOverride = env.OPENCODEX_SHELL_PATH?.trim();
+  if (pathOverride) {
+    out.PATH = pathOverride;
+  }
   return out;
 }

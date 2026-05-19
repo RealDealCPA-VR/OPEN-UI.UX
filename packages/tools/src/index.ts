@@ -6,3 +6,4 @@ export { grepTool } from './grep';
 export { listDirTool } from './list-dir';
 export { runShellTool } from './run-shell';
 export { webFetchTool } from './web-fetch';
+export { resolveWithinWorkspace, PathEscapesWorkspaceError } from './path-guard';

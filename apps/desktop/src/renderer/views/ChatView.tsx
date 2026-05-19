@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { ContentBlock } from '@opencodex/core';
 import { Markdown } from '../components/Markdown';
 import { ToolCallCard } from '../components/ToolCallCard';
@@ -16,6 +16,16 @@ import type {
 export function ChatView(): JSX.Element {
   const { selected, selectedCapabilities, loading: modelLoading } = useSelectedModel();
   const chat = useChat();
+  const { activeId: chatActiveId, selectConversation } = chat;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlConversationId = searchParams.get('conversationId');
+  const urlMessageId = searchParams.get('messageId');
+
+  useEffect(() => {
+    if (!urlConversationId) return;
+    if (chatActiveId === urlConversationId) return;
+    selectConversation(urlConversationId);
+  }, [urlConversationId, chatActiveId, selectConversation]);
 
   return (
     <section className="chat-layout">
@@ -40,6 +50,14 @@ export function ChatView(): JSX.Element {
             modelName={selectedCapabilities.displayName}
             supportsTools={selectedCapabilities.toolUse}
             chat={chat}
+            scrollToMessageId={urlMessageId}
+            scrollToConversationId={urlConversationId}
+            onConsumeScrollTarget={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete('messageId');
+              next.delete('conversationId');
+              setSearchParams(next, { replace: true });
+            }}
           />
         )}
       </div>
@@ -126,6 +144,9 @@ interface ChatPaneProps {
   modelName: string;
   supportsTools: boolean;
   chat: ReturnType<typeof useChat>;
+  scrollToMessageId: string | null;
+  scrollToConversationId: string | null;
+  onConsumeScrollTarget: () => void;
 }
 
 function ChatPane({
@@ -134,17 +155,51 @@ function ChatPane({
   modelName,
   supportsTools,
   chat,
+  scrollToMessageId,
+  scrollToConversationId,
+  onConsumeScrollTarget,
 }: ChatPaneProps): JSX.Element {
   const [input, setInput] = useState('');
   const [toolsEnabled, setToolsEnabled] = useState(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const consumedScrollRef = useRef<Set<string>>(new Set());
+  const skipBottomScrollRef = useRef(false);
+  const { messages: chatMessages, draft: chatDraft, activeId: chatActiveId } = chat;
 
   useLayoutEffect(() => {
+    if (!scrollToMessageId) return;
+    if (consumedScrollRef.current.has(scrollToMessageId)) return;
+    if (scrollToConversationId && chatActiveId !== scrollToConversationId) return;
+    if (!chatMessages.some((m) => m.id === scrollToMessageId)) return;
+    const el = document.getElementById(`chat-message-${scrollToMessageId}`);
+    if (!el) return;
+    consumedScrollRef.current.add(scrollToMessageId);
+    skipBottomScrollRef.current = true;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('chat-bubble-highlight');
+    const t = window.setTimeout(() => {
+      el.classList.remove('chat-bubble-highlight');
+    }, 2000);
+    onConsumeScrollTarget();
+    return () => window.clearTimeout(t);
+  }, [
+    scrollToMessageId,
+    scrollToConversationId,
+    chatActiveId,
+    chatMessages,
+    onConsumeScrollTarget,
+  ]);
+
+  useLayoutEffect(() => {
+    if (skipBottomScrollRef.current) {
+      skipBottomScrollRef.current = false;
+      return;
+    }
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [chat.messages, chat.draft]);
+  }, [chatMessages, chatDraft]);
 
   const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
@@ -332,7 +387,10 @@ function MessageBubble({
 }): JSX.Element {
   const hasBlocks = message.contentBlocks !== null && message.contentBlocks.length > 0;
   return (
-    <article className={`chat-bubble chat-bubble-${message.role}`}>
+    <article
+      id={`chat-message-${message.id}`}
+      className={`chat-bubble chat-bubble-${message.role}`}
+    >
       <header className="chat-bubble-head">{roleLabel(message.role)}</header>
       {hasBlocks ? (
         <BlockSequence blocks={message.contentBlocks ?? []} onRerun={onRerun} />

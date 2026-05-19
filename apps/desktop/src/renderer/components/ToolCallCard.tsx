@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ToolResultBlock, ToolUseBlock } from '@opencodex/core';
 import { formatRerunPrompt, formatToolArguments, formatToolOutput } from './tool-block-grouping';
+import { ToolResultPreview } from './tool-result-preview';
 
 interface ToolCallCardProps {
   use: ToolUseBlock;
@@ -62,11 +63,7 @@ export function ToolCallCard({
             <p className="tool-card-empty">No arguments</p>
           )}
           {result ? (
-            <ToolPanel
-              label={result.isError ? 'Error' : 'Result'}
-              body={outputText.length > 0 ? outputText : '(empty)'}
-              tone={result.isError ? 'error' : 'ok'}
-            />
+            <ResultPanel use={use} result={result} rawText={outputText} />
           ) : (
             <p className="tool-card-empty">Awaiting result…</p>
           )}
@@ -106,6 +103,37 @@ function ToolPanel({
         </button>
       </header>
       <pre className={`tool-card-pre tool-card-pre-${tone}`}>{body}</pre>
+    </section>
+  );
+}
+
+function ResultPanel({
+  use,
+  result,
+  rawText,
+}: {
+  use: ToolUseBlock;
+  result: ToolResultBlock;
+  rawText: string;
+}): JSX.Element {
+  const label = result.isError ? 'Error' : 'Result';
+  const copyText = rawText.length > 0 ? rawText : '(empty)';
+  return (
+    <section className="tool-card-panel">
+      <header className="tool-card-panel-head">
+        <span className="tool-card-panel-label">{label}</span>
+        <button
+          type="button"
+          className="tool-card-copy"
+          onClick={() => {
+            void navigator.clipboard?.writeText(copyText);
+          }}
+          aria-label={`Copy ${label.toLowerCase()}`}
+        >
+          Copy
+        </button>
+      </header>
+      <ToolResultPreview use={use} result={result} />
     </section>
   );
 }

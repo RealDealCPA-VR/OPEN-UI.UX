@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { type ApprovalPolicies, DEFAULT_TIER_POLICIES } from '../../shared/approvals';
 import type { ProviderTestResult } from '../../shared/provider-config';
 import type { SelectedModel } from '../../shared/selected-model';
+import { applyRemove, applySetActive, type WorkspaceState } from '../../shared/workspace';
 
 const providerTestResultSchema: z.ZodType<ProviderTestResult> = z.object({
   code: z.enum(['ok', 'config', 'auth', 'http', 'network', 'timeout', 'unknown']),
@@ -49,6 +50,7 @@ const SettingsSchema = z.object({
     tierDefaults: DEFAULT_TIER_POLICIES,
     toolOverrides: {},
   }),
+  auditRetentionDays: z.number().int().min(1).max(36500).nullable().default(null),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -110,4 +112,41 @@ export function getApprovalPolicies(): ApprovalPolicies {
 export function setApprovalPolicies(patch: ApprovalPolicies): ApprovalPolicies {
   const next = updateSettings({ approvals: patch });
   return next.approvals;
+}
+
+export function getAuditRetentionDays(): number | null {
+  return getSettings().auditRetentionDays;
+}
+
+export function setAuditRetentionDays(days: number | null): number | null {
+  const next = updateSettings({ auditRetentionDays: days });
+  return next.auditRetentionDays;
+}
+
+export function getWorkspaceState(): WorkspaceState {
+  const s = getSettings();
+  return { active: s.activeWorkspace, history: s.workspaceHistory };
+}
+
+export function setActiveWorkspace(path: string): WorkspaceState {
+  const result = applySetActive(getWorkspaceState(), path);
+  const next = updateSettings({
+    activeWorkspace: result.active,
+    workspaceHistory: result.history,
+  });
+  return { active: next.activeWorkspace, history: next.workspaceHistory };
+}
+
+export function clearActiveWorkspace(): WorkspaceState {
+  const next = updateSettings({ activeWorkspace: null });
+  return { active: next.activeWorkspace, history: next.workspaceHistory };
+}
+
+export function removeWorkspaceFromHistory(path: string): WorkspaceState {
+  const result = applyRemove(getWorkspaceState(), path);
+  const next = updateSettings({
+    activeWorkspace: result.active,
+    workspaceHistory: result.history,
+  });
+  return { active: next.activeWorkspace, history: next.workspaceHistory };
 }

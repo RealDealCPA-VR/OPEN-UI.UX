@@ -7,6 +7,8 @@ import type {
   ApprovalPolicies,
   ApprovalRequest,
   ApprovalResponse,
+  FilePreviewRequest,
+  FilePreviewResult,
   SetPolicyRequest,
 } from './approvals';
 import type {
@@ -32,6 +34,18 @@ import type {
   ProviderTestResult,
 } from './provider-config';
 import type { SelectedModel } from './selected-model';
+import type {
+  ToolCallAuditPurgeResult,
+  ToolCallAuditQuery,
+  ToolCallAuditQueryResult,
+  ToolCallAuditRetention,
+} from './tool-audit';
+import type { ToolListItem } from './tools';
+import type {
+  RemoveWorkspaceRequest,
+  SetActiveWorkspaceRequest,
+  WorkspaceState,
+} from './workspace';
 
 export interface IpcInvokeChannels {
   'app:version': {
@@ -113,6 +127,50 @@ export interface IpcInvokeChannels {
   'approvals:respond': {
     request: ApprovalResponse;
     response: void;
+  };
+  'approvals:read-file-preview': {
+    request: FilePreviewRequest;
+    response: FilePreviewResult;
+  };
+  'tools:list': {
+    request: void;
+    response: ToolListItem[];
+  };
+  'tool-audit:query': {
+    request: ToolCallAuditQuery;
+    response: ToolCallAuditQueryResult;
+  };
+  'tool-audit:get-retention': {
+    request: void;
+    response: ToolCallAuditRetention;
+  };
+  'tool-audit:set-retention': {
+    request: ToolCallAuditRetention;
+    response: ToolCallAuditRetention & ToolCallAuditPurgeResult;
+  };
+  'tool-audit:clear': {
+    request: void;
+    response: ToolCallAuditPurgeResult;
+  };
+  'workspace:get': {
+    request: void;
+    response: WorkspaceState;
+  };
+  'workspace:set-active': {
+    request: SetActiveWorkspaceRequest;
+    response: WorkspaceState;
+  };
+  'workspace:browse': {
+    request: void;
+    response: WorkspaceState;
+  };
+  'workspace:remove': {
+    request: RemoveWorkspaceRequest;
+    response: WorkspaceState;
+  };
+  'workspace:clear-active': {
+    request: void;
+    response: WorkspaceState;
   };
 }
 
