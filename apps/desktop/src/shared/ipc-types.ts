@@ -45,6 +45,7 @@ import type { ToolListItem } from './tools';
 import type {
   RemoveWorkspaceRequest,
   SetActiveWorkspaceRequest,
+  WorkspaceChangedEvent,
   WorkspaceState,
 } from './workspace';
 
@@ -188,6 +189,7 @@ export interface IpcEventChannels {
   'chat:event': ChatStreamEvent;
   'chat:approval-request': ApprovalRequest;
   'settings:theme-changed': ThemeChangedEvent;
+  'workspace:changed': WorkspaceChangedEvent;
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

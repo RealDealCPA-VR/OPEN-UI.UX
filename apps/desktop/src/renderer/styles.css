@@ -541,6 +541,35 @@ body {
   width: 8px;
 }
 
+.chat-workspace-banner {
+  border-top: 1px solid var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn);
+  padding: 8px 32px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chat-workspace-banner-label {
+  font-weight: 600;
+}
+
+.chat-workspace-banner-body {
+  font-weight: 400;
+}
+
+.chat-workspace-banner-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+:root[data-theme='light'] .chat-workspace-banner-path {
+  background: rgba(0, 0, 0, 0.06);
+}
+
 .chat-composer {
   border-top: 1px solid var(--border);
   padding: 12px 32px 16px;
@@ -1009,6 +1038,12 @@ body {
 .pill-local {
   background: var(--bg-selected);
   color: var(--accent);
+}
+
+.pill-soon {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
 }
 
 .provider-card-body {
@@ -2570,4 +2605,85 @@ body {
   border-radius: 6px;
   color: var(--danger);
   font-size: 12px;
+}
+
+/* ---------- Onboarding banner ---------- */
+
+.onboarding-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 16px 18px;
+  background: var(--accent-soft-bg);
+  border: 1px solid var(--accent-soft-border);
+  border-radius: 8px;
+}
+
+.onboarding-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.onboarding-banner-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.onboarding-banner-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.onboarding-banner .btn {
+  flex-shrink: 0;
+}
+
+/* ---------- Indexing stub ---------- */
+
+.indexing-panel-stub {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.indexing-stub-head {
+  display: flex;
+}
+
+.indexing-stub-desc,
+.indexing-stub-foot {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.indexing-stub-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.indexing-stub-list code,
+.indexing-stub-foot code {
+  padding: 1px 5px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-pre);
 }

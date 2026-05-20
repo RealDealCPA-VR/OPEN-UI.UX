@@ -1,5 +1,7 @@
+import { OnboardingBanner, PROVIDERS_SECTION_ID } from '../components/OnboardingBanner';
 import { ApprovalsPanel } from './ApprovalsPanel';
 import { AuditLogPanel } from './AuditLogPanel';
+import { IndexingPanel } from './IndexingPanel';
 import { ProvidersPanel } from './ProvidersPanel';
 import { ThemePanel } from './ThemePanel';
 import { WorkspacePanel } from './WorkspacePanel';
@@ -11,6 +13,7 @@ export function SettingsView(): JSX.Element {
         <h1>Settings</h1>
         <p>Workspace, providers, approvals, MCP servers, plugins, theme, indexing.</p>
       </header>
+      <OnboardingBanner />
       <section className="settings-section">
         <h2>Theme</h2>
         <p className="settings-section-desc">
@@ -26,8 +29,8 @@ export function SettingsView(): JSX.Element {
         </p>
         <WorkspacePanel />
       </section>
-      <section className="settings-section">
-        <h2>Providers</h2>
+      <section className="settings-section" id={PROVIDERS_SECTION_ID}>
+        <h2 tabIndex={-1}>Providers</h2>
         <p className="settings-section-desc">
           Add an API key to enable a provider. Keys are stored in your OS keychain; everything else
           lives in the local settings file.
@@ -49,6 +52,13 @@ export function SettingsView(): JSX.Element {
           range. Click a row to inspect the input and output.
         </p>
         <AuditLogPanel />
+      </section>
+      <section className="settings-section">
+        <h2>Indexing</h2>
+        <p className="settings-section-desc">
+          Codebase indexing for semantic search over your workspace.
+        </p>
+        <IndexingPanel />
       </section>
     </section>
   );

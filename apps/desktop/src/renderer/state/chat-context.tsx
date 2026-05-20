@@ -34,6 +34,7 @@ interface ChatContextValue {
   messages: StoredMessage[];
   draft: AssistantDraft | null;
   streaming: boolean;
+  streamWorkspaceRoot: string | null;
   error: string | null;
   loading: boolean;
   usage: ConversationUsage | null;
@@ -53,6 +54,7 @@ interface ActiveStream {
   conversationId: string;
   userMessageId: string;
   assistantMessageId: string;
+  workspaceRoot: string;
 }
 
 const EMPTY_MESSAGES: StoredMessage[] = [];
@@ -74,6 +76,7 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
   const [usageByConv, setUsageByConv] = useState<Record<string, ConversationUsage>>({});
   const [draft, setDraft] = useState<AssistantDraft | null>(null);
   const [streaming, setStreaming] = useState(false);
+  const [streamWorkspaceRoot, setStreamWorkspaceRoot] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -127,6 +130,7 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
     const stream = activeStreamRef.current;
     activeStreamRef.current = null;
     setStreaming(false);
+    setStreamWorkspaceRoot(null);
     if (!stream) {
       setDraft(null);
       if (errorMessage) setError(errorMessage);
@@ -282,7 +286,9 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
           conversationId,
           userMessageId: result.userMessageId,
           assistantMessageId: result.assistantMessageId,
+          workspaceRoot: result.workspaceRoot,
         };
+        setStreamWorkspaceRoot(result.workspaceRoot);
         const msgs = await window.opencodex.conversations.messages({ id: conversationId });
         setMessagesByConv((prev) => ({ ...prev, [conversationId]: msgs }));
         setDraft({
@@ -298,6 +304,7 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
       } catch (err) {
         activeStreamRef.current = null;
         setStreaming(false);
+        setStreamWorkspaceRoot(null);
         setError(err instanceof Error ? err.message : String(err));
       }
     },
@@ -323,6 +330,7 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
       messages,
       draft,
       streaming,
+      streamWorkspaceRoot,
       error,
       loading: conversations === null,
       usage,
@@ -341,6 +349,7 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
       messages,
       draft,
       streaming,
+      streamWorkspaceRoot,
       error,
       usage,
       selectConversation,

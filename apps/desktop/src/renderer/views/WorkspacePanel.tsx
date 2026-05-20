@@ -17,8 +17,12 @@ export function WorkspacePanel(): JSX.Element {
       .catch((err: unknown) => {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
       });
+    const off = window.opencodex.workspace.onChanged((payload) => {
+      if (!cancelled) setState(payload.state);
+    });
     return () => {
       cancelled = true;
+      off();
     };
   }, []);
 

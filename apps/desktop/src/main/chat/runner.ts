@@ -77,6 +77,8 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
   const approvals =
     opts.approvalManager === undefined ? safeGetApprovalManager() : opts.approvalManager;
 
+  const workspaceRoot = opts.workspaceRoot ?? process.cwd();
+
   void runStream({
     streamId,
     provider,
@@ -85,7 +87,7 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
     assistantMessageId: assistantRow.id,
     sink: opts.sink,
     signal: controller.signal,
-    workspaceRoot: opts.workspaceRoot ?? process.cwd(),
+    workspaceRoot,
     toolRegistry: registry,
     approvalManager: approvals,
   }).finally(() => {
@@ -97,6 +99,7 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
     streamId,
     userMessageId: userRow.id,
     assistantMessageId: assistantRow.id,
+    workspaceRoot,
   };
 }
 

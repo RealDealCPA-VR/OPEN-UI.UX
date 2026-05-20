@@ -161,11 +161,31 @@ function ChatPane({
 }: ChatPaneProps): JSX.Element {
   const [input, setInput] = useState('');
   const [toolsEnabled, setToolsEnabled] = useState(true);
+  const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const consumedScrollRef = useRef<Set<string>>(new Set());
   const skipBottomScrollRef = useRef(false);
   const { messages: chatMessages, draft: chatDraft, activeId: chatActiveId } = chat;
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.opencodex.workspace
+      .get()
+      .then((s) => {
+        if (!cancelled) setActiveWorkspace(s.active);
+      })
+      .catch(() => {
+        // Banner is an advisory affordance; ignore load errors.
+      });
+    const off = window.opencodex.workspace.onChanged((payload) => {
+      if (!cancelled) setActiveWorkspace(payload.state.active);
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (!scrollToMessageId) return;
@@ -230,6 +250,13 @@ function ChatPane({
     ? chat.messages.filter((m) => m.id !== chat.draft?.messageId)
     : chat.messages;
 
+  const streamWorkspaceRoot = chat.streamWorkspaceRoot;
+  const showWorkspaceMismatch =
+    chat.streaming &&
+    streamWorkspaceRoot !== null &&
+    activeWorkspace !== null &&
+    activeWorkspace !== streamWorkspaceRoot;
+
   return (
     <div className="chat-pane">
       <header className="chat-header">
@@ -255,6 +282,16 @@ function ChatPane({
           </div>
         )}
       </div>
+      {showWorkspaceMismatch ? (
+        <div className="chat-workspace-banner" role="status">
+          <span className="chat-workspace-banner-label">Workspace changed mid-chat.</span>{' '}
+          <span className="chat-workspace-banner-body">
+            This response is still running against{' '}
+            <code className="chat-workspace-banner-path">{streamWorkspaceRoot}</code>. The next
+            message will use <code className="chat-workspace-banner-path">{activeWorkspace}</code>.
+          </span>
+        </div>
+      ) : null}
       <form className="chat-composer" onSubmit={handleSubmit}>
         <textarea
           ref={inputRef}

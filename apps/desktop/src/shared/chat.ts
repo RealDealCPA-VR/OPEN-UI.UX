@@ -11,6 +11,7 @@ export interface ChatStartResponse {
   streamId: string;
   userMessageId: string;
   assistantMessageId: string;
+  workspaceRoot: string;
 }
 
 export interface ChatStreamEvent {

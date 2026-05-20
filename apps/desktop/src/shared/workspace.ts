@@ -11,6 +11,10 @@ export interface RemoveWorkspaceRequest {
   path: string;
 }
 
+export interface WorkspaceChangedEvent {
+  state: WorkspaceState;
+}
+
 export const WORKSPACE_HISTORY_LIMIT = 10;
 
 export function applySetActive(state: WorkspaceState, path: string): WorkspaceState {

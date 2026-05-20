@@ -79,12 +79,14 @@ describe('startChatStream', () => {
       modelId: 'fake-1',
       userMessage: 'hi',
       sink,
+      workspaceRoot: '/tmp/locked',
       buildProvider: async () => provider,
     });
 
     expect(result.streamId).toBeTruthy();
     expect(result.userMessageId).toBeTruthy();
     expect(result.assistantMessageId).toBeTruthy();
+    expect(result.workspaceRoot).toBe('/tmp/locked');
 
     // wait for stream to drain
     await new Promise((r) => setTimeout(r, 20));

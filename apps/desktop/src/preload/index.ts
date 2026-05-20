@@ -48,6 +48,7 @@ import type { ToolListItem } from '../shared/tools';
 import type {
   RemoveWorkspaceRequest,
   SetActiveWorkspaceRequest,
+  WorkspaceChangedEvent,
   WorkspaceState,
 } from '../shared/workspace';
 
@@ -55,6 +56,7 @@ type DeepLinkListener = (url: string) => void;
 type ChatEventListener = (payload: ChatStreamEvent) => void;
 type ApprovalRequestListener = (req: ApprovalRequest) => void;
 type ThemeChangedListener = (payload: ThemeChangedEvent) => void;
+type WorkspaceChangedListener = (payload: WorkspaceChangedEvent) => void;
 
 const initialThemePreference = parseInitialThemeArg(process.argv);
 
@@ -175,6 +177,12 @@ const workspace = {
   remove: (req: RemoveWorkspaceRequest): Promise<WorkspaceState> =>
     ipcRenderer.invoke('workspace:remove', req),
   clearActive: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:clear-active'),
+  onChanged: (listener: WorkspaceChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: WorkspaceChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('workspace:changed', wrapped);
+    return () => ipcRenderer.off('workspace:changed', wrapped);
+  },
 };
 
 const api = {

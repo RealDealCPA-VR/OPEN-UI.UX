@@ -2,7 +2,7 @@ import { BrowserWindow, dialog } from 'electron';
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
-import { registerInvoke } from '../ipc/registry';
+import { emit, registerInvoke } from '../ipc/registry';
 import { logger } from '../logger';
 import {
   clearActiveWorkspace,
@@ -20,6 +20,13 @@ function isExistingDirectory(p: string): boolean {
   }
 }
 
+function broadcastChange(state: WorkspaceState): WorkspaceState {
+  for (const win of BrowserWindow.getAllWindows()) {
+    emit(win.webContents, 'workspace:changed', { state });
+  }
+  return state;
+}
+
 export function registerWorkspaceHandlers(): void {
   registerInvoke('workspace:get', z.void(), () => getWorkspaceState());
 
@@ -30,9 +37,9 @@ export function registerWorkspaceHandlers(): void {
       const resolved = resolve(req.path);
       if (!isExistingDirectory(resolved)) {
         logger.warn({ path: resolved }, 'rejected workspace:set-active — not a directory');
-        return removeWorkspaceFromHistory(resolved);
+        return broadcastChange(removeWorkspaceFromHistory(resolved));
       }
-      return setActiveWorkspace(resolved);
+      return broadcastChange(setActiveWorkspace(resolved));
     },
   );
 
@@ -52,14 +59,14 @@ export function registerWorkspaceHandlers(): void {
     if (!picked || !isExistingDirectory(picked)) {
       return getWorkspaceState();
     }
-    return setActiveWorkspace(picked);
+    return broadcastChange(setActiveWorkspace(picked));
   });
 
   registerInvoke(
     'workspace:remove',
     z.object({ path: z.string().min(1) }),
-    (req): WorkspaceState => removeWorkspaceFromHistory(req.path),
+    (req): WorkspaceState => broadcastChange(removeWorkspaceFromHistory(req.path)),
   );
 
-  registerInvoke('workspace:clear-active', z.void(), () => clearActiveWorkspace());
+  registerInvoke('workspace:clear-active', z.void(), () => broadcastChange(clearActiveWorkspace()));
 }
