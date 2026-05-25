@@ -2,79 +2,80 @@
 
 ## Last Session Summary
 
-- **Massive Todo.md sweep across all phases.** Started from 423 tests / 47 files baseline. Now: **462 tests passing, 7 skipped, 55 files; lint, typecheck, build all green.** Bundle: main `68.56 kB`, preload (now larger with MCP/plugin/onboarding bridges), renderer JS `445.48 kB`, renderer CSS `49.87 kB`.
-- **Phases shipped end-to-end:** Phase 0 polish (Playwright + ci.yml build step), Phase 1 (OpenAI Responses API + provider fixtures across all 7 adapters + Voyage embeddings adapter), Phase 2.5 MCP client (3 transports + manager + ToolRegistry surfacing + presets + auto-reconnect + Settings UI), Phase 4 plugin system (loader + permissions + 3 example plugins + manager UI + marketplace stub), Phase 5 multi-agent (`spawn_subagent` tool + budgets + orchestrator prompt + failure handling), Phase 6 onboarding wizard + 5 architecture/security/plugin/MCP/provider docs, Phase 3 ranked search_codebase tool + .gitignore/.opencodexignore parser + read-only chat mode + citation tokenizer, Phase 2 UI file tree.
-- **Better-sqlite3 ABI blocker resolved** with `pnpm install --force`. No need for the deeper rebuild steps the prior handoff outlined.
+- **Massive Todo.md sweep complete via 15 subagents across 2 parallel waves + main-session work.** Baseline 423 tests → now **671 passing + 7 skipped across 70 files**. Lint, typecheck, build all green. Three commits land the work:
+  - `26fee85` — main-session sweep across Phase 0–6 (Playwright/CI, OpenAI Responses, MCP transports + manager + UI, plugin loader + manager UI + examples, spawn_subagent + orchestrator prompt, onboarding wizard, docs, electron-builder.yml, search_codebase, ignore parser, read-only mode, citations, file tree)
+  - `a1f4bcc` — Wave 1 (7 subagents in parallel): MCP slash commands, SQLite FTS5, chokidar watcher, git worktrees, utilityProcess subagent workers, agent inspector UI + run registry, plugin UI panel iframe sandbox
+  - `5d91029` — Wave 2 (6 subagents in parallel): Monaco diff viewer (lazy-loaded 6.35MB chunk), xterm.js terminal (lazy 401KB chunk), tree-sitter chunker (new @opencodex/rag-chunker package), LanceDB vector store (SQLite-shim fallback), subagent merge-review flow, MCP resource → FTS5 indexing
+- **Bundle code-splits cleanly**: renderer main `597 kB`, Monaco editor `6.35 MB` (lazy on first diff modal), xterm `401 kB` (lazy on first Terminal pill click).
+- **Every remaining unchecked Todo item** is either external-account gated (code signing, OAuth, GitHub Releases, telemetry, Sentry, GitHub Pages docs site, public announcement) or explicitly post-v0.1 backlog. There are no more in-scope implementation items.
 
 ## Verify Before Continuing
 
-- [ ] **Run the smoke check from repo root:** `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check && pnpm build`. Expect 462 tests passing, 7 skipped across 55 files. If `pnpm format:check` complains, run `pnpm format` to apply Prettier (newly created docs + several new files were authored Prettier-compatible but not run through it in-session).
-- [ ] **MCP server connection (Settings → MCP servers).** With `npx` on PATH: add the Filesystem preset → status goes connecting → connected; tool count increments; the agent's `tools:list` includes `mcp__filesystem__<tool>` entries. Disable → tools deregister; remove → preset reappears in the "Curated presets" list.
-- [ ] **Plugin install flow.** Settings → Plugins → Install from folder. Pick `examples/plugins/hello-world` (after `pnpm --filter @opencodex-example/hello-world build`). Plugin lands as `pending-permissions` if any; grant → `loaded`. `tools:list` includes `plugin__<id>__hello_world`. Disable → unregisters.
-- [ ] **`spawn_subagent` tool.** Ask the orchestrator to delegate something — `ORCHESTRATOR_SYSTEM_PROMPT` in `main/agent/orchestrator-prompt.ts` is the suggested system message. Verify subagent runs in-process (no utilityProcess yet), respects `maxToolIterations` / `maxTokens` / `maxWallTimeMs`, returns text + stopReason + iteration count.
-- [ ] **Onboarding wizard.** Clear `onboardingComplete` setting → first launch → 4-step overlay (provider → API key → workspace → done). Skip closes wizard + sets the flag.
-- [ ] **Read-only chat mode.** Toggle in Settings → Indexing. With it on, every non-read tool call returns `denied` from the approvals manager before reaching the user.
-- [ ] **File tree.** Codebase tab → workspace tree, lazy-expand on click, respects `.gitignore` + `.opencodexignore`, switches when workspace changes.
+- [ ] **Run from repo root:** `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check && pnpm build`. Expect 671 passing, 7 skipped, 70 files. If `pnpm format:check` complains run `pnpm format` to apply Prettier — many new files were authored Prettier-compatible but not run through it.
+- [ ] **Smoke the heavy new UIs (none of these have visual tests):**
+  - MCP servers panel — install Filesystem preset, see status pill go connecting → connected, see tools surface as `mcp__filesystem__*` in `tools:list`.
+  - Plugin install flow — `pnpm --filter @opencodex-example/hello-world build`, install from folder, grant permissions, confirm `plugin__<id>__hello_world` appears in `tools:list`.
+  - Onboarding wizard — clear `onboardingComplete` setting, launch app, walk through 4 steps.
+  - Read-only chat mode toggle — Settings → Indexing. With it on, agent attempts to call `write_file` get `denied` from ApprovalManager.
+  - Codebase tab file tree — pick a workspace, lazy-expand subdirs.
+  - Slash commands in chat composer — connect an MCP server with prompts, type `/` in an empty line.
+  - Agent inspector — call `spawn_subagent`, watch the AgentView table populate live with status, tokens, current tool, expandable timeline.
+  - Monaco "View in Monaco" button — accept a write/edit approval, click View in Monaco, exercise per-hunk accept/reject. Confirms the 6.35MB chunk loads.
+  - xterm Terminal pill — run a `run_shell` call, click Terminal pill on the ToolCallCard, confirm ANSI passthrough.
+  - Merge review modal — manually `recordStart` a run with a worktreePath, see Review changes button on AgentRunRow, accept/reject.
+- [ ] **Per-platform packaging:** `pnpm --filter @opencodex/desktop dist` on mac/win/linux produces the expected artifacts (signing creds still required for mac/win prod).
 
 ## Next Task
 
-Everything still unchecked in `Todo.md` falls into one of three buckets — pick from the second one if you want to keep adding features:
+There are no in-scope implementation items left. Everything unchecked is one of:
 
-1. **External / signup required (skip until the user provides creds)** — `release.yml`, electron-updater with GitHub Releases, macOS notarization, Windows code signing, telemetry (PostHog/Plausible), Sentry crash reporting, GitHub Pages docs site, OAuth for MCP servers, public v0.1 announcement.
-2. **Implementable but deferred for scope** — Monaco diff viewer (lazy-load chunk), xterm.js terminal, tree-sitter chunker, LanceDB vector store, SQLite FTS5, chokidar file watcher, MCP prompt → slash command composer wiring, MCP resource → RAG integration, plugin UI panel iframe sandbox + postMessage bridge, utilityProcess subagent workers, git worktree integration, agent inspector UI, subagent merge-review flow, plugin docs site section.
-3. **Backlog post-v0.1** — cloud/background tasks, voice mode, mobile companion, team workspaces, visual workflow builder, JetBrains/VSCode integration.
+- **External account / cert required** (lines 20, 116, 172, 173, 174, 176, 177, 178, 184):
+  - GitHub Actions `release.yml` — needs a GitHub repo + Releases configured.
+  - OAuth for MCP servers — needs the user to register OAuth apps per provider.
+  - electron-updater + GitHub Releases wiring — needs a published release feed URL.
+  - macOS code signing + notarization — needs an Apple Developer account ($99/yr).
+  - Windows code signing — needs an Authenticode cert (DigiCert/Sectigo).
+  - Telemetry (PostHog or self-hosted Plausible) — needs an account or self-hosted server.
+  - Sentry crash reporting — needs a Sentry DSN.
+  - Docs site (Docusaurus or Nextra on GitHub Pages) — needs the site set up + a custom-domain or `*.github.io` URL.
+  - Public v0.1 release announcement — needs the user to actually write + post it.
+- **Blocked on docs site** (line 152): Plugin docs site section with SDK API reference — depends on the docs site above.
+- **Backlog post-v0.1** (lines 190–195): Cloud / background tasks (needs a backend), voice mode, mobile companion app, team workspaces, visual workflow builder, JetBrains / VSCode integration. All explicitly post-v0.1 per Todo.md's own header.
 
-Recommended next sprint: **utilityProcess subagent workers → git worktree integration → merge-review flow** (the Phase 5 trio that unblocks real parallel agent runs).
+When the user is ready, the natural first sprint after that would be to wire the existing `LanceVectorStore` (currently SQLite-shim) to a real `@lancedb/lancedb` install, then plug the `chunkBySymbols` chunker into a real incremental indexer driven by the existing chokidar watcher.
 
 ## Context Notes
 
-### Permission constraint (new this session)
+### Permission constraint observed in subagents
 
-- **Subagents spawned via `Agent` tool can be denied Write/Bash by the user's permission sandbox.** Three subagents launched in parallel: Playwright was blocked entirely; the OpenAI Responses + fixtures agent worked through it; the docs agent worked but couldn't run `pnpm format:check`. Future automation should be aware that subagent file-writes may need explicit approval and plan accordingly (in-session main thread retains full Write/Bash).
+- **Subagents run under a stricter sandbox than the main session.** Three subagents this run had Bash / PowerShell denied for pnpm calls (Playwright agent, LanceDB agent — couldn't run install, and the Tree-sitter agent had limited shell). Their results were still merged into the working tree; the main session verifies CI after each wave. **Plan accordingly:** when a subagent needs to add a new npm dep or run install, factor in the risk it can't actually run pnpm — its file output may still be correct, but unverified.
 
-### MCP architecture invariants
+### Wave 1 architecture (committed in `a1f4bcc`)
 
-- **Three transports live in `packages/mcp-client/src/`**: `stdio-transport.ts` (line-delimited JSON over child stdin/stdout), `sse-transport.ts` (server-sent events for inbound, POST for outbound via `endpoint` event), `http-transport.ts` (streamable HTTP with `mcp-session-id` header). All share the same `Transport` interface in `transport.ts`.
-- **`McpClient` in `client.ts` is the JSON-RPC layer** — tracks pending requests by id, handles `initialize` + `initialized` notification, exposes `listTools`/`listResources`/`listPrompts`/`callTool`/`readResource`/`ping`.
-- **`apps/desktop/src/main/mcp/manager.ts` owns lifecycle**: connect on enable, exponential-backoff reconnect (1.5s → 30s, capped at 6 doublings) on `onClose`, register MCP tools as `mcp__<serverId>__<remoteName>` in the global `ToolRegistry` via `tool-adapter.ts`, unregister on disconnect/disable/remove.
-- **Server config persists in `electron-store` settings** under `mcpServers` (key was added to `SettingsSchema`). Live state (`status`, `serverInfo`, counts, `lastError`) is in-memory only.
+- **MCP prompts as slash commands** — `getAvailablePrompts()` in `apps/desktop/src/main/mcp/manager.ts` returns only prompts from enabled+connected servers. Composer detects `/` at start of a line via `getSlashTrigger` in `slash-commands.ts`; arrow/enter/tab/escape keyboard nav; selection inserts `/<serverId>:<prompt> arg=<placeholder>`.
+- **SQLite FTS5** — migration version `5` adds `indexed_files USING fts5(path, content, tokenize='unicode61')` + `indexed_files_meta`. `searchKeyword` uses `bm25()` + `snippet()` with safe token sanitization. New `apps/desktop/src/main/storage/codebase-index.ts`.
+- **chokidar watcher** — `WorkspaceWatcher` in `apps/desktop/src/main/rag/watcher.ts` with 250ms-debounced batches; respects `.gitignore` + `.opencodexignore`; subscribed via `settingsStore.onDidChange('activeWorkspace', …)` in `main/index.ts`.
+- **Git worktrees** — `apps/desktop/src/main/agent/worktrees.ts` uses `execFile` (no shell injection); worktrees land at `<repoRoot>/.opencodex/worktrees/<random-id>` on branch `opencodex/subagent/<id>`. `it.skipIf(!gitAvailable)` for the integration tests; `isGitRepo` returns false on non-existent paths.
+- **utilityProcess workers** — `apps/desktop/src/main/agent/worker-host.ts` softly imports `electron` so `isUtilityProcessAvailable()` returns false in vitest; `spawn_subagent` dispatches to worker when in Electron, falls back to inline `runSubagent`. `worker-protocol.ts` is Zod-validated on both sides. `electron.vite.config.ts` emits `out/main/agent/worker-entry.js`.
+- **Agent inspector** — `run-registry.ts` is 100-entry capped, newest-first, listener-based change notifications. `AgentView` ticks every 1s only while runs are running. `AgentRunRow` expands to show the per-tool-event timeline.
+- **Plugin UI panel iframe sandbox** — `sandbox="allow-scripts"` only (no `allow-same-origin`); inbound messages authenticated via reference identity (`event.source === iframe.contentWindow`) since `file://` origin is `"null"`. `handlePanelMessage` is the pure handler for tests.
 
-### Plugin architecture invariants
+### Wave 2 architecture (committed in `5d91029`)
 
-- **Plugins run in-host, not in a VM sandbox.** Gating is via manifest-declared permissions; `PluginHost.getSetting`/`setSetting` check `settings.read`/`settings.write` grants. Tools registered through `host.registerTool` get namespaced as `plugin__<id>__<toolName>` in the shared registry.
-- **`loadPluginModule` in `packages/plugin-sdk/src/loader.ts`** reads `opencodex.plugin.json`, dynamic-imports `manifest.entry`, expects either `default` or `plugin` export with an `activate` function.
-- **Three reference plugins**: `examples/plugins/hello-world` (tool contribution), `examples/plugins/provider-stub` (echoes input as an LLMProvider), `examples/plugins/ui-panel` (manifest + panel.html — iframe runtime not yet wired in the renderer).
+- **Monaco diff viewer** — `MonacoDiffViewer.tsx` lazy-loads via React.lazy; pure helpers in `monaco-diff-helpers.ts` are vitest-tested independently (Vite can't resolve `monaco-editor` package in test graph). Wired into `ApprovalQueue` write_file / edit_file flows with "View in Monaco" button + lazy modal. Bundle: 6.35MB editor chunk only on first open.
+- **xterm.js terminal** — `EmbeddedTerminal.tsx` lazy-loads xterm + fit addon on mount; subscribes to `shell:output` IPC events filtered by `streamId + toolUseId`; queues frames that arrive before xterm initializes. v1 emits a single final event per run_shell call (NOT mid-stream); IPC schema already supports `final: boolean` for the future streaming bump. Pre-seeds the terminal locally from cached result so it populates immediately on open.
+- **Tree-sitter chunker** — `packages/rag-chunker` is a NEW workspace package; `web-tree-sitter@^0.22.6` is the only new dep (did NOT bundle `tree-sitter-wasms`). Hosts use `registerGrammar(lang, wasmPathOrBytes)` to opt into grammars they ship. `chunkBySymbols` falls back to `chunkBySize` when no grammar is registered.
+- **LanceVectorStore (SQLite shim)** — `apps/desktop/src/main/rag/vector-store.ts`. NOT LanceDB — the subagent couldn't run `pnpm add @lancedb/lancedb`. Same public API a real LanceDB adapter would expose: `open`, `upsert`, `searchByVector`, `clear`, `count`. Cosine similarity computed in JS over Float32Array BLOBs. Float32Array decode pre-aligns via a Uint8Array copy (Node Buffer can start at non-aligned offsets).
+- **Merge review** — `prepareMergeBundle` parses `diff --git a/X b/X` lines for the file list; `acceptMerge` is `git merge --no-ff <branch>` then `removeWorktree`. `recordStart` accepts optional worktree fields; `mergeStatus` defaults to `'pending'` only when a worktreePath is present, else `null`. `spawn_subagent` does NOT auto-attach a worktree yet — wiring is in place so a manually-created worktree run can be reviewed.
+- **MCP resource indexing** — `resource-indexer.ts` upserts `mcp:<serverId>:<uri>` keys into the FTS5 `indexed_files` table; debounced 1s on `onMcpServerConnected`. `search_codebase` now tags each hit with `source: 'workspace' | 'mcp'`. Stale-entry pruning when a server unpublishes a resource is a future cleanup.
 
-### Multi-agent invariants
+### Carry-overs still relevant from earlier sessions
 
-- **`spawn_subagent` runs inline**, not via utilityProcess. It reads from the same `ToolRegistry` (filtered by `allowedToolNames`), builds a fresh `Provider`, and pipes events into a buffer that becomes the return value.
-- **Budget enforcement is per-loop**: `maxToolIterations` is hard-checked at the top of each turn; `maxTokens` and `maxWallTimeMs` are checked at the start of every turn after the first event.
-- **The orchestrator prompt** in `orchestrator-prompt.ts` tells the parent agent when to spawn vs. not; embed it in your system message if you want a long-running parent agent to actually use `spawn_subagent`.
-
-### RAG / search invariants
-
-- **`search_codebase` wraps `grep_tool`**, then re-ranks by match strength + filename heuristics (downweights `__fixtures__`, `test`, `.md`, `.txt`). Cap at `maxResults` (default 100, max 500).
-- **`reciprocalRankFusion`** is exported from `@opencodex/tools` and tested. Slot it in front of search_codebase once LanceDB + FTS5 rankings exist.
-- **`.opencodexignore` parser** in `packages/tools/src/opencodex-ignore.ts` supports gitignore syntax: `#` comments, `!` negation, leading `/` anchoring, trailing `/` directory-only, `*` / `**` / `?` globs. Tests cover all five.
-- **Read-only chat mode** lives in settings (`readOnlyChatMode`) and short-circuits at the top of `ApprovalManager.requestApproval` — any non-`read` tier is denied immediately when on.
-
-### Onboarding wizard invariants
-
-- **Mounts inside `<ChatProvider>` in `App.tsx`** because it uses `useSelectedModel()`. If providers move outside the wizard renders nothing (loading state).
-- **Stored flag is `onboardingComplete: boolean` in settings.** Skip + Start chatting both set it; "complete" never resets except by manual setting edit.
-- **Wizard does NOT replace `OnboardingBanner`** — banner stays as a Settings-page reminder if the user dismisses the wizard without configuring a provider.
-
-### electron-builder config (new this session)
-
-- **`apps/desktop/electron-builder.yml`** now exists with mac (dmg + zip, x64 + arm64), windows (nsis + portable, x64), linux (AppImage + deb + rpm, x64) targets. `publish: null` — switch to GitHub Releases when ready. Signing creds remain user-side.
-
-### Carry-overs still relevant (unchanged from prior handoff)
-
-- Node v20 pinned. **Do NOT** suggest a Node upgrade. better-sqlite3 must be rebuilt against Node 20 (this session's fix used `pnpm install --force`).
+- Node v20 pinned. Don't suggest a Node upgrade. `better-sqlite3` must be rebuilt against Node 20 — `pnpm install --force` was the fix this run.
 - Path has space + period (`OPEN UI.UX`) — quote in shell.
 - `packages/*` tsconfig is `noEmit: true` — switch to `tsup` before any `pnpm publish`.
-- Pre-public placeholders still exist in CODEOWNERS / SECURITY.md / README.md: `@TODO-set-github-handle`, `security@TODO-set-domain`, `github.com/TODO-org/TODO-repo`.
+- Pre-public placeholders remain in CODEOWNERS / SECURITY.md / README.md: `@TODO-set-github-handle`, `security@TODO-set-domain`, `github.com/TODO-org/TODO-repo`.
 
 ### Uncommitted state
 
-Massive multi-phase commit pending. No git operations were performed in this session — user defers commits until they review the full set.
+Working tree is clean. Three commits added this session.
