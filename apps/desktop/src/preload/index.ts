@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
+import type { AgentRun, AgentRunsChangedEvent } from '../shared/agent-runs';
 import type {
   ApprovalPolicies,
   ApprovalRequest,
@@ -47,6 +48,7 @@ import type {
 import type { ToolListItem } from '../shared/tools';
 import type {
   AddMcpServerRequest,
+  McpPromptEntry,
   McpServerChangedEvent,
   McpServerPreset,
   McpState,
@@ -58,6 +60,7 @@ import type {
   GrantPluginPermissionsRequest,
   InstallPluginRequest,
   PluginListItem,
+  PluginPanelDescriptor,
   PluginsChangedEvent,
   UninstallPluginRequest,
 } from '../shared/plugins';
@@ -222,6 +225,7 @@ const mcp = {
   setEnabled: (req: SetMcpServerEnabledRequest): Promise<McpState> =>
     ipcRenderer.invoke('mcp:set-enabled', req),
   presets: (): Promise<ReadonlyArray<McpServerPreset>> => ipcRenderer.invoke('mcp:presets'),
+  listPrompts: (): Promise<McpPromptEntry[]> => ipcRenderer.invoke('mcp:list-prompts'),
   onChanged: (listener: McpChangedListener): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: McpServerChangedEvent): void =>
       listener(payload);
@@ -254,11 +258,26 @@ const plugins = {
     ipcRenderer.invoke('plugins:set-registry-url', { url }),
   fetchRegistry: (): Promise<{ entries: unknown[]; error: string | null }> =>
     ipcRenderer.invoke('plugins:fetch-registry'),
+  listPanels: (): Promise<{ panels: PluginPanelDescriptor[] }> =>
+    ipcRenderer.invoke('plugins:list-panels'),
   onChanged: (listener: PluginsChangedListener): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: PluginsChangedEvent): void =>
       listener(payload);
     ipcRenderer.on('plugins:changed', wrapped);
     return () => ipcRenderer.off('plugins:changed', wrapped);
+  },
+};
+
+type AgentRunsChangedListener = (payload: AgentRunsChangedEvent) => void;
+
+const agent = {
+  listRuns: (): Promise<AgentRun[]> => ipcRenderer.invoke('agent:list-runs'),
+  clearRuns: (): Promise<AgentRun[]> => ipcRenderer.invoke('agent:clear-runs'),
+  onRunsChanged: (listener: AgentRunsChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: AgentRunsChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('agent:runs-changed', wrapped);
+    return () => ipcRenderer.off('agent:runs-changed', wrapped);
   },
 };
 
@@ -281,6 +300,7 @@ const api = {
   mcp,
   onboarding,
   plugins,
+  agent,
   fileTree: {
     list: (
       path?: string,

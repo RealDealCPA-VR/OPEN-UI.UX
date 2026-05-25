@@ -1,0 +1,34 @@
+export type AgentRunStatus = 'running' | 'completed' | 'failed';
+
+export type AgentRunStopReason =
+  | 'end_turn'
+  | 'tool_use'
+  | 'max_tokens'
+  | 'budget_exceeded'
+  | 'error';
+
+export interface AgentRunToolEvent {
+  name: string;
+  isError: boolean;
+  durationMs: number;
+}
+
+export interface AgentRun {
+  id: string;
+  task: string;
+  providerId: string;
+  modelId: string;
+  status: AgentRunStatus;
+  startedAt: number;
+  completedAt: number | null;
+  inputTokens: number;
+  outputTokens: number;
+  iterations: number;
+  toolEvents: AgentRunToolEvent[];
+  stopReason: AgentRunStopReason | null;
+  error: string | null;
+}
+
+export interface AgentRunsChangedEvent {
+  runs: AgentRun[];
+}

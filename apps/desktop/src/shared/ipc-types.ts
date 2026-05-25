@@ -3,6 +3,7 @@
  * Both sides import from here so the wire format stays in sync.
  */
 
+import type { AgentRun, AgentRunsChangedEvent } from './agent-runs';
 import type {
   ApprovalPolicies,
   ApprovalRequest,
@@ -44,6 +45,7 @@ import type {
 import type { ToolListItem } from './tools';
 import type {
   AddMcpServerRequest,
+  McpPromptEntry,
   McpServerChangedEvent,
   McpServerPreset,
   McpState,
@@ -55,6 +57,7 @@ import type {
   GrantPluginPermissionsRequest,
   InstallPluginRequest,
   PluginListItem,
+  PluginPanelDescriptor,
   PluginsChangedEvent,
   UninstallPluginRequest,
 } from './plugins';
@@ -218,6 +221,10 @@ export interface IpcInvokeChannels {
     request: void;
     response: ReadonlyArray<McpServerPreset>;
   };
+  'mcp:list-prompts': {
+    request: void;
+    response: McpPromptEntry[];
+  };
   'onboarding:get-state': {
     request: void;
     response: { complete: boolean };
@@ -262,6 +269,10 @@ export interface IpcInvokeChannels {
     request: void;
     response: { entries: unknown[]; error: string | null };
   };
+  'plugins:list-panels': {
+    request: void;
+    response: { panels: PluginPanelDescriptor[] };
+  };
   'chat:get-read-only-mode': {
     request: void;
     response: { readOnly: boolean };
@@ -269,6 +280,14 @@ export interface IpcInvokeChannels {
   'chat:set-read-only-mode': {
     request: { readOnly: boolean };
     response: { readOnly: boolean };
+  };
+  'agent:list-runs': {
+    request: void;
+    response: AgentRun[];
+  };
+  'agent:clear-runs': {
+    request: void;
+    response: AgentRun[];
   };
   'file-tree:list': {
     request: { path?: string };
@@ -293,6 +312,7 @@ export interface IpcEventChannels {
   'mcp:changed': McpServerChangedEvent;
   'plugins:changed': PluginsChangedEvent;
   'chat:read-only-changed': { readOnly: boolean };
+  'agent:runs-changed': AgentRunsChangedEvent;
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

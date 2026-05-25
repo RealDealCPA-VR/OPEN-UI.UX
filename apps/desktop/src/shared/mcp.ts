@@ -74,3 +74,21 @@ export interface McpServerPreset {
   description: string;
   template: Omit<McpServerEntry, 'enabled'>;
 }
+
+export interface McpPromptArgument {
+  name: string;
+  description?: string;
+  required?: boolean;
+}
+
+export interface McpPromptInfo {
+  name: string;
+  description?: string;
+  arguments?: McpPromptArgument[];
+}
+
+export interface McpPromptEntry {
+  serverId: string;
+  serverDisplayName: string;
+  prompt: McpPromptInfo;
+}

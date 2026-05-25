@@ -32,6 +32,7 @@
     "@opencodex/provider-xai": "workspace:*",
     "@opencodex/tools": "workspace:*",
     "better-sqlite3": "^11.3.0",
+    "chokidar": "^4.0.3",
     "electron-store": "^10.0.0",
     "electron-updater": "^6.3.0",
     "keytar": "^7.9.0",

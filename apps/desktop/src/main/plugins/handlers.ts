@@ -5,6 +5,7 @@ import { registerInvoke } from '../ipc/registry';
 import {
   grantPermissions,
   installPluginFromPath,
+  listPanels,
   listPlugins,
   loadStoredPlugins,
   onPluginsChange,
@@ -15,6 +16,7 @@ import { getPluginRegistryUrl, setPluginRegistryUrl } from '../storage/settings'
 
 export function registerPluginHandlers(): void {
   registerInvoke('plugins:list', z.void(), () => ({ plugins: listPlugins() }));
+  registerInvoke('plugins:list-panels', z.void(), () => ({ panels: listPanels() }));
   registerInvoke(
     'plugins:install-from-path',
     z.object({ path: z.string().min(1) }),

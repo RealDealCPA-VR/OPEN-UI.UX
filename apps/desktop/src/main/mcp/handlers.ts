@@ -4,6 +4,7 @@ import { mcpServerEntrySchema } from '../../shared/mcp';
 import { registerInvoke } from '../ipc/registry';
 import {
   addServer,
+  getAvailablePrompts,
   getMcpState,
   onMcpStateChange,
   removeServer,
@@ -24,6 +25,7 @@ export function registerMcpHandlers(): void {
     ({ id, enabled }) => setServerEnabled(id, enabled),
   );
   registerInvoke('mcp:presets', z.void(), () => MCP_PRESETS);
+  registerInvoke('mcp:list-prompts', z.void(), () => getAvailablePrompts());
 
   onMcpStateChange((state) => {
     for (const win of BrowserWindow.getAllWindows()) {

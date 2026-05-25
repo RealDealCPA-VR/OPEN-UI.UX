@@ -69,6 +69,23 @@ const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_tool_calls_tool_name ON tool_calls(tool_name);
     `,
   },
+  {
+    version: 5,
+    sql: `
+      CREATE VIRTUAL TABLE indexed_files USING fts5(
+        path,
+        content,
+        tokenize='unicode61'
+      );
+
+      CREATE TABLE indexed_files_meta (
+        path TEXT PRIMARY KEY,
+        mtime INTEGER NOT NULL,
+        size INTEGER NOT NULL,
+        indexed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `,
+  },
 ];
 
 let db: Database.Database | null = null;

@@ -13,6 +13,13 @@ export interface PluginListItem {
   lastError?: string;
 }
 
+export interface PluginPanelDescriptor {
+  pluginId: string;
+  id: string;
+  title: string;
+  htmlPath: string;
+}
+
 export type InstallPluginRequest = { path: string };
 export type EnablePluginRequest = { id: string; enabled: boolean };
 export type UninstallPluginRequest = { id: string };

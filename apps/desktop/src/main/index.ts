@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { logger } from './logger';
+import { registerAgentHandlers } from './agent/handlers';
 import { registerApprovalHandlers } from './chat/approval-handlers';
 import { registerChatHandlers } from './chat/handlers';
 import { registerReadOnlyChatHandlers } from './chat/read-only-handlers';
@@ -14,9 +15,10 @@ import { registerOnboardingHandlers } from './onboarding/handlers';
 import { registerPluginHandlers } from './plugins/handlers';
 import { shutdownAllPlugins } from './plugins/manager';
 import { registerProviderHandlers } from './providers/handlers';
+import { setWatchedWorkspace, stopWatchedWorkspace } from './rag/watcher';
 import { registerSelectedModelHandlers } from './selected-model/handlers';
 import { openDb, closeDb } from './storage/db';
-import { getAuditRetentionDays, getTheme } from './storage/settings';
+import { getAuditRetentionDays, getSettings, getTheme, settingsStore } from './storage/settings';
 import { purgeToolCallsOlderThan } from './storage/tool-audit';
 import { registerThemeHandlers } from './theme/handlers';
 import { registerToolAuditHandlers } from './tool-audit/handlers';
@@ -136,6 +138,8 @@ app.whenReady().then(() => {
   createWindow();
   createTray(() => mainWindow);
 
+  initWorkspaceWatcher();
+
   if (app.isPackaged) initAutoUpdater();
 
   app.on('activate', () => {
@@ -151,8 +155,38 @@ app.on('before-quit', () => {
   destroyTray();
   shutdownAllPlugins();
   void shutdownAllMcpServers();
+  void stopWatchedWorkspace();
   closeDb();
 });
+
+function handleWatcherBatch(batch: {
+  added: string[];
+  changed: string[];
+  removed: string[];
+}): void {
+  logger.debug(
+    {
+      added: batch.added.length,
+      changed: batch.changed.length,
+      removed: batch.removed.length,
+    },
+    'workspace watcher batch',
+  );
+}
+
+function initWorkspaceWatcher(): void {
+  const applyRoot = (root: string | null): void => {
+    void setWatchedWorkspace(root, handleWatcherBatch).catch((err: unknown) => {
+      logger.warn({ err, root }, 'workspace watcher failed to start');
+    });
+  };
+
+  applyRoot(getSettings().activeWorkspace);
+
+  settingsStore.onDidChange('activeWorkspace', (next) => {
+    applyRoot(typeof next === 'string' ? next : null);
+  });
+}
 
 function registerIpcHandlers(): void {
   registerInvoke('app:version', z.void(), () => app.getVersion());
@@ -169,4 +203,5 @@ function registerIpcHandlers(): void {
   registerMcpHandlers();
   registerOnboardingHandlers();
   registerPluginHandlers();
+  registerAgentHandlers();
 }

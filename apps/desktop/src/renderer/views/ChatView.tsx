@@ -1,7 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { ContentBlock } from '@opencodex/core';
 import { Markdown } from '../components/Markdown';
+import { SlashCommands } from '../components/SlashCommands';
+import {
+  applyInsert,
+  filterPrompts,
+  formatPromptInsert,
+  getSlashTrigger,
+  type SlashCommandTrigger,
+} from '../components/slash-commands';
 import { ToolCallCard } from '../components/ToolCallCard';
 import { groupContentBlocks } from '../components/tool-block-grouping';
 import { useChat, type AssistantDraft } from '../state/chat-context';
@@ -12,6 +20,7 @@ import type {
   ConversationUsage,
   StoredMessage,
 } from '../../shared/conversation';
+import type { McpPromptEntry } from '../../shared/mcp';
 
 export function ChatView(): JSX.Element {
   const { selected, selectedCapabilities, loading: modelLoading } = useSelectedModel();
@@ -162,6 +171,9 @@ function ChatPane({
   const [input, setInput] = useState('');
   const [toolsEnabled, setToolsEnabled] = useState(true);
   const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
+  const [mcpPrompts, setMcpPrompts] = useState<McpPromptEntry[]>([]);
+  const [slashTrigger, setSlashTrigger] = useState<SlashCommandTrigger | null>(null);
+  const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const consumedScrollRef = useRef<Set<string>>(new Set());
@@ -181,6 +193,26 @@ function ChatPane({
     const off = window.opencodex.workspace.onChanged((payload) => {
       if (!cancelled) setActiveWorkspace(payload.state.active);
     });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = (): void => {
+      void window.opencodex.mcp
+        .listPrompts()
+        .then((rows) => {
+          if (!cancelled) setMcpPrompts(rows);
+        })
+        .catch(() => {
+          // Slash menu degrades gracefully when prompts can't load.
+        });
+    };
+    refresh();
+    const off = window.opencodex.mcp.onChanged(() => refresh());
     return () => {
       cancelled = true;
       off();
@@ -221,15 +253,88 @@ function ChatPane({
     el.scrollTop = el.scrollHeight;
   }, [chatMessages, chatDraft]);
 
+  const filteredSlashPrompts = useMemo(
+    () => (slashTrigger ? filterPrompts(mcpPrompts, slashTrigger.query) : []),
+    [slashTrigger, mcpPrompts],
+  );
+  const slashOpen = slashTrigger !== null;
+
   const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
+    if (slashOpen) return;
     const trimmed = input.trim();
     if (!trimmed || chat.streaming) return;
     setInput('');
     void chat.send({ providerId, modelId, userMessage: trimmed });
   };
 
+  const closeSlash = (): void => {
+    setSlashTrigger(null);
+    setSlashActiveIndex(0);
+  };
+
+  const insertPrompt = (entry: McpPromptEntry): void => {
+    if (!slashTrigger) return;
+    const el = inputRef.current;
+    const caret = el ? (el.selectionEnd ?? input.length) : input.length;
+    const insert = formatPromptInsert(entry);
+    const next = applyInsert(input, slashTrigger, caret, insert);
+    setInput(next.value);
+    closeSlash();
+    if (el) {
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(next.caret, next.caret);
+      });
+    }
+  };
+
+  const updateSlashFromCaret = (value: string, caret: number): void => {
+    const trigger = getSlashTrigger(value, caret);
+    setSlashTrigger(trigger);
+    if (!trigger) setSlashActiveIndex(0);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
+    const next = e.target.value;
+    setInput(next);
+    updateSlashFromCaret(next, e.target.selectionEnd ?? next.length);
+  };
+
+  const handleSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>): void => {
+    const el = e.currentTarget;
+    updateSlashFromCaret(el.value, el.selectionEnd ?? el.value.length);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (slashOpen) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeSlash();
+        return;
+      }
+      if (filteredSlashPrompts.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setSlashActiveIndex((i) => (i + 1) % filteredSlashPrompts.length);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setSlashActiveIndex(
+            (i) => (i - 1 + filteredSlashPrompts.length) % filteredSlashPrompts.length,
+          );
+          return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          const idx = Math.min(slashActiveIndex, filteredSlashPrompts.length - 1);
+          const entry = filteredSlashPrompts[idx];
+          if (entry) insertPrompt(entry);
+          return;
+        }
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
@@ -293,16 +398,32 @@ function ChatPane({
         </div>
       ) : null}
       <form className="chat-composer" onSubmit={handleSubmit}>
-        <textarea
-          ref={inputRef}
-          className="chat-input"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={`Message ${modelName}…`}
-          rows={3}
-          disabled={chat.streaming}
-        />
+        <div className="chat-input-wrap">
+          {slashTrigger !== null ? (
+            <SlashCommands
+              query={slashTrigger.query}
+              prompts={mcpPrompts}
+              activeIndex={Math.min(slashActiveIndex, Math.max(0, filteredSlashPrompts.length - 1))}
+              onSelect={insertPrompt}
+              onActiveIndexChange={setSlashActiveIndex}
+              onClose={closeSlash}
+            />
+          ) : null}
+          <textarea
+            ref={inputRef}
+            className="chat-input"
+            value={input}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onSelect={handleSelect}
+            onBlur={() => {
+              setTimeout(() => closeSlash(), 0);
+            }}
+            placeholder={`Message ${modelName}…`}
+            rows={3}
+            disabled={chat.streaming}
+          />
+        </div>
         <div className="chat-composer-actions">
           {supportsTools ? (
             <label className="toggle">

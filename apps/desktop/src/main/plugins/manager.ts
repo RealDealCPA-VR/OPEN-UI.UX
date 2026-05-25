@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { resolve as resolvePath } from 'node:path';
 import {
   loadPluginModule,
   readManifest,
@@ -9,7 +10,7 @@ import {
   type PluginManifest,
 } from '@opencodex/plugin-sdk';
 import type { ProviderFactory, Tool } from '@opencodex/core';
-import type { PluginListItem, PluginStatus } from '../../shared/plugins';
+import type { PluginListItem, PluginPanelDescriptor, PluginStatus } from '../../shared/plugins';
 import { logger } from '../logger';
 import { getStoredPlugins, setStoredPlugins } from '../storage/settings';
 import { getToolRegistry } from '../tools/registry';
@@ -64,6 +65,24 @@ function emit(): void {
 
 export function listPlugins(): PluginListItem[] {
   return snapshot();
+}
+
+export function listPanels(): PluginPanelDescriptor[] {
+  const out: PluginPanelDescriptor[] = [];
+  for (const [id, r] of runtime.entries()) {
+    if (r.status !== 'loaded') continue;
+    const panels = r.manifest.contributions.panels;
+    if (!panels) continue;
+    for (const p of panels) {
+      out.push({
+        pluginId: id,
+        id: p.id,
+        title: p.title,
+        htmlPath: resolvePath(r.installPath, p.entry),
+      });
+    }
+  }
+  return out;
 }
 
 export function onPluginsChange(listener: StateListener): () => void {

@@ -3,6 +3,7 @@ import { HashRouter, Navigate, Route, Routes, useNavigate } from 'react-router-d
 import { AppShell } from './components/AppShell';
 import { ApprovalQueue } from './components/ApprovalQueue';
 import { OnboardingWizard } from './components/OnboardingWizard';
+import { PluginPanelHost } from './components/PluginPanelHost';
 import { ThemeApplier } from './components/ThemeApplier';
 import { ChatProvider } from './state/chat-context';
 import { SelectedModelProvider } from './state/selected-model-context';
@@ -27,6 +28,7 @@ export function App(): JSX.Element {
               <Route path="/agent" element={<AgentView />} />
               <Route path="/codebase" element={<CodebaseView />} />
               <Route path="/settings" element={<SettingsView />} />
+              <Route path="/plugins/:pluginId/:panelId" element={<PluginPanelHost />} />
               <Route path="*" element={<Navigate to="/chat" replace />} />
             </Route>
           </Routes>

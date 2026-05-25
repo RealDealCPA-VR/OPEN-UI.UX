@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { defineTool } from '@opencodex/core';
 import { logger } from '../logger';
-import { runSubagent } from './subagent';
+import { recordComplete, recordError, recordStart } from './run-registry';
+import { runSubagent, type SubagentResult } from './subagent';
+import { isUtilityProcessAvailable, runSubagentInWorker } from './worker-host';
 
 const inputSchema = z.object({
   task: z.string().min(1).describe('What the subagent should accomplish — be specific'),
@@ -29,25 +31,49 @@ export const spawnSubagentTool = defineTool({
       { task: input.task.slice(0, 80), providerId: input.providerId, modelId: input.modelId },
       'spawning subagent',
     );
-    const [{ buildProviderForId }, { getToolRegistry }] = await Promise.all([
-      import('../chat/provider-builder'),
-      import('../tools/registry'),
-    ]);
-    const provider = await buildProviderForId(input.providerId);
-    const result = await runSubagent({
+    const budget = {
+      maxToolIterations: input.maxToolIterations,
+      ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
+      ...(input.maxWallTimeMs !== undefined ? { maxWallTimeMs: input.maxWallTimeMs } : {}),
+    };
+
+    const runId = recordStart({
       task: input.task,
-      provider,
+      providerId: input.providerId,
       modelId: input.modelId,
-      toolRegistry: getToolRegistry(),
-      ...(input.allowedTools ? { allowedToolNames: input.allowedTools } : {}),
-      workspaceRoot: ctx.workspaceRoot,
-      signal: ctx.signal,
-      budget: {
-        maxToolIterations: input.maxToolIterations,
-        ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {}),
-        ...(input.maxWallTimeMs !== undefined ? { maxWallTimeMs: input.maxWallTimeMs } : {}),
-      },
     });
+
+    let result: SubagentResult;
+    try {
+      const useWorker = await isUtilityProcessAvailable();
+      if (useWorker) {
+        try {
+          result = await runSubagentInWorker({
+            task: input.task,
+            providerId: input.providerId,
+            modelId: input.modelId,
+            workspaceRoot: ctx.workspaceRoot,
+            ...(input.allowedTools ? { allowedToolNames: input.allowedTools } : {}),
+            budget,
+            ...(ctx.signal ? { signal: ctx.signal } : {}),
+          });
+        } catch (err) {
+          logger.error(
+            { err: err instanceof Error ? err.message : String(err) },
+            'subagent worker failed; falling back to inline execution',
+          );
+          result = await runInline();
+        }
+      } else {
+        result = await runInline();
+      }
+    } catch (err) {
+      recordError(runId, err);
+      throw err;
+    }
+
+    recordComplete(runId, result);
+
     return {
       summary: result.text,
       stopReason: result.stopReason,
@@ -56,5 +82,23 @@ export const spawnSubagentTool = defineTool({
       toolEventCount: result.toolEvents.length,
       ...(result.error ? { error: result.error } : {}),
     };
+
+    async function runInline(): Promise<SubagentResult> {
+      const [{ buildProviderForId }, { getToolRegistry }] = await Promise.all([
+        import('../chat/provider-builder'),
+        import('../tools/registry'),
+      ]);
+      const provider = await buildProviderForId(input.providerId);
+      return runSubagent({
+        task: input.task,
+        provider,
+        modelId: input.modelId,
+        toolRegistry: getToolRegistry(),
+        ...(input.allowedTools ? { allowedToolNames: input.allowedTools } : {}),
+        workspaceRoot: ctx.workspaceRoot,
+        signal: ctx.signal,
+        budget,
+      });
+    }
   },
 });

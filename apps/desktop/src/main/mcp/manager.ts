@@ -1,6 +1,7 @@
-import { McpClient, type McpServerConfig } from '@opencodex/mcp-client';
+import { McpClient, type McpPrompt, type McpServerConfig } from '@opencodex/mcp-client';
 import type {
   McpConnectionStatus,
+  McpPromptEntry,
   McpServerEntry,
   McpServerStatus,
   McpState,
@@ -17,6 +18,7 @@ interface RuntimeState {
   toolCount: number;
   resourceCount: number;
   promptCount: number;
+  prompts: McpPrompt[];
   lastError?: string;
   connectedAt?: string;
   reconnectTimer?: NodeJS.Timeout;
@@ -45,6 +47,7 @@ function ensureRuntime(id: string): RuntimeState {
       toolCount: 0,
       resourceCount: 0,
       promptCount: 0,
+      prompts: [],
       registeredTools: [],
     };
     runtime.set(id, r);
@@ -57,6 +60,8 @@ function unregisterServerTools(serverId: string): void {
   const registry = getToolRegistry();
   for (const name of r.registeredTools) registry.unregister(name);
   r.registeredTools = [];
+  r.prompts = [];
+  r.promptCount = 0;
 }
 
 function readState(): McpState {
@@ -80,6 +85,37 @@ function readState(): McpState {
 
 export function getMcpState(): McpState {
   return readState();
+}
+
+export function getAvailablePrompts(): McpPromptEntry[] {
+  const servers = getMcpServers();
+  const out: McpPromptEntry[] = [];
+  for (const s of servers) {
+    if (!s.enabled) continue;
+    const r = ensureRuntime(s.id);
+    if (r.status !== 'connected') continue;
+    for (const p of r.prompts) {
+      const entry: McpPromptEntry = {
+        serverId: s.id,
+        serverDisplayName: s.displayName,
+        prompt: {
+          name: p.name,
+          ...(p.description !== undefined ? { description: p.description } : {}),
+          ...(p.arguments !== undefined
+            ? {
+                arguments: p.arguments.map((a) => ({
+                  name: a.name,
+                  ...(a.description !== undefined ? { description: a.description } : {}),
+                  ...(a.required !== undefined ? { required: a.required } : {}),
+                })),
+              }
+            : {}),
+        },
+      };
+      out.push(entry);
+    }
+  }
+  return out;
 }
 
 export function onMcpStateChange(listener: StateListener): () => void {
@@ -169,8 +205,11 @@ async function refreshCounts(serverId: string, client: McpClient): Promise<void>
     r.resourceCount = 0;
   }
   try {
-    r.promptCount = (await client.listPrompts()).length;
+    const remotePrompts = await client.listPrompts();
+    r.prompts = remotePrompts;
+    r.promptCount = remotePrompts.length;
   } catch {
+    r.prompts = [];
     r.promptCount = 0;
   }
   void mcpToolName; // keep helper exported for tests
