@@ -15,6 +15,7 @@ import type {
   ChatStartResponse,
   ChatStreamEvent,
 } from '../shared/chat';
+import type { PrepareAttachmentsRequest, PrepareAttachmentsResponse } from '../shared/attachments';
 import type {
   AppendMessageRequest,
   Conversation,
@@ -169,6 +170,11 @@ const chat = {
   },
 };
 
+const attachments = {
+  prepare: (req: PrepareAttachmentsRequest): Promise<PrepareAttachmentsResponse> =>
+    ipcRenderer.invoke('attachments:prepare', req),
+};
+
 const approvals = {
   getPolicies: (): Promise<ApprovalPolicies> => ipcRenderer.invoke('approvals:get-policies'),
   setPolicy: (req: SetPolicyRequest): Promise<ApprovalPolicies> =>
@@ -313,6 +319,7 @@ const api = {
   selectedModel,
   conversations,
   chat,
+  attachments,
   approvals,
   tools,
   toolAudit,

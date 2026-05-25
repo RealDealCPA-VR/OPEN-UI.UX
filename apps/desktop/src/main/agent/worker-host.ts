@@ -69,10 +69,8 @@ function toToolEvent(e: WorkerEventMessage['event']): SubagentToolEvent {
 }
 
 function resolveWorkerEntryPath(): string {
-  // worker-host.ts is bundled into out/main/index.js (alongside the main process bundle).
-  // The worker-entry chunk is emitted to out/main/agent/worker-entry.js by electron.vite.config.ts.
   const here = dirname(fileURLToPath(import.meta.url));
-  return join(here, 'agent', 'worker-entry.js');
+  return join(here, 'agent', 'worker-entry.cjs');
 }
 
 export async function runSubagentInWorker(

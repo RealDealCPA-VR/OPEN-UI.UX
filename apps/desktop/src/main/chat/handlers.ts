@@ -16,6 +16,7 @@ import {
 } from '../storage/conversations';
 import { getSettings } from '../storage/settings';
 import { cancelChatStream, startChatStream, type ChatStreamSink } from './runner';
+import { prepareAttachments } from './attachments';
 
 const roleSchema = z.enum(['system', 'user', 'assistant', 'tool']);
 
@@ -110,6 +111,40 @@ export function registerChatHandlers(): void {
     },
   );
 
+  const attachmentImageSchema = z.object({
+    kind: z.literal('image'),
+    name: z.string(),
+    path: z.string(),
+    mimeType: z.string(),
+    data: z.string(),
+    sizeBytes: z.number().int().nonnegative(),
+  });
+  const attachmentTextSchema = z.object({
+    kind: z.literal('text'),
+    name: z.string(),
+    path: z.string(),
+    mimeType: z.string(),
+    text: z.string(),
+    truncated: z.boolean(),
+    sizeBytes: z.number().int().nonnegative(),
+  });
+  const attachmentBinarySchema = z.object({
+    kind: z.literal('binary'),
+    name: z.string(),
+    path: z.string(),
+    mimeType: z.string(),
+    sizeBytes: z.number().int().nonnegative(),
+  });
+  const attachmentSchema = z.discriminatedUnion('kind', [
+    attachmentImageSchema,
+    attachmentTextSchema,
+    attachmentBinarySchema,
+  ]);
+
+  registerInvoke('attachments:prepare', z.object({ paths: z.array(z.string().min(1)) }), (req) =>
+    prepareAttachments(req.paths),
+  );
+
   registerInvoke(
     'chat:start',
     z.object({
@@ -117,6 +152,7 @@ export function registerChatHandlers(): void {
       providerId: z.string().min(1),
       modelId: z.string().min(1),
       userMessage: z.string().min(1),
+      attachments: z.array(attachmentSchema).optional(),
     }),
     async (req) => {
       const caps = await resolveSelectedModel({
@@ -133,6 +169,7 @@ export function registerChatHandlers(): void {
           modelId: req.modelId,
           conversationId: req.conversationId,
           workspaceRoot,
+          attachments: req.attachments?.length ?? 0,
         },
         'chat stream starting',
       );
@@ -141,6 +178,7 @@ export function registerChatHandlers(): void {
         providerId: req.providerId,
         modelId: req.modelId,
         userMessage: req.userMessage,
+        attachments: req.attachments ?? [],
         sink: broadcast(),
         workspaceRoot,
       });

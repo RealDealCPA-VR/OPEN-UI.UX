@@ -95,32 +95,138 @@ function ProviderGroup({ provider, selected, onPick }: ProviderGroupProps): JSX.
     () => provider.info.models.filter((m) => !m.embeddings),
     [provider.info.models],
   );
+
+  const vendorBuckets = useMemo(() => {
+    const buckets = new Map<string, ModelCapabilities[]>();
+    for (const model of chatModels) {
+      const slash = model.id.indexOf('/');
+      const vendor = slash > 0 ? model.id.slice(0, slash) : '';
+      const list = buckets.get(vendor);
+      if (list) list.push(model);
+      else buckets.set(vendor, [model]);
+    }
+    return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [chatModels]);
+
+  const useVendorGrouping = chatModels.length > 15 && vendorBuckets.every(([v]) => v !== '');
+
   if (chatModels.length === 0) return null;
+
+  if (!useVendorGrouping) {
+    return (
+      <div className="model-picker-group">
+        <div className="model-picker-group-head">{provider.info.displayName}</div>
+        {chatModels.map((model) => (
+          <ModelRow
+            key={model.id}
+            providerId={provider.info.id}
+            model={model}
+            selected={selected}
+            onPick={onPick}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  const selectedVendor =
+    selected && selected.providerId === provider.info.id
+      ? (selected.modelId.split('/')[0] ?? null)
+      : null;
+
   return (
     <div className="model-picker-group">
-      <div className="model-picker-group-head">{provider.info.displayName}</div>
-      {chatModels.map((model) => {
-        const isSelected =
-          selected !== null &&
-          selected.providerId === provider.info.id &&
-          selected.modelId === model.id;
-        return (
-          <button
-            key={model.id}
-            type="button"
-            role="option"
-            aria-selected={isSelected}
-            className={isSelected ? 'model-picker-row selected' : 'model-picker-row'}
-            onClick={() => onPick({ providerId: provider.info.id, modelId: model.id })}
-          >
-            <span className="model-picker-row-main">
-              <span className="model-picker-row-name">{model.displayName}</span>
-              <ModelChips model={model} />
-            </span>
-            <ModelBadges model={model} />
-          </button>
-        );
-      })}
+      <div className="model-picker-group-head">
+        {provider.info.displayName}{' '}
+        <span className="model-picker-count">({chatModels.length})</span>
+      </div>
+      {vendorBuckets.map(([vendor, models]) => (
+        <VendorSubGroup
+          key={vendor}
+          providerId={provider.info.id}
+          vendor={vendor}
+          models={models}
+          selected={selected}
+          onPick={onPick}
+          defaultOpen={vendor === selectedVendor}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface ModelRowProps {
+  providerId: string;
+  model: ModelCapabilities;
+  selected: { providerId: string; modelId: string } | null;
+  onPick: (sel: { providerId: string; modelId: string }) => void;
+}
+
+function ModelRow({ providerId, model, selected, onPick }: ModelRowProps): JSX.Element {
+  const isSelected =
+    selected !== null && selected.providerId === providerId && selected.modelId === model.id;
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={isSelected}
+      className={isSelected ? 'model-picker-row selected' : 'model-picker-row'}
+      onClick={() => onPick({ providerId, modelId: model.id })}
+    >
+      <span className="model-picker-row-main">
+        <span className="model-picker-row-name">{model.displayName}</span>
+        <ModelChips model={model} />
+      </span>
+      <ModelBadges model={model} />
+    </button>
+  );
+}
+
+interface VendorSubGroupProps {
+  providerId: string;
+  vendor: string;
+  models: ModelCapabilities[];
+  selected: { providerId: string; modelId: string } | null;
+  onPick: (sel: { providerId: string; modelId: string }) => void;
+  defaultOpen: boolean;
+}
+
+function VendorSubGroup({
+  providerId,
+  vendor,
+  models,
+  selected,
+  onPick,
+  defaultOpen,
+}: VendorSubGroupProps): JSX.Element {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className={open ? 'model-picker-vendor open' : 'model-picker-vendor'}>
+      <button
+        type="button"
+        className="model-picker-vendor-head"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="model-picker-vendor-caret" aria-hidden="true">
+          {open ? '▾' : '▸'}
+        </span>
+        <span className="model-picker-vendor-name">{vendor}</span>
+        <span className="model-picker-count">{models.length}</span>
+      </button>
+      {open ? (
+        <div className="model-picker-vendor-body">
+          {models.map((model) => (
+            <ModelRow
+              key={model.id}
+              providerId={providerId}
+              model={model}
+              selected={selected}
+              onPick={onPick}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -7,6 +7,8 @@ import { openRouterProvider } from '@opencodex/provider-openrouter';
 import { xaiProvider } from '@opencodex/provider-xai';
 import type { ModelCapabilities, ProviderConfig, ProviderFactory } from '@opencodex/core';
 import type { ProviderExtraField, ProviderInfo } from '../../shared/provider-config';
+import { getProviderEntry } from '../storage/settings';
+import { getSecret } from '../storage/secrets';
 
 export interface PingInput {
   apiKey: string | undefined;
@@ -28,7 +30,7 @@ export interface CatalogEntry {
   defaultBaseUrl: string;
   extraFields: ProviderExtraField[];
   factory: ProviderFactory;
-  loadModels(): Promise<ModelCapabilities[]>;
+  loadModels(config: ProviderConfig): Promise<ModelCapabilities[]>;
   buildPingSpec(input: PingInput): PingSpec;
 }
 
@@ -69,7 +71,8 @@ export const catalog: CatalogEntry[] = [
       },
     ],
     factory: openAIProvider,
-    loadModels: () => openAIProvider.create(openAIProvider.configSchema.parse({})).listModels(),
+    loadModels: (config) =>
+      openAIProvider.create(openAIProvider.configSchema.parse(config)).listModels(),
     buildPingSpec: ({ apiKey, baseUrl }) => ({
       url: `${stripSlash(baseUrl ?? OPENAI_BASE)}/models`,
       method: 'GET',
@@ -99,8 +102,8 @@ export const catalog: CatalogEntry[] = [
       },
     ],
     factory: anthropicProvider,
-    loadModels: () =>
-      anthropicProvider.create(anthropicProvider.configSchema.parse({})).listModels(),
+    loadModels: (config) =>
+      anthropicProvider.create(anthropicProvider.configSchema.parse(config)).listModels(),
     buildPingSpec: ({ apiKey, baseUrl, extra }) => ({
       url: `${stripSlash(baseUrl ?? ANTHROPIC_BASE)}/models`,
       method: 'GET',
@@ -126,7 +129,8 @@ export const catalog: CatalogEntry[] = [
       },
     ],
     factory: googleProvider,
-    loadModels: () => googleProvider.create(googleProvider.configSchema.parse({})).listModels(),
+    loadModels: (config) =>
+      googleProvider.create(googleProvider.configSchema.parse(config)).listModels(),
     buildPingSpec: ({ apiKey, baseUrl, extra }) => {
       const version = extra['apiVersion'] ?? 'v1beta';
       const base = stripSlash(baseUrl ?? GOOGLE_BASE);
@@ -146,7 +150,7 @@ export const catalog: CatalogEntry[] = [
     defaultBaseUrl: XAI_BASE,
     extraFields: [],
     factory: xaiProvider,
-    loadModels: () => xaiProvider.create(xaiProvider.configSchema.parse({})).listModels(),
+    loadModels: (config) => xaiProvider.create(xaiProvider.configSchema.parse(config)).listModels(),
     buildPingSpec: ({ apiKey, baseUrl }) => ({
       url: `${stripSlash(baseUrl ?? XAI_BASE)}/models`,
       method: 'GET',
@@ -161,7 +165,8 @@ export const catalog: CatalogEntry[] = [
     defaultBaseUrl: MISTRAL_BASE,
     extraFields: [],
     factory: mistralProvider,
-    loadModels: () => mistralProvider.create(mistralProvider.configSchema.parse({})).listModels(),
+    loadModels: (config) =>
+      mistralProvider.create(mistralProvider.configSchema.parse(config)).listModels(),
     buildPingSpec: ({ apiKey, baseUrl }) => ({
       url: `${stripSlash(baseUrl ?? MISTRAL_BASE)}/models`,
       method: 'GET',
@@ -185,7 +190,8 @@ export const catalog: CatalogEntry[] = [
       },
     ],
     factory: ollamaProvider,
-    loadModels: () => ollamaProvider.create(ollamaProvider.configSchema.parse({})).listModels(),
+    loadModels: (config) =>
+      ollamaProvider.create(ollamaProvider.configSchema.parse(config)).listModels(),
     buildPingSpec: ({ baseUrl }) => ({
       url: `${stripSlash(baseUrl ?? OLLAMA_BASE)}/api/tags`,
       method: 'GET',
@@ -215,8 +221,8 @@ export const catalog: CatalogEntry[] = [
       },
     ],
     factory: openRouterProvider,
-    loadModels: () =>
-      openRouterProvider.create(openRouterProvider.configSchema.parse({})).listModels(),
+    loadModels: (config) =>
+      openRouterProvider.create(openRouterProvider.configSchema.parse(config)).listModels(),
     buildPingSpec: ({ apiKey, baseUrl }) => ({
       url: `${stripSlash(baseUrl ?? OPENROUTER_BASE)}/auth/key`,
       method: 'GET',
@@ -228,20 +234,51 @@ export const catalog: CatalogEntry[] = [
 
 export const catalogById: Map<string, CatalogEntry> = new Map(catalog.map((e) => [e.id, e]));
 
+const apiKeyAccount = (id: string): string => `provider:${id}:apiKey`;
+
 const infoCache: Map<string, ProviderInfo> = new Map();
+
+export function invalidateProviderInfo(id?: string): void {
+  if (id === undefined) infoCache.clear();
+  else infoCache.delete(id);
+}
+
+async function resolveStoredConfig(entry: CatalogEntry): Promise<ProviderConfig> {
+  let baseUrl: string | null = null;
+  let extra: Record<string, string> = {};
+  try {
+    const stored = getProviderEntry(entry.id);
+    baseUrl = stored.baseUrl;
+    extra = stored.extra;
+  } catch {
+    // Settings store unavailable (e.g. vitest without electron) — fall back to defaults.
+  }
+  let apiKey: string | undefined;
+  try {
+    apiKey = (await getSecret(apiKeyAccount(entry.id))) ?? undefined;
+  } catch {
+    // Keytar unavailable — fall back to no key (listModels returns static list).
+  }
+  try {
+    return buildProviderConfig(entry, { apiKey, baseUrl, extra });
+  } catch {
+    return entry.factory.configSchema.parse({});
+  }
+}
 
 export async function getProviderInfo(id: string): Promise<ProviderInfo | undefined> {
   const cached = infoCache.get(id);
   if (cached) return cached;
   const entry = catalogById.get(id);
   if (!entry) return undefined;
+  const config = await resolveStoredConfig(entry);
   const info: ProviderInfo = {
     id: entry.id,
     displayName: entry.displayName,
     requiresApiKey: entry.requiresApiKey,
     defaultBaseUrl: entry.defaultBaseUrl,
     extraFields: entry.extraFields,
-    models: await entry.loadModels(),
+    models: await entry.loadModels(config),
   };
   infoCache.set(id, info);
   return info;

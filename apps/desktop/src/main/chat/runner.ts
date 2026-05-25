@@ -10,6 +10,7 @@ import type {
   ToolRegistry,
 } from '@opencodex/core';
 import type { ChatStartResponse, ChatStreamEvent } from '../../shared/chat';
+import type { ChatAttachment } from '../../shared/attachments';
 import type { StoredMessage } from '../../shared/conversation';
 import type { ShellOutputEvent } from '../../shared/shell-output';
 import { buildShellTranscript } from '../../shared/shell-output';
@@ -36,6 +37,7 @@ export interface StartChatStreamOptions {
   providerId: string;
   modelId: string;
   userMessage: string;
+  attachments?: ChatAttachment[];
   sink: ChatStreamSink;
   workspaceRoot?: string;
   buildProvider?: (id: string) => Promise<LLMProvider>;
@@ -53,10 +55,15 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
   const builder = opts.buildProvider ?? defaultBuildProvider;
   const provider = await builder(opts.providerId);
 
+  const attachments = opts.attachments ?? [];
+  const userBlocks = buildUserContentBlocks(opts.userMessage, attachments);
+  const userDisplayText = buildUserDisplayText(opts.userMessage, attachments);
+
   const userRow = appendMessage({
     conversationId: opts.conversationId,
     role: 'user',
-    content: opts.userMessage,
+    content: userDisplayText,
+    contentBlocks: userBlocks.length > 0 ? userBlocks : null,
     providerId: opts.providerId,
     modelId: opts.modelId,
   });
@@ -268,6 +275,38 @@ async function runStream(args: RunStreamArgs): Promise<void> {
       );
     }
   }
+}
+
+function buildUserContentBlocks(
+  userMessage: string,
+  attachments: readonly ChatAttachment[],
+): ContentBlock[] {
+  if (attachments.length === 0) return [];
+  const blocks: ContentBlock[] = [];
+  for (const att of attachments) {
+    if (att.kind === 'image') {
+      blocks.push({ type: 'image', mimeType: att.mimeType, data: att.data });
+    }
+  }
+  const text = buildUserDisplayText(userMessage, attachments);
+  blocks.push({ type: 'text', text });
+  return blocks;
+}
+
+function buildUserDisplayText(userMessage: string, attachments: readonly ChatAttachment[]): string {
+  const parts: string[] = [];
+  if (userMessage.length > 0) parts.push(userMessage);
+  for (const att of attachments) {
+    if (att.kind === 'text') {
+      const header = `\n\n--- Attached file: ${att.name} (${att.path})${att.truncated ? ' [truncated]' : ''} ---\n`;
+      parts.push(`${header}\`\`\`\n${att.text}\n\`\`\``);
+    } else if (att.kind === 'binary') {
+      parts.push(`\n\n[Attached binary file: ${att.name} at ${att.path} (${att.sizeBytes} bytes)]`);
+    } else {
+      parts.push(`\n\n[Attached image: ${att.name}]`);
+    }
+  }
+  return parts.join('');
 }
 
 export function expandStoredMessages(stored: StoredMessage[]): Message[] {

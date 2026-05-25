@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ProviderListItem, ProviderTestResult } from '../../shared/provider-config';
+import { useSelectedModel } from '../state/selected-model-context';
 
 const KEY_MASK = '••••••••';
 
@@ -26,6 +27,7 @@ function makeDraft(item: ProviderListItem): DraftState {
 }
 
 export function ProvidersPanel(): JSX.Element {
+  const { reload: reloadSelectedModel } = useSelectedModel();
   const [items, setItems] = useState<ProviderListItem[] | null>(null);
   const [drafts, setDrafts] = useState<Record<string, DraftState>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -58,10 +60,16 @@ export function ProvidersPanel(): JSX.Element {
 
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
-  const applyItem = useCallback((next: ProviderListItem) => {
-    setItems((prev) => (prev ? prev.map((it) => (it.info.id === next.info.id ? next : it)) : prev));
-    setDrafts((prev) => ({ ...prev, [next.info.id]: makeDraft(next) }));
-  }, []);
+  const applyItem = useCallback(
+    (next: ProviderListItem) => {
+      setItems((prev) =>
+        prev ? prev.map((it) => (it.info.id === next.info.id ? next : it)) : prev,
+      );
+      setDrafts((prev) => ({ ...prev, [next.info.id]: makeDraft(next) }));
+      reloadSelectedModel();
+    },
+    [reloadSelectedModel],
+  );
 
   const setDraft = useCallback((id: string, patch: Partial<DraftState>) => {
     setDrafts((prev) => ({ ...prev, [id]: { ...prev[id]!, ...patch } }));

@@ -18,6 +18,7 @@ import type {
   ChatStartResponse,
   ChatStreamEvent,
 } from './chat';
+import type { PrepareAttachmentsRequest, PrepareAttachmentsResponse } from './attachments';
 import type {
   AppendMessageRequest,
   Conversation,
@@ -139,6 +140,10 @@ export interface IpcInvokeChannels {
   'chat:cancel': {
     request: ChatCancelRequest;
     response: void;
+  };
+  'attachments:prepare': {
+    request: PrepareAttachmentsRequest;
+    response: PrepareAttachmentsResponse;
   };
   'approvals:get-policies': {
     request: void;

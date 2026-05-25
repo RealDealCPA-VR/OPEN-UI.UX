@@ -14,6 +14,7 @@ import { ToolCallCard } from '../components/ToolCallCard';
 import { groupContentBlocks } from '../components/tool-block-grouping';
 import { useChat, type AssistantDraft } from '../state/chat-context';
 import { useSelectedModel } from '../state/selected-model-context';
+import type { ChatAttachment } from '../../shared/attachments';
 import type {
   Conversation,
   ConversationExportFormat,
@@ -81,6 +82,7 @@ function ConversationSidebar(): JSX.Element {
 
   return (
     <aside className="chat-sidebar">
+      <WorkspaceChip />
       <button
         type="button"
         className="btn btn-primary chat-new"
@@ -111,6 +113,70 @@ function ConversationSidebar(): JSX.Element {
       </ul>
     </aside>
   );
+}
+
+function WorkspaceChip(): JSX.Element {
+  const [activePath, setActivePath] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.opencodex.workspace
+      .get()
+      .then((s) => {
+        if (!cancelled) setActivePath(s.active);
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    const off = window.opencodex.workspace.onChanged((payload) => {
+      if (!cancelled) setActivePath(payload.state.active);
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, []);
+
+  const handleClick = async (): Promise<void> => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const next = await window.opencodex.workspace.browse();
+      setActivePath(next.active);
+    } catch {
+      /* dialog cancelled or failed */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const label = activePath ? folderName(activePath) : 'Pick workspace…';
+  const title = activePath ?? 'No workspace selected — agent will use a default folder';
+
+  return (
+    <button
+      type="button"
+      className={activePath ? 'workspace-chip' : 'workspace-chip workspace-chip-empty'}
+      onClick={() => void handleClick()}
+      title={title}
+      disabled={busy}
+    >
+      <span className="workspace-chip-icon" aria-hidden="true">
+        📁
+      </span>
+      <span className="workspace-chip-label">{label}</span>
+      <span className="workspace-chip-caret" aria-hidden="true">
+        ▾
+      </span>
+    </button>
+  );
+}
+
+function folderName(path: string): string {
+  const cleaned = path.replace(/[\\/]$/, '');
+  const parts = cleaned.split(/[\\/]/);
+  return parts[parts.length - 1] ?? path;
 }
 
 function ConversationRow({
@@ -174,6 +240,10 @@ function ChatPane({
   const [mcpPrompts, setMcpPrompts] = useState<McpPromptEntry[]>([]);
   const [slashTrigger, setSlashTrigger] = useState<SlashCommandTrigger | null>(null);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [preparingAttachments, setPreparingAttachments] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const consumedScrollRef = useRef<Set<string>>(new Set());
@@ -244,6 +314,13 @@ function ChatPane({
   ]);
 
   useLayoutEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [input]);
+
+  useLayoutEffect(() => {
     if (skipBottomScrollRef.current) {
       skipBottomScrollRef.current = false;
       return;
@@ -263,9 +340,67 @@ function ChatPane({
     e.preventDefault();
     if (slashOpen) return;
     const trimmed = input.trim();
-    if (!trimmed || chat.streaming) return;
+    if ((!trimmed && attachments.length === 0) || chat.streaming) return;
+    if (preparingAttachments) return;
     setInput('');
-    void chat.send({ providerId, modelId, userMessage: trimmed });
+    const sent = attachments;
+    setAttachments([]);
+    setAttachmentError(null);
+    void chat.send({
+      providerId,
+      modelId,
+      userMessage: trimmed,
+      ...(sent.length > 0 ? { attachments: sent } : {}),
+    });
+  };
+
+  const ingestDroppedPaths = async (paths: string[]): Promise<void> => {
+    if (paths.length === 0) return;
+    setPreparingAttachments(true);
+    setAttachmentError(null);
+    try {
+      const result = await window.opencodex.attachments.prepare({ paths });
+      if (result.prepared.length > 0) {
+        setAttachments((prev) => [...prev, ...result.prepared]);
+      }
+      if (result.errors.length > 0) {
+        setAttachmentError(
+          result.errors.map((e) => `${e.path.split(/[\\/]/).pop()}: ${e.message}`).join('; '),
+        );
+      }
+    } catch (err) {
+      setAttachmentError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPreparingAttachments(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLFormElement>): void => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    const paths: string[] = [];
+    for (const file of files) {
+      const filePath = (file as File & { path?: string }).path;
+      if (typeof filePath === 'string' && filePath.length > 0) paths.push(filePath);
+    }
+    if (paths.length > 0) void ingestDroppedPaths(paths);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLFormElement>): void => {
+    if (Array.from(e.dataTransfer.types).includes('Files')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      if (!dragOver) setDragOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLFormElement>): void => {
+    if (e.currentTarget === e.target) setDragOver(false);
+  };
+
+  const removeAttachment = (index: number): void => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const closeSlash = (): void => {
@@ -397,7 +532,30 @@ function ChatPane({
           </span>
         </div>
       ) : null}
-      <form className="chat-composer" onSubmit={handleSubmit}>
+      <form
+        className={dragOver ? 'chat-composer drag-over' : 'chat-composer'}
+        onSubmit={handleSubmit}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+      >
+        {attachments.length > 0 || preparingAttachments || attachmentError ? (
+          <div className="chat-attachments">
+            {attachments.map((att, i) => (
+              <AttachmentChip
+                key={`${att.path}-${i}`}
+                attachment={att}
+                onRemove={() => removeAttachment(i)}
+              />
+            ))}
+            {preparingAttachments ? (
+              <span className="chat-attachment-loading">Preparing files…</span>
+            ) : null}
+            {attachmentError ? (
+              <span className="chat-attachment-error">{attachmentError}</span>
+            ) : null}
+          </div>
+        ) : null}
         <div className="chat-input-wrap">
           {slashTrigger !== null ? (
             <SlashCommands
@@ -420,7 +578,7 @@ function ChatPane({
               setTimeout(() => closeSlash(), 0);
             }}
             placeholder={`Message ${modelName}…`}
-            rows={3}
+            rows={5}
             disabled={chat.streaming}
           />
         </div>
@@ -645,4 +803,44 @@ function roleLabel(role: StoredMessage['role']): string {
     case 'tool':
       return 'Tool';
   }
+}
+
+function AttachmentChip({
+  attachment,
+  onRemove,
+}: {
+  attachment: ChatAttachment;
+  onRemove: () => void;
+}): JSX.Element {
+  const icon = attachment.kind === 'image' ? '🖼' : attachment.kind === 'text' ? '📄' : '📎';
+  const label =
+    attachment.kind === 'text' && attachment.truncated
+      ? `${attachment.name} (truncated)`
+      : attachment.name;
+  const size = formatAttachmentSize(attachment.sizeBytes);
+  return (
+    <span className={`chat-attachment chat-attachment-${attachment.kind}`}>
+      <span className="chat-attachment-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="chat-attachment-name" title={attachment.path}>
+        {label}
+      </span>
+      <span className="chat-attachment-size">{size}</span>
+      <button
+        type="button"
+        className="chat-attachment-remove"
+        onClick={onRemove}
+        aria-label={`Remove ${attachment.name}`}
+      >
+        ×
+      </button>
+    </span>
+  );
+}
+
+function formatAttachmentSize(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }

@@ -176,7 +176,8 @@ describe('openRouterProvider', () => {
     );
   });
 
-  it('listModels and capabilities return known entries with org/model IDs', async () => {
+  it('listModels falls back to known static entries when the /models fetch fails', async () => {
+    stubFetch(() => new Response('nope', { status: 500 }));
     const provider = openRouterProvider.create({ apiKey: 'or' });
     const models = await provider.listModels();
     expect(models.some((m) => m.id === 'anthropic/claude-opus-4-7')).toBe(true);
@@ -186,6 +187,44 @@ describe('openRouterProvider', () => {
       vision: true,
     });
     expect(await provider.capabilities('definitely-not-a-real-model')).toBeUndefined();
+  });
+
+  it('listModels uses live /models response when fetch succeeds with an API key', async () => {
+    const { calls } = stubFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'live/model-a',
+                name: 'Live Model A',
+                context_length: 32000,
+                architecture: { input_modalities: ['text', 'image'] },
+                supported_parameters: ['tools'],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const provider = openRouterProvider.create({ apiKey: 'or' });
+    const models = await provider.listModels();
+    expect(calls[0]?.url).toContain('/models');
+    expect(models.map((m) => m.id)).toEqual(['live/model-a']);
+    expect(models[0]).toMatchObject({
+      id: 'live/model-a',
+      displayName: 'Live Model A',
+      providerId: 'openrouter',
+      contextWindow: 32000,
+      toolUse: true,
+      vision: true,
+    });
+  });
+
+  it('listModels returns the static list when no API key is configured', async () => {
+    const provider = openRouterProvider.create({});
+    const models = await provider.listModels();
+    expect(models.some((m) => m.id === 'anthropic/claude-opus-4-7')).toBe(true);
   });
 
   it('forwards tools as OpenAI-style function tools in the request body', async () => {

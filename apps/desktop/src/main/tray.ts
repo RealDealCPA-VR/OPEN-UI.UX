@@ -1,11 +1,13 @@
 import { app, Menu, nativeImage, Tray } from 'electron';
 import type { BrowserWindow } from 'electron';
+import { resolveAppIconPath } from './app-icon';
 
 let tray: Tray | null = null;
 
 export function createTray(getWindow: () => BrowserWindow | null): Tray {
-  const icon = nativeImage.createEmpty();
-  const instance = new Tray(icon);
+  const icon = nativeImage.createFromPath(resolveAppIconPath());
+  const trayImage = icon.isEmpty() ? icon : icon.resize({ width: 16, height: 16 });
+  const instance = new Tray(trayImage);
   instance.setToolTip('OpenCodex');
 
   const menu = Menu.buildFromTemplate([

@@ -10,7 +10,13 @@ import type {
   ProviderStatus,
   ProviderTestResult,
 } from '../../shared/provider-config';
-import { buildProviderConfig, catalog, catalogById, getProviderInfo } from './catalog';
+import {
+  buildProviderConfig,
+  catalog,
+  catalogById,
+  getProviderInfo,
+  invalidateProviderInfo,
+} from './catalog';
 import { ping } from './ping';
 
 const apiKeyAccount = (id: string): string => `provider:${id}:apiKey`;
@@ -103,6 +109,7 @@ export function registerProviderHandlers(): void {
         extra: nextExtra,
       });
 
+      invalidateProviderInfo(req.id);
       const item = await buildItem(req.id);
       if (!item) throw new Error(`Unknown provider "${req.id}"`);
       logger.info({ id: req.id }, 'provider config saved');
@@ -119,6 +126,7 @@ export function registerProviderHandlers(): void {
 
       await deleteSecret(apiKeyAccount(req.id));
       deleteProviderEntry(req.id);
+      invalidateProviderInfo(req.id);
       logger.info({ id: req.id }, 'provider config cleared');
       const item = await buildItem(req.id);
       if (!item) throw new Error(`Unknown provider "${req.id}"`);

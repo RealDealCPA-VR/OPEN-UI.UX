@@ -5,6 +5,9 @@ files:
   - out/**/*
   - package.json
   - '!**/*.{md,ts,map}'
+extraResources:
+  - from: build/icon.png
+    to: icon.png
 directories:
   output: release
   buildResources: build

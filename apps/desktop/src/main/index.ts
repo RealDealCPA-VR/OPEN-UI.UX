@@ -23,6 +23,7 @@ import { purgeToolCallsOlderThan } from './storage/tool-audit';
 import { registerThemeHandlers } from './theme/handlers';
 import { registerToolAuditHandlers } from './tool-audit/handlers';
 import { registerToolHandlers } from './tools/handlers';
+import { resolveAppIconPath } from './app-icon';
 import { createTray, destroyTray } from './tray';
 import { initAutoUpdater } from './updater';
 import { registerWorkspaceHandlers } from './workspace/handlers';
@@ -90,8 +91,9 @@ function createWindow(): void {
     minWidth: 900,
     minHeight: 600,
     show: false,
+    icon: resolveAppIconPath(),
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
+      preload: join(__dirname, '../preload/index.cjs'),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,

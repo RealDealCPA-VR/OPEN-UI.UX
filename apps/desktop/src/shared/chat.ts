@@ -1,10 +1,12 @@
 import type { ChatEvent } from '@opencodex/core';
+import type { ChatAttachment } from './attachments';
 
 export interface ChatStartRequest {
   conversationId: string;
   providerId: string;
   modelId: string;
   userMessage: string;
+  attachments?: ChatAttachment[];
 }
 
 export interface ChatStartResponse {

@@ -2,80 +2,67 @@
 
 ## Last Session Summary
 
-- **Massive Todo.md sweep complete via 15 subagents across 2 parallel waves + main-session work.** Baseline 423 tests → now **671 passing + 7 skipped across 70 files**. Lint, typecheck, build all green. Three commits land the work:
-  - `26fee85` — main-session sweep across Phase 0–6 (Playwright/CI, OpenAI Responses, MCP transports + manager + UI, plugin loader + manager UI + examples, spawn_subagent + orchestrator prompt, onboarding wizard, docs, electron-builder.yml, search_codebase, ignore parser, read-only mode, citations, file tree)
-  - `a1f4bcc` — Wave 1 (7 subagents in parallel): MCP slash commands, SQLite FTS5, chokidar watcher, git worktrees, utilityProcess subagent workers, agent inspector UI + run registry, plugin UI panel iframe sandbox
-  - `5d91029` — Wave 2 (6 subagents in parallel): Monaco diff viewer (lazy-loaded 6.35MB chunk), xterm.js terminal (lazy 401KB chunk), tree-sitter chunker (new @opencodex/rag-chunker package), LanceDB vector store (SQLite-shim fallback), subagent merge-review flow, MCP resource → FTS5 indexing
-- **Bundle code-splits cleanly**: renderer main `597 kB`, Monaco editor `6.35 MB` (lazy on first diff modal), xterm `401 kB` (lazy on first Terminal pill click).
-- **Every remaining unchecked Todo item** is either external-account gated (code signing, OAuth, GitHub Releases, telemetry, Sentry, GitHub Pages docs site, public announcement) or explicitly post-v0.1 backlog. There are no more in-scope implementation items.
+- **Got `pnpm dev` actually launching.** Five separate Electron/CJS/ESM/ABI issues were stacked; all patched (uncommitted). Diagnostic-by-elimination: `ELECTRON_RUN_AS_NODE=1` was the smoking gun — the user's shell env globally forces electron.exe into Node interpreter mode, so `require('electron')` returned the binary path string instead of the API. Unsetting it inside `pnpm dev` is now required.
+- **Raycast/Arc-style visual redesign sweep** through `apps/desktop/src/renderer/styles.css` (~3600 lines). New design tokens (warm-zinc bases, indigo-violet accent, soft layered shadows, radii scale, Inter+JetBrains Mono fonts), pill-style active sidebar with custom-drawn SVG mask icons, frosted topbar/statusbar/chat-header via `backdrop-filter`, softer chat bubbles, button gradient with inset highlight, focus glow on inputs, glassy onboarding wizard (was completely unstyled before), translucent scrollbars.
+- **No Todo.md items checked this session** — all work was orthogonal to the tracked backlog.
 
 ## Verify Before Continuing
 
-- [ ] **Run from repo root:** `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check && pnpm build`. Expect 671 passing, 7 skipped, 70 files. If `pnpm format:check` complains run `pnpm format` to apply Prettier — many new files were authored Prettier-compatible but not run through it.
-- [ ] **Smoke the heavy new UIs (none of these have visual tests):**
-  - MCP servers panel — install Filesystem preset, see status pill go connecting → connected, see tools surface as `mcp__filesystem__*` in `tools:list`.
-  - Plugin install flow — `pnpm --filter @opencodex-example/hello-world build`, install from folder, grant permissions, confirm `plugin__<id>__hello_world` appears in `tools:list`.
-  - Onboarding wizard — clear `onboardingComplete` setting, launch app, walk through 4 steps.
-  - Read-only chat mode toggle — Settings → Indexing. With it on, agent attempts to call `write_file` get `denied` from ApprovalManager.
-  - Codebase tab file tree — pick a workspace, lazy-expand subdirs.
-  - Slash commands in chat composer — connect an MCP server with prompts, type `/` in an empty line.
-  - Agent inspector — call `spawn_subagent`, watch the AgentView table populate live with status, tokens, current tool, expandable timeline.
-  - Monaco "View in Monaco" button — accept a write/edit approval, click View in Monaco, exercise per-hunk accept/reject. Confirms the 6.35MB chunk loads.
-  - xterm Terminal pill — run a `run_shell` call, click Terminal pill on the ToolCallCard, confirm ANSI passthrough.
-  - Merge review modal — manually `recordStart` a run with a worktreePath, see Review changes button on AgentRunRow, accept/reject.
-- [ ] **Per-platform packaging:** `pnpm --filter @opencodex/desktop dist` on mac/win/linux produces the expected artifacts (signing creds still required for mac/win prod).
+- [ ] **Working tree is dirty with 8 uncommitted files.** Don't blindly commit them — the user has seen the dev launch + redesign and may want to keep iterating before a commit. Run `git status` first; ask before committing. Files:
+  - `apps/desktop/electron.vite.config.ts` (workspace aliasing + CJS output for main/preload)
+  - `apps/desktop/package.json` (`main: out/main/index.cjs`)
+  - `apps/desktop/src/main/index.ts` (preload path `.mjs` → `.cjs`)
+  - `apps/desktop/src/main/agent/worker-host.ts` (worker entry path `.js` → `.cjs`)
+  - `apps/desktop/src/main/storage/settings.ts` (added `projectName: 'opencodex'` to electron-store)
+  - `apps/desktop/src/main/updater.ts` (deferred `pkg.autoUpdater` access to fn-body so init is gated by `app.isPackaged`)
+  - `apps/desktop/src/renderer/styles.css` (huge redesign diff)
+  - `.claude/settings.local.json` (incidental)
+
+- [ ] **Run `pnpm dev` correctly:** It MUST be invoked with `ELECTRON_RUN_AS_NODE` unset. Bash: `unset ELECTRON_RUN_AS_NODE && pnpm dev`. PowerShell: `Remove-Item Env:ELECTRON_RUN_AS_NODE; pnpm dev`. Otherwise `require('electron')` returns the binary path string and `BrowserWindow`/`app` are undefined. Consider patching the dev script to unset it inline so this footgun is gone — `cross-env ELECTRON_RUN_AS_NODE= electron-vite dev`.
+
+- [ ] **`pnpm build`** — confirm it still succeeds end-to-end with the workspace-aliasing + CJS output changes. Last verified passing before the styles.css redesign; should still pass since CSS doesn't affect TS build.
+
+- [ ] **Native modules rebuild.** `better-sqlite3` (and `keytar`) were rebuilt this session against Electron 30 ABI (NODE_MODULE_VERSION 123) via `pnpm dlx @electron/rebuild -f -w better-sqlite3 -v 30.5.1 -m apps/desktop`. If the user reruns `pnpm install` or `pnpm install --force` per the old HANDOFF instructions, the rebuild will be undone. Fix: pin `electron-rebuild` to a `postinstall` or document the manual step in the README.
+
+- [ ] **Visual: open the dev app and walk every screen** — Chat, Agent, Codebase, Settings (every subsection), Onboarding wizard. The CSS sweep is large and there are likely off-pixel cases I missed.
 
 ## Next Task
 
-There are no in-scope implementation items left. Everything unchecked is one of:
+The redesign is mid-iteration — the user explicitly asked for sleeker UI/UX, then asked specifically for icon swaps which were fixed (HashRouter + URL-encoded SVG masks). They have not yet greenlit the redesign as done. **Next session: continue the visual iteration loop** — open the dev app, get user feedback per screen, polish. Don't pivot to other Todo.md items unless the user redirects.
 
-- **External account / cert required** (lines 20, 116, 172, 173, 174, 176, 177, 178, 184):
-  - GitHub Actions `release.yml` — needs a GitHub repo + Releases configured.
-  - OAuth for MCP servers — needs the user to register OAuth apps per provider.
-  - electron-updater + GitHub Releases wiring — needs a published release feed URL.
-  - macOS code signing + notarization — needs an Apple Developer account ($99/yr).
-  - Windows code signing — needs an Authenticode cert (DigiCert/Sectigo).
-  - Telemetry (PostHog or self-hosted Plausible) — needs an account or self-hosted server.
-  - Sentry crash reporting — needs a Sentry DSN.
-  - Docs site (Docusaurus or Nextra on GitHub Pages) — needs the site set up + a custom-domain or `*.github.io` URL.
-  - Public v0.1 release announcement — needs the user to actually write + post it.
-- **Blocked on docs site** (line 152): Plugin docs site section with SDK API reference — depends on the docs site above.
-- **Backlog post-v0.1** (lines 190–195): Cloud / background tasks (needs a backend), voice mode, mobile companion app, team workspaces, visual workflow builder, JetBrains / VSCode integration. All explicitly post-v0.1 per Todo.md's own header.
-
-When the user is ready, the natural first sprint after that would be to wire the existing `LanceVectorStore` (currently SQLite-shim) to a real `@lancedb/lancedb` install, then plug the `chunkBySymbols` chunker into a real incremental indexer driven by the existing chokidar watcher.
+If the user does redirect to backlog work, the natural first item is wiring the existing `LanceVectorStore` (currently SQLite-shim) to a real `@lancedb/lancedb` install, then plugging the `chunkBySymbols` chunker into a real incremental indexer driven by the existing chokidar watcher.
 
 ## Context Notes
 
-### Permission constraint observed in subagents
+### Critical: `ELECTRON_RUN_AS_NODE` footgun
 
-- **Subagents run under a stricter sandbox than the main session.** Three subagents this run had Bash / PowerShell denied for pnpm calls (Playwright agent, LanceDB agent — couldn't run install, and the Tree-sitter agent had limited shell). Their results were still merged into the working tree; the main session verifies CI after each wave. **Plan accordingly:** when a subagent needs to add a new npm dep or run install, factor in the risk it can't actually run pnpm — its file output may still be correct, but unverified.
+The user's shell has `ELECTRON_RUN_AS_NODE=1` set globally (Claude Code's own subprocess invocation pattern, by all signs). When `electron-vite dev` spawns `electron.exe`, the variable is inherited and Electron starts in Node-interpreter mode — `process.type` is `undefined` instead of `'browser'`, and `require('electron')` returns the path string from `node_modules/electron/index.js` instead of the runtime API. This is the root cause of "BrowserWindow is undefined" / "app is undefined" errors and is invisible without a smoke test. **Always unset before launching.**
 
-### Wave 1 architecture (committed in `a1f4bcc`)
+### Why main + preload moved to CJS
 
-- **MCP prompts as slash commands** — `getAvailablePrompts()` in `apps/desktop/src/main/mcp/manager.ts` returns only prompts from enabled+connected servers. Composer detects `/` at start of a line via `getSlashTrigger` in `slash-commands.ts`; arrow/enter/tab/escape keyboard nav; selection inserts `/<serverId>:<prompt> arg=<placeholder>`.
-- **SQLite FTS5** — migration version `5` adds `indexed_files USING fts5(path, content, tokenize='unicode61')` + `indexed_files_meta`. `searchKeyword` uses `bm25()` + `snippet()` with safe token sanitization. New `apps/desktop/src/main/storage/codebase-index.ts`.
-- **chokidar watcher** — `WorkspaceWatcher` in `apps/desktop/src/main/rag/watcher.ts` with 250ms-debounced batches; respects `.gitignore` + `.opencodexignore`; subscribed via `settingsStore.onDidChange('activeWorkspace', …)` in `main/index.ts`.
-- **Git worktrees** — `apps/desktop/src/main/agent/worktrees.ts` uses `execFile` (no shell injection); worktrees land at `<repoRoot>/.opencodex/worktrees/<random-id>` on branch `opencodex/subagent/<id>`. `it.skipIf(!gitAvailable)` for the integration tests; `isGitRepo` returns false on non-existent paths.
-- **utilityProcess workers** — `apps/desktop/src/main/agent/worker-host.ts` softly imports `electron` so `isUtilityProcessAvailable()` returns false in vitest; `spawn_subagent` dispatches to worker when in Electron, falls back to inline `runSubagent`. `worker-protocol.ts` is Zod-validated on both sides. `electron.vite.config.ts` emits `out/main/agent/worker-entry.js`.
-- **Agent inspector** — `run-registry.ts` is 100-entry capped, newest-first, listener-based change notifications. `AgentView` ticks every 1s only while runs are running. `AgentRunRow` expands to show the per-tool-event timeline.
-- **Plugin UI panel iframe sandbox** — `sandbox="allow-scripts"` only (no `allow-same-origin`); inbound messages authenticated via reference identity (`event.source === iframe.contentWindow`) since `file://` origin is `"null"`. `handlePanelMessage` is the pure handler for tests.
+`apps/desktop/package.json` has `"type": "module"`. Electron 30 does support ESM main process imports per the official docs, but `import { BrowserWindow } from 'electron'` failed in this configuration (even with `ELECTRON_RUN_AS_NODE` unset — the named-export resolution doesn't work for Electron's CJS builtin under Node's stock ESM loader). Switching to CJS output (with `.cjs` extension to opt out of the `"type": "module"` interpretation) bypassed the issue entirely. Renderer stays ESM since it's browser-side. Configured in [electron.vite.config.ts:21-44](apps/desktop/electron.vite.config.ts#L21-L44) via `output: { format: 'cjs', entryFileNames: '*.cjs', chunkFileNames: 'chunks/[name]-[hash].cjs' }`.
 
-### Wave 2 architecture (committed in `5d91029`)
+### Why workspace packages get bundled instead of externalized
 
-- **Monaco diff viewer** — `MonacoDiffViewer.tsx` lazy-loads via React.lazy; pure helpers in `monaco-diff-helpers.ts` are vitest-tested independently (Vite can't resolve `monaco-editor` package in test graph). Wired into `ApprovalQueue` write_file / edit_file flows with "View in Monaco" button + lazy modal. Bundle: 6.35MB editor chunk only on first open.
-- **xterm.js terminal** — `EmbeddedTerminal.tsx` lazy-loads xterm + fit addon on mount; subscribes to `shell:output` IPC events filtered by `streamId + toolUseId`; queues frames that arrive before xterm initializes. v1 emits a single final event per run_shell call (NOT mid-stream); IPC schema already supports `final: boolean` for the future streaming bump. Pre-seeds the terminal locally from cached result so it populates immediately on open.
-- **Tree-sitter chunker** — `packages/rag-chunker` is a NEW workspace package; `web-tree-sitter@^0.22.6` is the only new dep (did NOT bundle `tree-sitter-wasms`). Hosts use `registerGrammar(lang, wasmPathOrBytes)` to opt into grammars they ship. `chunkBySymbols` falls back to `chunkBySize` when no grammar is registered.
-- **LanceVectorStore (SQLite shim)** — `apps/desktop/src/main/rag/vector-store.ts`. NOT LanceDB — the subagent couldn't run `pnpm add @lancedb/lancedb`. Same public API a real LanceDB adapter would expose: `open`, `upsert`, `searchByVector`, `clear`, `count`. Cosine similarity computed in JS over Float32Array BLOBs. Float32Array decode pre-aligns via a Uint8Array copy (Node Buffer can start at non-aligned offsets).
-- **Merge review** — `prepareMergeBundle` parses `diff --git a/X b/X` lines for the file list; `acceptMerge` is `git merge --no-ff <branch>` then `removeWorktree`. `recordStart` accepts optional worktree fields; `mergeStatus` defaults to `'pending'` only when a worktreePath is present, else `null`. `spawn_subagent` does NOT auto-attach a worktree yet — wiring is in place so a manually-created worktree run can be reviewed.
-- **MCP resource indexing** — `resource-indexer.ts` upserts `mcp:<serverId>:<uri>` keys into the FTS5 `indexed_files` table; debounced 1s on `onMcpServerConnected`. `search_codebase` now tags each hit with `source: 'workspace' | 'mcp'`. Stale-entry pruning when a server unpublishes a resource is a future cleanup.
+`externalizeDepsPlugin()` was leaving every `@opencodex/*` dep external, but those packages have `noEmit: true` in their tsconfigs (per the old HANDOFF: "switch to `tsup` before any `pnpm publish`"). So they have no `dist/index.js` to require at runtime. Fix: explicit `workspaceAliases` (maps `@opencodex/X` → `packages/X/src/index.ts`) + `externalizeDepsPlugin({ exclude: workspacePackageNames })` so Vite bundles them in. Also handles `electron-store@10` (ESM-only) the same way.
 
-### Carry-overs still relevant from earlier sessions
+### Other targeted source patches
 
-- Node v20 pinned. Don't suggest a Node upgrade. `better-sqlite3` must be rebuilt against Node 20 — `pnpm install --force` was the fix this run.
+- [src/main/storage/settings.ts:77-81](apps/desktop/src/main/storage/settings.ts#L77-L81) — `electron-store@10` requires `projectName` (v8 didn't); package name has `@` prefix which the auto-derive rejects.
+- [src/main/updater.ts:4-9](apps/desktop/src/main/updater.ts#L4-L9) — `const { autoUpdater } = pkg` at module load triggers `electron-updater`'s lazy getter, which constructs `NsisUpdater` → reads `app.version` BEFORE `app.whenReady()`. Moved access inside `getAutoUpdater()` fn; safe because `initAutoUpdater()` is gated by `app.isPackaged` (false in dev).
+
+### Visual redesign — what to know
+
+- **HashRouter quirk for icon selectors:** [src/renderer/App.tsx:17](apps/desktop/src/renderer/App.tsx#L17) uses `HashRouter`, so NavLink emits `href="#/chat"` not `href="/chat"`. Sidebar icon selectors in styles.css use `[href$='/chat']` (suffix match) — don't change to exact match.
+- **SVG mask icons:** Inline data URIs in `.sidebar-link[href$='...']::before` rules. SVG `stroke` is hard-coded `black` (mask uses alpha; visible color comes from `background: currentColor` on the `::before`). `<` and `>` are URL-encoded as `%3C` / `%3E` because Chromium rejects raw `<>` inside `url(...)`.
+- **Token system on `:root`** — about 75 CSS vars covering surfaces / borders / text / accent / status / shadows / radii / motion. Light theme override block on `:root[data-theme='light']` carries the same set. Adding new components: prefer adding to the token block, not hardcoding hex.
+- **Frosted surfaces:** sidebar/topbar/statusbar/chat-header/chat-composer use `background: color-mix(in oklab, var(--bg-panel) 75%, transparent)` + `backdrop-filter: saturate(140%) blur(10px)`. The ambient body gradient (`body::before`-style radial-gradients) is what shows through.
+- **Onboarding wizard styles** were missing entirely — the React component used `onboarding-wizard*` classes with zero matching CSS rules. Now appended at the bottom of styles.css. Probably worth a real eye-test in the dev app, since I wrote them blind.
+- **Scrollbars + selection** got global polish at file end too (translucent pill-shaped scrollbars, accent-tinted selection).
+
+### Pre-existing carry-overs still relevant
+
+- Node v20 pinned. `better-sqlite3` must be rebuilt against Electron's ABI (not Node's) — `@electron/rebuild` is the tool, NOT `pnpm install --force`.
 - Path has space + period (`OPEN UI.UX`) — quote in shell.
 - `packages/*` tsconfig is `noEmit: true` — switch to `tsup` before any `pnpm publish`.
 - Pre-public placeholders remain in CODEOWNERS / SECURITY.md / README.md: `@TODO-set-github-handle`, `security@TODO-set-domain`, `github.com/TODO-org/TODO-repo`.
-
-### Uncommitted state
-
-Working tree is clean. Three commits added this session.

@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { ContentBlock } from '@opencodex/core';
+import type { ChatAttachment } from '../../shared/attachments';
 import type {
   Conversation,
   ConversationExportFormat,
@@ -41,7 +42,12 @@ interface ChatContextValue {
   selectConversation(id: string | null): void;
   createConversation(providerId: string | null, modelId: string | null): Promise<Conversation>;
   deleteConversation(id: string): Promise<void>;
-  send(args: { providerId: string; modelId: string; userMessage: string }): Promise<void>;
+  send(args: {
+    providerId: string;
+    modelId: string;
+    userMessage: string;
+    attachments?: ChatAttachment[];
+  }): Promise<void>;
   cancel(): Promise<void>;
   exportActive(format: ConversationExportFormat): Promise<ExportConversationResult | null>;
   reload(): void;
@@ -260,7 +266,12 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
   );
 
   const send = useCallback(
-    async (args: { providerId: string; modelId: string; userMessage: string }): Promise<void> => {
+    async (args: {
+      providerId: string;
+      modelId: string;
+      userMessage: string;
+      attachments?: ChatAttachment[];
+    }): Promise<void> => {
       let conversationId = activeId;
       if (!conversationId) {
         const created = await window.opencodex.conversations.create({
@@ -280,6 +291,9 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
           providerId: args.providerId,
           modelId: args.modelId,
           userMessage: args.userMessage,
+          ...(args.attachments && args.attachments.length > 0
+            ? { attachments: args.attachments }
+            : {}),
         });
         activeStreamRef.current = {
           streamId: result.streamId,

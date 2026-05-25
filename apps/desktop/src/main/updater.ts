@@ -1,9 +1,12 @@
 import pkg from 'electron-updater';
 import { logger } from './logger';
 
-const { autoUpdater } = pkg;
+function getAutoUpdater() {
+  return pkg.autoUpdater;
+}
 
 export function initAutoUpdater(): void {
+  const autoUpdater = getAutoUpdater();
   autoUpdater.logger = logger;
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
@@ -22,5 +25,5 @@ export function initAutoUpdater(): void {
 }
 
 export async function checkForUpdates(): Promise<void> {
-  await autoUpdater.checkForUpdates();
+  await getAutoUpdater().checkForUpdates();
 }
