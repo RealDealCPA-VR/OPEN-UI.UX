@@ -1,6 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ChatEvent } from '@opencodex/core';
 import { anthropicProvider } from './provider';
+
+const FIXTURE_MESSAGES_STREAM = readFileSync(
+  fileURLToPath(new URL('./__fixtures__/messages.txt', import.meta.url)),
+  'utf8',
+);
 
 const STREAM_FIXTURE = [
   'event: message_start',
@@ -153,6 +160,42 @@ describe('anthropicProvider', () => {
     await collect(provider.chat({ model: 'claude-sonnet-4-6', messages: [] }));
 
     expect(calls[0]?.url).toBe('https://proxy.example.com/v1/messages');
+  });
+
+  it('replays a recorded messages-stream fixture (text + tool_use + usage + done)', async () => {
+    stubFetch(() => streamResponse(FIXTURE_MESSAGES_STREAM));
+
+    const provider = anthropicProvider.create({ apiKey: 'sk-ant-test' });
+    const events = await collect(
+      provider.chat({
+        model: 'claude-sonnet-4-6',
+        messages: [{ role: 'user', content: 'find foo' }],
+        tools: [
+          {
+            name: 'grep',
+            description: 'search',
+            inputSchema: { type: 'object' },
+            permissionTier: 'read',
+          },
+        ],
+      }),
+    );
+
+    expect(events).toContainEqual({ type: 'text_delta', delta: 'Searching' });
+    expect(events).toContainEqual({ type: 'text_delta', delta: ' now' });
+    expect(events).toContainEqual({
+      type: 'tool_call',
+      id: 'toolu_1',
+      name: 'grep',
+      arguments: { q: 'foo' },
+    });
+    expect(events).toContainEqual({
+      type: 'usage',
+      inputTokens: 12,
+      outputTokens: 7,
+      cachedInputTokens: 4,
+    });
+    expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'tool_use' });
   });
 
   it('throws from embed because Anthropic has no embeddings API', async () => {

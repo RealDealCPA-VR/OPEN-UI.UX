@@ -11,4 +11,9 @@ export {
   type OpenAIToolCall,
 } from './translate-request';
 export { streamChunksToEvents } from './translate-stream';
+export {
+  responsesStream,
+  buildResponsesRequestBody,
+  responseEventsToChatEvents,
+} from './responses';
 export { chatChunkSchema, embeddingsResponseSchema, type ChatChunk } from './response-schemas';

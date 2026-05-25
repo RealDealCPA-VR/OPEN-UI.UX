@@ -1,6 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ChatEvent } from '@opencodex/core';
 import { mistralProvider } from './provider';
+
+const FIXTURE_CHAT_COMPLETIONS = readFileSync(
+  fileURLToPath(new URL('./__fixtures__/chat-completions.txt', import.meta.url)),
+  'utf8',
+);
 
 const STREAM_FIXTURE = [
   'data: {"id":"a","object":"chat.completion.chunk","model":"mistral-large-latest","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}',
@@ -118,6 +125,37 @@ describe('mistralProvider', () => {
     );
     expect(events[0]).toMatchObject({ type: 'error', retryable: true });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'error' });
+  });
+
+  it('replays a recorded chat-completions fixture (text + tool_call + usage + done)', async () => {
+    stubFetch(() => streamResponse(FIXTURE_CHAT_COMPLETIONS));
+
+    const provider = mistralProvider.create({ apiKey: 'mst' });
+    const events = await collect(
+      provider.chat({
+        model: 'mistral-large-latest',
+        messages: [{ role: 'user', content: 'find foo' }],
+        tools: [
+          {
+            name: 'grep',
+            description: 'search',
+            inputSchema: { type: 'object' },
+            permissionTier: 'read',
+          },
+        ],
+      }),
+    );
+
+    expect(events).toContainEqual({ type: 'text_delta', delta: 'Searching' });
+    expect(events).toContainEqual({ type: 'text_delta', delta: ' now' });
+    expect(events).toContainEqual({
+      type: 'tool_call',
+      id: 'toolA',
+      name: 'grep',
+      arguments: { q: 'foo' },
+    });
+    expect(events).toContainEqual({ type: 'usage', inputTokens: 12, outputTokens: 7 });
+    expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'tool_use' });
   });
 
   it('embeds and returns vectors sorted to match input order', async () => {

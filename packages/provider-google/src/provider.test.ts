@@ -1,6 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ChatEvent } from '@opencodex/core';
 import { googleProvider } from './provider';
+
+const FIXTURE_GENERATE_CONTENT = readFileSync(
+  fileURLToPath(new URL('./__fixtures__/generate-content.txt', import.meta.url)),
+  'utf8',
+);
 
 const STREAM_FIXTURE = [
   'data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Hello"}]},"index":0}]}',
@@ -115,6 +122,42 @@ describe('googleProvider', () => {
     expect(calls[0]?.url).toBe(
       'https://proxy.example.com/v1/models/gemini-2.5-pro:streamGenerateContent?alt=sse',
     );
+  });
+
+  it('replays a recorded generate-content fixture (text + functionCall + usage + done)', async () => {
+    stubFetch(() => streamResponse(FIXTURE_GENERATE_CONTENT));
+
+    const provider = googleProvider.create({ apiKey: 'gk-test' });
+    const events = await collect(
+      provider.chat({
+        model: 'gemini-2.5-pro',
+        messages: [{ role: 'user', content: 'find foo' }],
+        tools: [
+          {
+            name: 'grep',
+            description: 'search',
+            inputSchema: { type: 'object' },
+            permissionTier: 'read',
+          },
+        ],
+      }),
+    );
+
+    expect(events).toContainEqual({ type: 'text_delta', delta: 'Searching' });
+    expect(events).toContainEqual({ type: 'text_delta', delta: ' now' });
+    expect(events).toContainEqual({
+      type: 'tool_call',
+      id: 'call_xyz',
+      name: 'grep',
+      arguments: { q: 'foo' },
+    });
+    expect(events).toContainEqual({
+      type: 'usage',
+      inputTokens: 12,
+      outputTokens: 7,
+      cachedInputTokens: 4,
+    });
+    expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'tool_use' });
   });
 
   it('throws from embed because Google embeddings are not implemented yet', async () => {

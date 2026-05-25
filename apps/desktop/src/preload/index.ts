@@ -46,6 +46,22 @@ import type {
 } from '../shared/tool-audit';
 import type { ToolListItem } from '../shared/tools';
 import type {
+  AddMcpServerRequest,
+  McpServerChangedEvent,
+  McpServerPreset,
+  McpState,
+  RemoveMcpServerRequest,
+  SetMcpServerEnabledRequest,
+} from '../shared/mcp';
+import type {
+  EnablePluginRequest,
+  GrantPluginPermissionsRequest,
+  InstallPluginRequest,
+  PluginListItem,
+  PluginsChangedEvent,
+  UninstallPluginRequest,
+} from '../shared/plugins';
+import type {
   RemoveWorkspaceRequest,
   SetActiveWorkspaceRequest,
   WorkspaceChangedEvent,
@@ -57,6 +73,8 @@ type ChatEventListener = (payload: ChatStreamEvent) => void;
 type ApprovalRequestListener = (req: ApprovalRequest) => void;
 type ThemeChangedListener = (payload: ThemeChangedEvent) => void;
 type WorkspaceChangedListener = (payload: WorkspaceChangedEvent) => void;
+type McpChangedListener = (payload: McpServerChangedEvent) => void;
+type PluginsChangedListener = (payload: PluginsChangedEvent) => void;
 
 const initialThemePreference = parseInitialThemeArg(process.argv);
 
@@ -115,6 +133,8 @@ const conversations = {
     ipcRenderer.invoke('conversations:export', req),
 };
 
+type ReadOnlyChangedListener = (payload: { readOnly: boolean }) => void;
+
 const chat = {
   start: (req: ChatStartRequest): Promise<ChatStartResponse> =>
     ipcRenderer.invoke('chat:start', req),
@@ -123,6 +143,16 @@ const chat = {
     const wrapped = (_event: IpcRendererEvent, payload: ChatStreamEvent): void => listener(payload);
     ipcRenderer.on('chat:event', wrapped);
     return () => ipcRenderer.off('chat:event', wrapped);
+  },
+  getReadOnlyMode: (): Promise<{ readOnly: boolean }> =>
+    ipcRenderer.invoke('chat:get-read-only-mode'),
+  setReadOnlyMode: (readOnly: boolean): Promise<{ readOnly: boolean }> =>
+    ipcRenderer.invoke('chat:set-read-only-mode', { readOnly }),
+  onReadOnlyChanged: (listener: ReadOnlyChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: { readOnly: boolean }): void =>
+      listener(payload);
+    ipcRenderer.on('chat:read-only-changed', wrapped);
+    return () => ipcRenderer.off('chat:read-only-changed', wrapped);
   },
 };
 
@@ -185,6 +215,53 @@ const workspace = {
   },
 };
 
+const mcp = {
+  list: (): Promise<McpState> => ipcRenderer.invoke('mcp:list'),
+  add: (req: AddMcpServerRequest): Promise<McpState> => ipcRenderer.invoke('mcp:add', req),
+  remove: (req: RemoveMcpServerRequest): Promise<McpState> => ipcRenderer.invoke('mcp:remove', req),
+  setEnabled: (req: SetMcpServerEnabledRequest): Promise<McpState> =>
+    ipcRenderer.invoke('mcp:set-enabled', req),
+  presets: (): Promise<ReadonlyArray<McpServerPreset>> => ipcRenderer.invoke('mcp:presets'),
+  onChanged: (listener: McpChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: McpServerChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('mcp:changed', wrapped);
+    return () => ipcRenderer.off('mcp:changed', wrapped);
+  },
+};
+
+const onboarding = {
+  getState: (): Promise<{ complete: boolean }> => ipcRenderer.invoke('onboarding:get-state'),
+  setComplete: (complete: boolean): Promise<{ complete: boolean }> =>
+    ipcRenderer.invoke('onboarding:set-complete', { complete }),
+};
+
+const plugins = {
+  list: (): Promise<{ plugins: PluginListItem[] }> => ipcRenderer.invoke('plugins:list'),
+  installFromPath: (req: InstallPluginRequest): Promise<{ plugins: PluginListItem[] }> =>
+    ipcRenderer.invoke('plugins:install-from-path', req),
+  browseAndInstall: (): Promise<{ plugins: PluginListItem[]; canceled: boolean }> =>
+    ipcRenderer.invoke('plugins:browse-and-install'),
+  setEnabled: (req: EnablePluginRequest): Promise<{ plugins: PluginListItem[] }> =>
+    ipcRenderer.invoke('plugins:set-enabled', req),
+  grantPermissions: (req: GrantPluginPermissionsRequest): Promise<{ plugins: PluginListItem[] }> =>
+    ipcRenderer.invoke('plugins:grant-permissions', req),
+  uninstall: (req: UninstallPluginRequest): Promise<{ plugins: PluginListItem[] }> =>
+    ipcRenderer.invoke('plugins:uninstall', req),
+  getRegistryUrl: (): Promise<{ url: string | null }> =>
+    ipcRenderer.invoke('plugins:get-registry-url'),
+  setRegistryUrl: (url: string | null): Promise<{ url: string | null }> =>
+    ipcRenderer.invoke('plugins:set-registry-url', { url }),
+  fetchRegistry: (): Promise<{ entries: unknown[]; error: string | null }> =>
+    ipcRenderer.invoke('plugins:fetch-registry'),
+  onChanged: (listener: PluginsChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: PluginsChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('plugins:changed', wrapped);
+    return () => ipcRenderer.off('plugins:changed', wrapped);
+  },
+};
+
 const api = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   onDeepLink: (listener: DeepLinkListener): (() => void) => {
@@ -201,6 +278,17 @@ const api = {
   toolAudit,
   theme,
   workspace,
+  mcp,
+  onboarding,
+  plugins,
+  fileTree: {
+    list: (
+      path?: string,
+    ): Promise<{
+      entries: Array<{ name: string; path: string; isDirectory: boolean; hasChildren: boolean }>;
+      workspaceRoot: string | null;
+    }> => ipcRenderer.invoke('file-tree:list', { path }),
+  },
 } as const;
 
 export type OpenCodexBridge = typeof api;

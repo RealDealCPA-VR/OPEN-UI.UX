@@ -50,7 +50,13 @@
       "PowerShell(pnpm build 2>&1)",
       "PowerShell(pnpm --filter @opencodex/tools test -- run-shell.test 2>&1)",
       "PowerShell(pnpm exec prettier --write HANDOFF.md)",
-      "PowerShell(pnpm exec prettier --check HANDOFF.md Todo.md packages/tools/src/run-shell.ts packages/tools/src/run-shell.test.ts)"
+      "PowerShell(pnpm exec prettier --check HANDOFF.md Todo.md packages/tools/src/run-shell.ts packages/tools/src/run-shell.test.ts)",
+      "PowerShell(pnpm lint 2>&1)",
+      "PowerShell(pnpm typecheck 2>&1)",
+      "PowerShell(pnpm test 2>&1)",
+      "PowerShell(pnpm rebuild better-sqlite3 2>&1)",
+      "PowerShell(node -v)",
+      "PowerShell(pnpm list better-sqlite3 -r --depth 0 2>&1)"
     ]
   }
 }

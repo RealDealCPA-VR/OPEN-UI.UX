@@ -37,6 +37,8 @@ interface Pending {
   signal: AbortSignal;
 }
 
+export type ReadOnlyChecker = () => boolean;
+
 export class ApprovalManager {
   private pending = new Map<string, Pending>();
   private sessionOverrides = new Map<string, Map<string, ApprovalDecision>>();
@@ -45,9 +47,14 @@ export class ApprovalManager {
     private broadcast: ApprovalBroadcaster,
     private readPolicies: PolicyReader,
     private writePolicies: PolicyWriter,
+    private readReadOnly: ReadOnlyChecker = () => false,
   ) {}
 
   async requestApproval(args: RequestApprovalArgs): Promise<ApprovalOutcome> {
+    if (this.readReadOnly() && args.permissionTier !== 'read') {
+      return { decision: 'deny', source: 'policy' };
+    }
+
     const sessionDecision = this.sessionOverrides.get(args.streamId)?.get(args.toolName);
     if (sessionDecision) return { decision: sessionDecision, source: 'prompt-session' };
 
@@ -170,8 +177,9 @@ export function initApprovalManager(
   broadcast: ApprovalBroadcaster,
   readPolicies: PolicyReader,
   writePolicies: PolicyWriter,
+  readReadOnly?: ReadOnlyChecker,
 ): ApprovalManager {
-  singleton = new ApprovalManager(broadcast, readPolicies, writePolicies);
+  singleton = new ApprovalManager(broadcast, readPolicies, writePolicies, readReadOnly);
   return singleton;
 }
 

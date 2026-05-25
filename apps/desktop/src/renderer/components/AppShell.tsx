@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { ModelPicker } from './ModelPicker';
+import { StatusBar } from './StatusBar';
 
 const NAV_ITEMS = [
   { to: '/chat', label: 'Chat' },
@@ -41,6 +42,7 @@ export function AppShell(): JSX.Element {
         <main className="content">
           <Outlet />
         </main>
+        <StatusBar />
       </div>
     </div>
   );

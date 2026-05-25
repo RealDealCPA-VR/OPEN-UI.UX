@@ -1,0 +1,20 @@
+{
+  "name": "ui-panel",
+  "version": "0.0.0",
+  "displayName": "UI Panel Example",
+  "description": "Reference plugin demonstrating a contributed UI panel",
+  "author": "OpenCodex contributors",
+  "license": "MIT",
+  "entry": "dist/index.js",
+  "engines": { "opencodex": "^0.1.0" },
+  "permissions": ["ui.panel"],
+  "contributions": {
+    "panels": [
+      {
+        "id": "ui-panel-hello",
+        "title": "Hello Panel",
+        "entry": "panel.html"
+      }
+    ]
+  }
+}

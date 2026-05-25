@@ -161,6 +161,32 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
+  examples/plugins/provider-stub:
+    dependencies:
+      '@opencodex/core':
+        specifier: workspace:*
+        version: link:../../../packages/core
+      '@opencodex/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+      zod:
+        specifier: ^3.22.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  examples/plugins/ui-panel:
+    dependencies:
+      '@opencodex/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../../packages/plugin-sdk
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/core:
     dependencies:
       zod:
@@ -294,6 +320,22 @@ importers:
       '@opencodex/provider-openai':
         specifier: workspace:*
         version: link:../provider-openai
+      zod:
+        specifier: ^3.22.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.1(@types/node@20.19.41)
+
+  packages/provider-voyage:
+    dependencies:
+      '@opencodex/core':
+        specifier: workspace:*
+        version: link:../core
       zod:
         specifier: ^3.22.0
         version: 3.25.76

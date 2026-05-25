@@ -43,6 +43,22 @@ import type {
 } from './tool-audit';
 import type { ToolListItem } from './tools';
 import type {
+  AddMcpServerRequest,
+  McpServerChangedEvent,
+  McpServerPreset,
+  McpState,
+  RemoveMcpServerRequest,
+  SetMcpServerEnabledRequest,
+} from './mcp';
+import type {
+  EnablePluginRequest,
+  GrantPluginPermissionsRequest,
+  InstallPluginRequest,
+  PluginListItem,
+  PluginsChangedEvent,
+  UninstallPluginRequest,
+} from './plugins';
+import type {
   RemoveWorkspaceRequest,
   SetActiveWorkspaceRequest,
   WorkspaceChangedEvent,
@@ -182,6 +198,90 @@ export interface IpcInvokeChannels {
     request: void;
     response: WorkspaceState;
   };
+  'mcp:list': {
+    request: void;
+    response: McpState;
+  };
+  'mcp:add': {
+    request: AddMcpServerRequest;
+    response: McpState;
+  };
+  'mcp:remove': {
+    request: RemoveMcpServerRequest;
+    response: McpState;
+  };
+  'mcp:set-enabled': {
+    request: SetMcpServerEnabledRequest;
+    response: McpState;
+  };
+  'mcp:presets': {
+    request: void;
+    response: ReadonlyArray<McpServerPreset>;
+  };
+  'onboarding:get-state': {
+    request: void;
+    response: { complete: boolean };
+  };
+  'onboarding:set-complete': {
+    request: { complete: boolean };
+    response: { complete: boolean };
+  };
+  'plugins:list': {
+    request: void;
+    response: { plugins: PluginListItem[] };
+  };
+  'plugins:install-from-path': {
+    request: InstallPluginRequest;
+    response: { plugins: PluginListItem[] };
+  };
+  'plugins:browse-and-install': {
+    request: void;
+    response: { plugins: PluginListItem[]; canceled: boolean };
+  };
+  'plugins:set-enabled': {
+    request: EnablePluginRequest;
+    response: { plugins: PluginListItem[] };
+  };
+  'plugins:grant-permissions': {
+    request: GrantPluginPermissionsRequest;
+    response: { plugins: PluginListItem[] };
+  };
+  'plugins:uninstall': {
+    request: UninstallPluginRequest;
+    response: { plugins: PluginListItem[] };
+  };
+  'plugins:get-registry-url': {
+    request: void;
+    response: { url: string | null };
+  };
+  'plugins:set-registry-url': {
+    request: { url: string | null };
+    response: { url: string | null };
+  };
+  'plugins:fetch-registry': {
+    request: void;
+    response: { entries: unknown[]; error: string | null };
+  };
+  'chat:get-read-only-mode': {
+    request: void;
+    response: { readOnly: boolean };
+  };
+  'chat:set-read-only-mode': {
+    request: { readOnly: boolean };
+    response: { readOnly: boolean };
+  };
+  'file-tree:list': {
+    request: { path?: string };
+    response: {
+      entries: Array<{
+        name: string;
+        path: string;
+        isDirectory: boolean;
+        hasChildren: boolean;
+      }>;
+      workspaceRoot: string | null;
+    };
+  };
 }
 
 export interface IpcEventChannels {
@@ -190,6 +290,9 @@ export interface IpcEventChannels {
   'chat:approval-request': ApprovalRequest;
   'settings:theme-changed': ThemeChangedEvent;
   'workspace:changed': WorkspaceChangedEvent;
+  'mcp:changed': McpServerChangedEvent;
+  'plugins:changed': PluginsChangedEvent;
+  'chat:read-only-changed': { readOnly: boolean };
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

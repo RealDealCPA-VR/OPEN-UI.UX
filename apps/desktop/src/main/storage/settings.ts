@@ -1,6 +1,8 @@
 import Store from 'electron-store';
 import { z } from 'zod';
 import { type ApprovalPolicies, DEFAULT_TIER_POLICIES } from '../../shared/approvals';
+import { mcpServerEntrySchema, type McpServerEntry } from '../../shared/mcp';
+import { PermissionSchema } from '@opencodex/plugin-sdk';
 import type { ProviderTestResult } from '../../shared/provider-config';
 import type { SelectedModel } from '../../shared/selected-model';
 import type { ThemePreference } from '../../shared/theme';
@@ -52,6 +54,20 @@ const SettingsSchema = z.object({
     toolOverrides: {},
   }),
   auditRetentionDays: z.number().int().min(1).max(36500).nullable().default(null),
+  mcpServers: z.array(mcpServerEntrySchema).default([]),
+  onboardingComplete: z.boolean().default(false),
+  plugins: z
+    .array(
+      z.object({
+        id: z.string(),
+        installPath: z.string(),
+        enabled: z.boolean().default(true),
+        grantedPermissions: z.array(PermissionSchema).default([]),
+      }),
+    )
+    .default([]),
+  pluginRegistryUrl: z.string().url().nullable().default(null),
+  readOnlyChatMode: z.boolean().default(false),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -159,4 +175,51 @@ export function removeWorkspaceFromHistory(path: string): WorkspaceState {
     workspaceHistory: result.history,
   });
   return { active: next.activeWorkspace, history: next.workspaceHistory };
+}
+
+export function getMcpServers(): McpServerEntry[] {
+  return getSettings().mcpServers;
+}
+
+export function setMcpServers(servers: McpServerEntry[]): McpServerEntry[] {
+  const next = updateSettings({ mcpServers: servers });
+  return next.mcpServers;
+}
+
+export function getOnboardingComplete(): boolean {
+  return getSettings().onboardingComplete;
+}
+
+export function setOnboardingComplete(value: boolean): boolean {
+  const next = updateSettings({ onboardingComplete: value });
+  return next.onboardingComplete;
+}
+
+export type StoredPluginEntry = Settings['plugins'][number];
+
+export function getStoredPlugins(): StoredPluginEntry[] {
+  return getSettings().plugins;
+}
+
+export function setStoredPlugins(plugins: StoredPluginEntry[]): StoredPluginEntry[] {
+  const next = updateSettings({ plugins });
+  return next.plugins;
+}
+
+export function getPluginRegistryUrl(): string | null {
+  return getSettings().pluginRegistryUrl;
+}
+
+export function setPluginRegistryUrl(url: string | null): string | null {
+  const next = updateSettings({ pluginRegistryUrl: url });
+  return next.pluginRegistryUrl;
+}
+
+export function getReadOnlyChatMode(): boolean {
+  return getSettings().readOnlyChatMode;
+}
+
+export function setReadOnlyChatMode(value: boolean): boolean {
+  const next = updateSettings({ readOnlyChatMode: value });
+  return next.readOnlyChatMode;
 }

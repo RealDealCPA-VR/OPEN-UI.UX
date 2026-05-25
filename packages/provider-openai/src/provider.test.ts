@@ -1,6 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ChatEvent } from '@opencodex/core';
 import { openAIProvider } from './provider';
+
+const CHAT_FIXTURE = readFileSync(
+  fileURLToPath(new URL('./__fixtures__/chat-completions.txt', import.meta.url)),
+  'utf8',
+);
 
 const STREAM_FIXTURE = [
   'data: {"id":"a","object":"chat.completion.chunk","model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}',
@@ -145,6 +152,42 @@ describe('openAIProvider', () => {
     await collect(provider.chat({ model: 'gpt-4o', messages: [] }));
 
     expect(calls[0]?.url).toBe('https://proxy.example.com/v1/chat/completions');
+  });
+
+  it('replays a recorded chat-completions fixture into the full ChatEvent sequence', async () => {
+    stubFetch(() => streamResponse(CHAT_FIXTURE));
+
+    const provider = openAIProvider.create({ apiKey: 'sk' });
+    const events = await collect(
+      provider.chat({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'find foo' }],
+        tools: [
+          {
+            name: 'grep',
+            description: 'search',
+            inputSchema: { type: 'object' },
+            permissionTier: 'read',
+          },
+        ],
+      }),
+    );
+
+    expect(events).toContainEqual({ type: 'text_delta', delta: 'Searching' });
+    expect(events).toContainEqual({ type: 'text_delta', delta: ' now' });
+    expect(events).toContainEqual({
+      type: 'tool_call',
+      id: 'call_1',
+      name: 'grep',
+      arguments: { q: 'foo' },
+    });
+    expect(events).toContainEqual({
+      type: 'usage',
+      inputTokens: 12,
+      outputTokens: 7,
+      cachedInputTokens: 4,
+    });
+    expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'tool_use' });
   });
 
   it('listModels and capabilities return known entries', async () => {

@@ -1,0 +1,10 @@
+data: {"id":"a","model":"mistral-large-latest","choices":[{"index":0,"delta":{"role":"assistant","content":"Searching"},"finish_reason":null}]}
+
+data: {"id":"a","model":"mistral-large-latest","choices":[{"index":0,"delta":{"content":" now"},"finish_reason":null}]}
+
+data: {"id":"a","model":"mistral-large-latest","choices":[{"index":0,"delta":{"tool_calls":[{"id":"toolA","type":"function","function":{"name":"grep","arguments":"{\"q\":\"foo\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"a","model":"mistral-large-latest","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":12,"completion_tokens":7,"total_tokens":19}}
+
+data: [DONE]
+

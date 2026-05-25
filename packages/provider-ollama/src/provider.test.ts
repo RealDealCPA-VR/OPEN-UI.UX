@@ -1,6 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ChatEvent } from '@opencodex/core';
 import { ollamaProvider } from './provider';
+
+const FIXTURE_CHAT_STREAM = readFileSync(
+  fileURLToPath(new URL('./__fixtures__/chat-stream.ndjson', import.meta.url)),
+  'utf8',
+);
 
 const STREAM_FIXTURE = [
   '{"model":"llama3.1","created_at":"2026-01-01T00:00:00Z","message":{"role":"assistant","content":"Hello"},"done":false}',
@@ -91,6 +98,37 @@ describe('ollamaProvider', () => {
       arguments: { q: 'foo' },
     });
     expect(toolCall && 'id' in toolCall && toolCall.id).toMatch(/^call_\d+_grep$/);
+    expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'tool_use' });
+  });
+
+  it('replays a recorded NDJSON fixture (text + tool_call + usage + done)', async () => {
+    stubFetch(() => streamResponse(FIXTURE_CHAT_STREAM));
+
+    const provider = ollamaProvider.create({});
+    const events = await collect(
+      provider.chat({
+        model: 'llama3.1',
+        messages: [{ role: 'user', content: 'find foo' }],
+        tools: [
+          {
+            name: 'grep',
+            description: 'search',
+            inputSchema: { type: 'object' },
+            permissionTier: 'read',
+          },
+        ],
+      }),
+    );
+
+    expect(events).toContainEqual({ type: 'text_delta', delta: 'Searching' });
+    expect(events).toContainEqual({ type: 'text_delta', delta: ' now' });
+    const toolCall = events.find((e) => e.type === 'tool_call');
+    expect(toolCall).toMatchObject({
+      type: 'tool_call',
+      name: 'grep',
+      arguments: { q: 'foo' },
+    });
+    expect(events).toContainEqual({ type: 'usage', inputTokens: 12, outputTokens: 7 });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'tool_use' });
   });
 

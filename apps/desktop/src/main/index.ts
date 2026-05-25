@@ -5,7 +5,14 @@ import { z } from 'zod';
 import { logger } from './logger';
 import { registerApprovalHandlers } from './chat/approval-handlers';
 import { registerChatHandlers } from './chat/handlers';
+import { registerReadOnlyChatHandlers } from './chat/read-only-handlers';
+import { registerFileTreeHandlers } from './file-tree/handlers';
 import { registerInvoke } from './ipc/registry';
+import { registerMcpHandlers } from './mcp/handlers';
+import { shutdownAllServers as shutdownAllMcpServers } from './mcp/manager';
+import { registerOnboardingHandlers } from './onboarding/handlers';
+import { registerPluginHandlers } from './plugins/handlers';
+import { shutdownAllPlugins } from './plugins/manager';
 import { registerProviderHandlers } from './providers/handlers';
 import { registerSelectedModelHandlers } from './selected-model/handlers';
 import { openDb, closeDb } from './storage/db';
@@ -142,6 +149,8 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   destroyTray();
+  shutdownAllPlugins();
+  void shutdownAllMcpServers();
   closeDb();
 });
 
@@ -155,4 +164,9 @@ function registerIpcHandlers(): void {
   registerThemeHandlers();
   registerWorkspaceHandlers();
   registerChatHandlers();
+  registerReadOnlyChatHandlers();
+  registerFileTreeHandlers();
+  registerMcpHandlers();
+  registerOnboardingHandlers();
+  registerPluginHandlers();
 }

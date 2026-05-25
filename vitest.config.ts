@@ -17,13 +17,14 @@ export default defineConfig({
       '@opencodex/tools': r('./packages/tools/src/index.ts'),
       '@opencodex/plugin-sdk': r('./packages/plugin-sdk/src/index.ts'),
       '@opencodex/mcp-client': r('./packages/mcp-client/src/index.ts'),
+      '@opencodex/provider-voyage': r('./packages/provider-voyage/src/index.ts'),
     },
   },
   test: {
     globals: false,
     environment: 'node',
     include: ['**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['**/node_modules/**', '**/dist/**', '**/out/**', '**/build/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/out/**', '**/build/**', '**/e2e/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

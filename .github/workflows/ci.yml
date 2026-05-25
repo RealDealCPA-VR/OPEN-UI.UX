@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   ci:
-    name: Lint + Typecheck + Test
+    name: Lint + Typecheck + Test + Build
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -44,3 +44,6 @@ jobs:
 
       - name: Format check
         run: pnpm format:check
+
+      - name: Build
+        run: pnpm build

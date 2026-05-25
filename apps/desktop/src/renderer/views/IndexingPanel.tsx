@@ -1,24 +1,44 @@
+import { useEffect, useState } from 'react';
+
 export function IndexingPanel(): JSX.Element {
+  const [readOnly, setReadOnly] = useState(false);
+
+  useEffect(() => {
+    void window.opencodex.chat.getReadOnlyMode().then(({ readOnly: r }) => setReadOnly(r));
+    return window.opencodex.chat.onReadOnlyChanged(({ readOnly: r }) => setReadOnly(r));
+  }, []);
+
+  const toggle = async (): Promise<void> => {
+    const next = !readOnly;
+    setReadOnly(next);
+    await window.opencodex.chat.setReadOnlyMode(next);
+  };
+
   return (
-    <div className="indexing-panel indexing-panel-stub">
-      <div className="indexing-stub-head">
-        <span className="pill pill-soon">Coming in Phase 3</span>
+    <div className="indexing-panel">
+      <div className="indexing-row">
+        <div>
+          <div className="indexing-label">Read-only chat mode</div>
+          <div className="settings-section-desc">
+            Block every write / execute / network tool call automatically. Useful for &ldquo;chat
+            with my codebase&rdquo; without giving the agent write access.
+          </div>
+        </div>
+        <label className="indexing-toggle">
+          <input type="checkbox" checked={readOnly} onChange={() => void toggle()} />
+          <span>{readOnly ? 'On' : 'Off'}</span>
+        </label>
       </div>
-      <p className="indexing-stub-desc">
-        Codebase indexing isn’t wired up yet. When Phase 3 ships, this section will let you:
-      </p>
-      <ul className="indexing-stub-list">
-        <li>Pick an embedding provider (OpenAI, Voyage, or local Ollama)</li>
-        <li>See indexed file count, last-update time, and any errors</li>
-        <li>Manually trigger a reindex of the active workspace</li>
-        <li>
-          Configure <code>.opencodexignore</code> overrides on top of <code>.gitignore</code>
-        </li>
-      </ul>
-      <p className="indexing-stub-foot">
-        Until then, the agent has access to <code>read_file</code>, <code>glob</code>, and{' '}
-        <code>grep</code> — which cover most lookup needs without an index.
-      </p>
+      <div className="indexing-row indexing-search">
+        <div>
+          <div className="indexing-label">Codebase search</div>
+          <div className="settings-section-desc">
+            The agent has the <code>search_codebase</code> tool — a ranked grep over the workspace
+            that respects <code>.gitignore</code> and <code>.opencodexignore</code>. Vector + AST
+            indexing is on the v0.1 backlog.
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

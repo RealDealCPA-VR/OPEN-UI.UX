@@ -1,0 +1,21 @@
+{
+  "name": "@opencodex-example/provider-stub",
+  "version": "0.0.0",
+  "description": "Reference plugin showing the LLMProvider extension point",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@opencodex/core": "workspace:*",
+    "@opencodex/plugin-sdk": "workspace:*",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

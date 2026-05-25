@@ -1,0 +1,14 @@
+{
+  "name": "provider-stub",
+  "version": "0.0.0",
+  "displayName": "Provider Stub",
+  "description": "Reference plugin showing how a third-party LLM provider plugs in",
+  "author": "OpenCodex contributors",
+  "license": "MIT",
+  "entry": "dist/index.js",
+  "engines": { "opencodex": "^0.1.0" },
+  "permissions": [],
+  "contributions": {
+    "providers": ["echo"]
+  }
+}

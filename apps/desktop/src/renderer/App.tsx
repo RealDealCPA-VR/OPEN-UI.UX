@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { ApprovalQueue } from './components/ApprovalQueue';
+import { OnboardingWizard } from './components/OnboardingWizard';
 import { ThemeApplier } from './components/ThemeApplier';
 import { ChatProvider } from './state/chat-context';
 import { SelectedModelProvider } from './state/selected-model-context';
@@ -18,6 +19,7 @@ export function App(): JSX.Element {
           <ThemeApplier />
           <DeepLinkRouter />
           <ApprovalQueue />
+          <OnboardingWizard />
           <Routes>
             <Route element={<AppShell />}>
               <Route index element={<Navigate to="/chat" replace />} />

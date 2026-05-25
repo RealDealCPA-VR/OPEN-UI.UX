@@ -12,6 +12,7 @@ import { findModel, knownModels } from './models';
 import { sseEvents } from './sse';
 import { buildChatRequestBody } from './translate-request';
 import { streamChunksToEvents } from './translate-stream';
+import { responsesStream } from './responses';
 import { chatChunkSchema, embeddingsResponseSchema, type ChatChunk } from './response-schemas';
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
@@ -23,6 +24,10 @@ class OpenAIProvider implements LLMProvider {
   constructor(private readonly config: OpenAIConfig) {}
 
   async *chat(req: ChatRequest): AsyncIterable<ChatEvent> {
+    if (this.config.useResponsesApi) {
+      yield* responsesStream(req, this.config);
+      return;
+    }
     const body = buildChatRequestBody(req, { stream: true });
     const response = await this.post('/chat/completions', body, req.signal);
     if (!response.ok || !response.body) {

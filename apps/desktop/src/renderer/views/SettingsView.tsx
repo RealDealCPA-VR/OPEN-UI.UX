@@ -2,6 +2,8 @@ import { OnboardingBanner, PROVIDERS_SECTION_ID } from '../components/Onboarding
 import { ApprovalsPanel } from './ApprovalsPanel';
 import { AuditLogPanel } from './AuditLogPanel';
 import { IndexingPanel } from './IndexingPanel';
+import { McpServersPanel } from './McpServersPanel';
+import { PluginsPanel } from './PluginsPanel';
 import { ProvidersPanel } from './ProvidersPanel';
 import { ThemePanel } from './ThemePanel';
 import { WorkspacePanel } from './WorkspacePanel';
@@ -44,6 +46,22 @@ export function SettingsView(): JSX.Element {
           defaults apply to every tool in that tier; per-tool overrides take precedence.
         </p>
         <ApprovalsPanel />
+      </section>
+      <section className="settings-section">
+        <h2>Plugins</h2>
+        <p className="settings-section-desc">
+          Install third-party plugins from a local folder. Plugins can contribute tools, providers,
+          and slash commands. They run in-process — only install plugins you trust.
+        </p>
+        <PluginsPanel />
+      </section>
+      <section className="settings-section">
+        <h2>MCP servers</h2>
+        <p className="settings-section-desc">
+          Model Context Protocol servers expose tools, resources, and prompts to the agent. Add a
+          curated preset or paste a custom config — connections start automatically.
+        </p>
+        <McpServersPanel />
       </section>
       <section className="settings-section">
         <h2>Audit log</h2>

@@ -6,9 +6,11 @@ import {
   listDirTool,
   readFileTool,
   runShellTool,
+  searchCodebaseTool,
   webFetchTool,
   writeFileTool,
 } from '@opencodex/tools';
+import { spawnSubagentTool } from '../agent/spawn-subagent-tool';
 
 let instance: ToolRegistry | null = null;
 
@@ -23,6 +25,8 @@ export function getToolRegistry(): ToolRegistry {
     registry.register(editFileTool);
     registry.register(runShellTool);
     registry.register(webFetchTool);
+    registry.register(searchCodebaseTool);
+    registry.register(spawnSubagentTool);
     instance = registry;
   }
   return instance;

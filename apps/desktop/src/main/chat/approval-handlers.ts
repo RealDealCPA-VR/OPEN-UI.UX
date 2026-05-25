@@ -2,7 +2,12 @@ import { BrowserWindow } from 'electron';
 import { z } from 'zod';
 import type { ApprovalRequest } from '../../shared/approvals';
 import { registerInvoke } from '../ipc/registry';
-import { getApprovalPolicies, getSettings, setApprovalPolicies } from '../storage/settings';
+import {
+  getApprovalPolicies,
+  getReadOnlyChatMode,
+  getSettings,
+  setApprovalPolicies,
+} from '../storage/settings';
 import { getApprovalManager, initApprovalManager } from './approvals';
 import { readFilePreview } from './file-preview';
 
@@ -12,7 +17,12 @@ const decisionEnum = z.enum(['allow', 'deny']);
 const scopeEnum = z.enum(['once', 'session', 'always']);
 
 export function registerApprovalHandlers(): void {
-  initApprovalManager(broadcastApprovalRequest, getApprovalPolicies, setApprovalPolicies);
+  initApprovalManager(
+    broadcastApprovalRequest,
+    getApprovalPolicies,
+    setApprovalPolicies,
+    getReadOnlyChatMode,
+  );
 
   registerInvoke('approvals:get-policies', z.void(), () => getApprovalPolicies());
 

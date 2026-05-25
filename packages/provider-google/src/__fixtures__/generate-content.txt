@@ -1,0 +1,6 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Searching"}]},"index":0}]}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":" now"}]},"index":0}]}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"id":"call_xyz","name":"grep","args":{"q":"foo"}}}]},"index":0,"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":7,"totalTokenCount":19,"cachedContentTokenCount":4}}
+
