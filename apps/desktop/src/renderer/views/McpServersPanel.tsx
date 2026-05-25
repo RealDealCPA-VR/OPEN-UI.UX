@@ -91,6 +91,7 @@ export function McpServersPanel(): JSX.Element {
                 <div className="mcp-server-actions">
                   <button
                     type="button"
+                    className="btn"
                     onClick={() => void onToggle(server)}
                     disabled={busyId === server.id}
                   >
@@ -98,6 +99,7 @@ export function McpServersPanel(): JSX.Element {
                   </button>
                   <button
                     type="button"
+                    className="btn btn-danger"
                     onClick={() => void onRemove(server)}
                     disabled={busyId === server.id}
                   >
@@ -115,12 +117,13 @@ export function McpServersPanel(): JSX.Element {
           <ul className="mcp-preset-list">
             {availablePresets.map((preset) => (
               <li key={preset.id} className="mcp-preset-row">
-                <div>
+                <div className="mcp-preset-text">
                   <div className="mcp-preset-name">{preset.displayName}</div>
                   <div className="mcp-preset-desc">{preset.description}</div>
                 </div>
                 <button
                   type="button"
+                  className="btn btn-primary"
                   onClick={() => void onAddPreset(preset)}
                   disabled={busyId === preset.id}
                 >

@@ -13,6 +13,7 @@ import {
 import { ToolCallCard } from '../components/ToolCallCard';
 import { groupContentBlocks } from '../components/tool-block-grouping';
 import { useChat, type AssistantDraft } from '../state/chat-context';
+import { useCollapseState } from '../state/use-collapse-state';
 import { useSelectedModel } from '../state/selected-model-context';
 import type { ChatAttachment } from '../../shared/attachments';
 import type {
@@ -79,9 +80,62 @@ function ConversationSidebar(): JSX.Element {
   const { conversations, activeId, selectConversation, createConversation, deleteConversation } =
     useChat();
   const { selected } = useSelectedModel();
+  const [collapsed, toggleCollapsed] = useCollapseState('opencodex.chatSidebar.collapsed', false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod || e.shiftKey || e.altKey) return;
+      if (e.key === '\\') {
+        e.preventDefault();
+        toggleCollapsed();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleCollapsed]);
+
+  if (collapsed) {
+    return (
+      <aside className="chat-sidebar collapsed" aria-label="Conversations">
+        <button
+          type="button"
+          className="chat-sidebar-collapse-btn"
+          onClick={toggleCollapsed}
+          title="Expand conversations (Ctrl/⌘+\\)"
+          aria-label="Expand conversations"
+        >
+          ›
+        </button>
+        <button
+          type="button"
+          className="chat-sidebar-new-icon"
+          onClick={() =>
+            void createConversation(selected?.providerId ?? null, selected?.modelId ?? null)
+          }
+          title="New chat"
+          aria-label="New chat"
+        >
+          +
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside className="chat-sidebar">
+      <div className="chat-sidebar-head">
+        <span className="chat-sidebar-title">Conversations</span>
+        <button
+          type="button"
+          className="chat-sidebar-collapse-btn"
+          onClick={toggleCollapsed}
+          title="Collapse (Ctrl/⌘+\\)"
+          aria-label="Collapse conversations"
+        >
+          ‹
+        </button>
+      </div>
       <WorkspaceChip />
       <button
         type="button"

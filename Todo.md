@@ -185,6 +185,48 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 
 ---
 
+## Phase 7 — UX polish + long-term memory
+
+### Long-term memory integrations
+
+- [ ] **Obsidian memory provider** — read/write notes in a user-pointed Obsidian vault as agent-accessible memory. Filesystem-backed (no Obsidian app required). Tools: `memory_search` (BM25 + optional embeddings), `memory_read`, `memory_append`, `memory_create_note`. Config in Settings → Memory (vault folder path). Respects existing approval tiers (read auto, write prompts).
+- [ ] **Notion memory provider** — read/write Notion pages + databases via Notion API. OAuth or integration token in keychain. Tools: `notion_search`, `notion_read_page`, `notion_append_block`, `notion_create_page`. Config in Settings → Memory (token + workspace selection).
+- [ ] Unified Memory section in Settings — backend selector (None / Obsidian / Notion / Both), per-backend status pill (connected / error), test-connection button.
+- [ ] Memory tools surface in the same tool registry as builtins so the agent loop sees them naturally; approval tiers wired so write/append always prompts unless the user opts into auto.
+
+### Sidebar collapsing
+
+- [ ] Collapsible chat conversation sidebar (toggle button in sidebar header, persists in settings, keyboard shortcut Cmd/Ctrl + \\).
+- [ ] Collapsible main navigation rail (chat / agent / codebase / settings icons) — collapsed shows icons only, expanded shows icon + label.
+- [ ] Animate width transitions; remember collapsed state per-view.
+
+### Settings page visual refresh
+
+- [ ] Two-pane Settings layout: left rail of section tabs (Theme / Workspace / Providers / Approvals / Plugins / MCP / Memory / Audit log / Indexing) with active highlight, right pane shows the focused section.
+- [ ] Per-section card styling: title + description + body in elevated card with consistent padding, dividers between groups.
+- [ ] Section search box that filters the rail.
+- [ ] Deep-link support: `/settings/providers`, `/settings/memory`, etc. so `OnboardingBanner` and other in-app links can navigate to a specific section.
+- [ ] Sticky header inside each section with section title + secondary actions.
+
+### Agent + Codebase view usability
+
+- [ ] **AgentView**: convert from "run history viewer" to "active control surface" — at top, show currently-running run with live token meter, current tool, abort button. History below.
+- [ ] AgentView: launchable from this view (not only as a tool call from chat) — "Spawn task" button → modal with task description, model selector, workspace, optional worktree toggle.
+- [ ] AgentView: per-run detail drawer with full transcript, file changes preview, merge-review CTA.
+- [ ] **CodebaseView**: file preview pane on the right when a file is selected (Monaco read-only). Already imports Monaco for diffs — reuse.
+- [ ] CodebaseView: search box (filename + content) backed by ripgrep over the active workspace.
+- [ ] CodebaseView: pills on files that have pending agent edits (linked to the AgentView merge-review state).
+- [ ] CodebaseView: right-click context menu (Open, Reveal in OS, Copy path, Ask agent about this file).
+
+### Cross-view chat transfer
+
+- [ ] "Send to Agent" button on a chat → packages the conversation + last user message + selected workspace as a new autonomous run, hands it to the AgentView spawn flow, opens AgentView focused on the new run.
+- [ ] "Send to Codebase" action on a chat → switches to CodebaseView with the workspace already in focus, pre-fills any file paths mentioned in the chat as a result filter.
+- [ ] Shared "transfer context" type in `shared/` so chat/agent/codebase all consume the same payload.
+- [ ] Reverse direction: "Continue in chat" button on a completed AgentRun and on a CodebaseView selection — creates a new conversation with the result as initial context.
+
+---
+
 ## Backlog (post-v0.1)
 
 - [ ] Cloud / background tasks (Codex's headline feature) — requires a backend

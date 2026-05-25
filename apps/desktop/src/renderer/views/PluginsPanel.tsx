@@ -78,7 +78,12 @@ export function PluginsPanel(): JSX.Element {
     <div className="plugins-panel">
       {error && <div className="mcp-panel-error">{error}</div>}
       <div className="plugins-toolbar">
-        <button type="button" onClick={() => void onInstall()} disabled={busyId === '__install__'}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => void onInstall()}
+          disabled={busyId === '__install__'}
+        >
           Install from folder…
         </button>
         <span className="plugins-registry">
@@ -124,6 +129,7 @@ export function PluginsPanel(): JSX.Element {
                 {item.status === 'pending-permissions' && (
                   <button
                     type="button"
+                    className="btn btn-primary"
                     onClick={() => void onGrant(item)}
                     disabled={busyId === item.id}
                   >
@@ -132,6 +138,7 @@ export function PluginsPanel(): JSX.Element {
                 )}
                 <button
                   type="button"
+                  className="btn"
                   onClick={() => void onToggle(item)}
                   disabled={busyId === item.id}
                 >
@@ -139,6 +146,7 @@ export function PluginsPanel(): JSX.Element {
                 </button>
                 <button
                   type="button"
+                  className="btn btn-danger"
                   onClick={() => void onUninstall(item)}
                   disabled={busyId === item.id}
                 >
