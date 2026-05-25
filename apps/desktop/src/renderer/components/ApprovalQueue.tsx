@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   ApprovalDecision,
   ApprovalRequest,
@@ -6,6 +6,11 @@ import type {
   FilePreviewResult,
 } from '../../shared/approvals';
 import { diffLines, type DiffResult } from './line-diff';
+
+const MonacoDiffViewer = lazy(async () => {
+  const mod = await import('./MonacoDiffViewer');
+  return { default: mod.MonacoDiffViewer };
+});
 
 export function ApprovalQueue(): JSX.Element | null {
   const [queue, setQueue] = useState<ApprovalRequest[]>([]);
@@ -101,6 +106,7 @@ function ApprovalPreview({ request }: { request: ApprovalRequest }): JSX.Element
 function WriteFilePreview({ path, content }: { path: string; content: string }): JSX.Element {
   const [existing, setExisting] = useState<FilePreviewResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [monacoOpen, setMonacoOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,8 +180,183 @@ function WriteFilePreview({ path, content }: { path: string; content: string }):
       ) : existing && !existing.exists ? (
         <pre className="approval-preview-code approval-preview-code-add">{content}</pre>
       ) : null}
+      {existing ? (
+        <div className="approval-preview-monaco-launcher">
+          <button
+            type="button"
+            className="approval-preview-monaco-toggle"
+            onClick={() => setMonacoOpen(true)}
+          >
+            View in Monaco
+          </button>
+        </div>
+      ) : null}
+      {monacoOpen && existing ? (
+        <MonacoDiffModal
+          path={path}
+          originalText={existing.exists ? existing.content : ''}
+          modifiedText={content}
+          language={guessLanguageFromPath(path)}
+          onClose={() => setMonacoOpen(false)}
+        />
+      ) : null}
     </section>
   );
+}
+
+function EditFileMonacoLauncher({
+  path,
+  oldString,
+  newString,
+  replaceAll,
+}: {
+  path: string;
+  oldString: string;
+  newString: string;
+  replaceAll?: boolean;
+}): JSX.Element {
+  const [existing, setExisting] = useState<FilePreviewResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [monacoOpen, setMonacoOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (cancelled) return;
+      setExisting(null);
+      setError(null);
+      try {
+        const res = await window.opencodex.approvals.readFilePreview({ path });
+        if (!cancelled) setExisting(res);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  const modifiedText = useMemo(() => {
+    if (!existing || !existing.exists) return newString;
+    return replaceAll
+      ? existing.content.split(oldString).join(newString)
+      : existing.content.replace(oldString, newString);
+  }, [existing, oldString, newString, replaceAll]);
+
+  return (
+    <div className="approval-preview-monaco-launcher">
+      {error ? (
+        <span className="approval-preview-meta-error">Could not read file: {error}</span>
+      ) : null}
+      <button
+        type="button"
+        className="approval-preview-monaco-toggle"
+        disabled={!existing}
+        onClick={() => setMonacoOpen(true)}
+      >
+        View in Monaco
+      </button>
+      {monacoOpen && existing ? (
+        <MonacoDiffModal
+          path={path}
+          originalText={existing.exists ? existing.content : ''}
+          modifiedText={modifiedText}
+          language={guessLanguageFromPath(path)}
+          onClose={() => setMonacoOpen(false)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function MonacoDiffModal({
+  path,
+  originalText,
+  modifiedText,
+  language,
+  onClose,
+}: {
+  path: string;
+  originalText: string;
+  modifiedText: string;
+  language?: string;
+  onClose: () => void;
+}): JSX.Element {
+  return (
+    <div
+      className="approval-monaco-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Monaco diff for ${path}`}
+      onClick={onClose}
+    >
+      <div className="approval-monaco-modal" onClick={(e) => e.stopPropagation()}>
+        <header className="approval-monaco-modal-header">
+          <code className="approval-monaco-modal-path">{path}</code>
+          <button
+            type="button"
+            className="approval-monaco-modal-close"
+            onClick={onClose}
+            aria-label="Close Monaco diff"
+          >
+            ×
+          </button>
+        </header>
+        <Suspense
+          fallback={<div className="approval-monaco-modal-loading">Loading Monaco editor…</div>}
+        >
+          <MonacoDiffViewer
+            originalText={originalText}
+            modifiedText={modifiedText}
+            language={language}
+            height="60vh"
+          />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
+function guessLanguageFromPath(path: string): string | undefined {
+  const lower = path.toLowerCase();
+  const ext = lower.slice(lower.lastIndexOf('.') + 1);
+  switch (ext) {
+    case 'ts':
+    case 'tsx':
+    case 'mts':
+    case 'cts':
+      return 'typescript';
+    case 'js':
+    case 'jsx':
+    case 'mjs':
+    case 'cjs':
+      return 'javascript';
+    case 'json':
+      return 'json';
+    case 'md':
+    case 'markdown':
+      return 'markdown';
+    case 'css':
+      return 'css';
+    case 'html':
+    case 'htm':
+      return 'html';
+    case 'py':
+      return 'python';
+    case 'rs':
+      return 'rust';
+    case 'go':
+      return 'go';
+    case 'yml':
+    case 'yaml':
+      return 'yaml';
+    case 'sh':
+    case 'bash':
+      return 'shell';
+    default:
+      return undefined;
+  }
 }
 
 function EditFilePreview({
@@ -204,6 +385,12 @@ function EditFilePreview({
           <pre className="approval-preview-code approval-preview-code-add">{args.newString}</pre>
         </div>
       </div>
+      <EditFileMonacoLauncher
+        path={args.path}
+        oldString={args.oldString}
+        newString={args.newString}
+        {...(args.replaceAll !== undefined ? { replaceAll: args.replaceAll } : {})}
+      />
     </section>
   );
 }

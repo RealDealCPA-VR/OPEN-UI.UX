@@ -1375,6 +1375,58 @@ body {
   border-color: var(--danger-border-strong);
 }
 
+.tool-card-pill-terminal {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.tool-card-pill-terminal:hover {
+  color: var(--text-1);
+  background: var(--surface-3);
+}
+
+.tool-card-pill-terminal.is-active {
+  background: var(--accent-pending-bg);
+  border-color: var(--accent-border);
+  color: var(--accent-on-bg);
+}
+
+.tool-card-terminal {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px 12px;
+  background: #0b0d10;
+}
+
+.embedded-terminal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.embedded-terminal-host {
+  min-height: 220px;
+  width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.embedded-terminal-status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.embedded-terminal-status-error {
+  color: var(--danger-soft);
+}
+
 .tool-card-body {
   display: flex;
   flex-direction: column;
@@ -2888,4 +2940,179 @@ body {
 .agent-run-timeline-dur {
   color: var(--text-muted);
   margin-left: auto;
+}
+
+.approval-preview-monaco-launcher {
+  margin-top: 8px;
+}
+
+.approval-preview-monaco-toggle {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong-alt);
+  border-radius: 4px;
+  background: var(--bg-base);
+  cursor: pointer;
+}
+
+.approval-preview-monaco-toggle:hover:not(:disabled) {
+  background: var(--bg-panel);
+}
+
+.approval-preview-monaco-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.approval-monaco-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--shadow-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+.approval-monaco-modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong-alt);
+  border-radius: 8px;
+  width: 90vw;
+  max-width: 1400px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--shadow-modal);
+}
+
+.approval-monaco-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.approval-monaco-modal-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.approval-monaco-modal-close {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.approval-monaco-modal-loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.monaco-diff-viewer {
+  display: flex;
+  flex-direction: column;
+}
+
+.monaco-diff-viewer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.monaco-diff-viewer-summary {
+  color: var(--text-secondary);
+}
+
+.monaco-diff-viewer-toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.monaco-diff-viewer-toolbar-actions button {
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid var(--border-strong-alt);
+  border-radius: 4px;
+  background: var(--bg-base);
+  cursor: pointer;
+}
+
+.monaco-diff-viewer-editor {
+  flex: 1;
+  min-height: 240px;
+}
+
+.monaco-diff-viewer-loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.monaco-diff-viewer-hunks {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  max-height: 180px;
+  overflow: auto;
+}
+
+.monaco-diff-viewer-hunk {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.monaco-diff-viewer-hunk:last-child {
+  border-bottom: none;
+}
+
+.monaco-diff-viewer-hunk-kind {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-base);
+}
+
+.monaco-diff-viewer-hunk-kind-add {
+  color: var(--diff-add-fg, #2ea043);
+}
+
+.monaco-diff-viewer-hunk-kind-remove {
+  color: var(--diff-remove-fg, #f85149);
+}
+
+.monaco-diff-viewer-hunk-range {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-secondary);
+}
+
+.monaco-diff-viewer-hunk-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.monaco-diff-viewer-hunk-actions button {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-strong-alt);
+  border-radius: 3px;
+  background: var(--bg-base);
+  cursor: pointer;
 }

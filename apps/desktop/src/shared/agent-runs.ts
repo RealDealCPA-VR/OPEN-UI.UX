@@ -27,6 +27,10 @@ export interface AgentRun {
   toolEvents: AgentRunToolEvent[];
   stopReason: AgentRunStopReason | null;
   error: string | null;
+  worktreePath: string | null;
+  worktreeBranch: string | null;
+  worktreeRepoRoot: string | null;
+  mergeStatus: 'pending' | 'merged' | 'rejected' | null;
 }
 
 export interface AgentRunsChangedEvent {

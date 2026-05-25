@@ -8,7 +8,12 @@ export interface StartRunInput {
   task: string;
   providerId: string;
   modelId: string;
+  worktreePath?: string;
+  worktreeBranch?: string;
+  worktreeRepoRoot?: string;
 }
+
+export type MergeStatus = 'pending' | 'merged' | 'rejected';
 
 type Listener = (runs: readonly AgentRun[]) => void;
 
@@ -36,6 +41,10 @@ function trimIfOverflow(): void {
 
 export function recordStart(input: StartRunInput): string {
   const id = randomUUID();
+  const hasWorktree =
+    input.worktreePath !== undefined &&
+    input.worktreeBranch !== undefined &&
+    input.worktreeRepoRoot !== undefined;
   const run: AgentRun = {
     id,
     task: input.task,
@@ -50,12 +59,28 @@ export function recordStart(input: StartRunInput): string {
     toolEvents: [],
     stopReason: null,
     error: null,
+    worktreePath: input.worktreePath ?? null,
+    worktreeBranch: input.worktreeBranch ?? null,
+    worktreeRepoRoot: input.worktreeRepoRoot ?? null,
+    mergeStatus: hasWorktree ? 'pending' : null,
   };
   runs.set(id, run);
   insertionOrder.push(id);
   trimIfOverflow();
   emit();
   return id;
+}
+
+export function getRun(id: string): AgentRun | undefined {
+  return runs.get(id);
+}
+
+export function setMergeStatus(id: string, status: MergeStatus): void {
+  const existing = runs.get(id);
+  if (!existing) return;
+  const updated: AgentRun = { ...existing, mergeStatus: status };
+  runs.set(id, updated);
+  emit();
 }
 
 export function recordComplete(id: string, result: SubagentResult): void {

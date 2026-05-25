@@ -26,6 +26,11 @@ function broadcast(): ChatStreamSink {
         if (!win.isDestroyed()) win.webContents.send('chat:event', payload);
       }
     },
+    emitShellOutput(payload) {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send('shell:output', payload);
+      }
+    },
   };
 }
 

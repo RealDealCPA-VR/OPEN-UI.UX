@@ -11,6 +11,8 @@ import type {
 } from '@opencodex/core';
 import type { ChatStartResponse, ChatStreamEvent } from '../../shared/chat';
 import type { StoredMessage } from '../../shared/conversation';
+import type { ShellOutputEvent } from '../../shared/shell-output';
+import { buildShellTranscript } from '../../shared/shell-output';
 import { logger } from '../logger';
 import { getToolRegistry } from '../tools/registry';
 import { appendMessage, listMessages, updateAssistantMessage } from '../storage/conversations';
@@ -26,6 +28,7 @@ async function defaultBuildProvider(id: string): Promise<LLMProvider> {
 
 export interface ChatStreamSink {
   emit(payload: ChatStreamEvent): void;
+  emitShellOutput?(payload: ShellOutputEvent): void;
 }
 
 export interface StartChatStreamOptions {
@@ -221,6 +224,7 @@ async function runStream(args: RunStreamArgs): Promise<void> {
       const toolBlocks: ContentBlock[] = [];
       for (const tc of iterToolCalls) {
         const result = await executeToolCall(tc, args);
+        broadcastShellOutputIfApplicable(args, tc, result);
         emit({ type: 'tool_result', id: tc.id, output: result.output, isError: result.isError });
         const toolResultBlock: ContentBlock = {
           type: 'tool_result',
@@ -403,6 +407,98 @@ interface AuditPatch {
   isError: boolean;
   decision: ToolCallAuditDecision;
   durationMs: number | null;
+}
+
+function broadcastShellOutputIfApplicable(
+  args: RunStreamArgs,
+  tc: ToolCallEvent,
+  result: ToolExecutionResult,
+): void {
+  if (!args.sink.emitShellOutput) return;
+  if (tc.name !== 'run_shell') return;
+  if (result.isError) {
+    const message =
+      typeof result.output === 'string' ? result.output : JSON.stringify(result.output);
+    safeEmitShellOutput(args, {
+      streamId: args.streamId,
+      toolUseId: tc.id,
+      stream: 'meta',
+      chunk: `\x1b[31m${message}\x1b[0m\r\n`,
+      final: true,
+    });
+    return;
+  }
+  const parsed = parseShellResult(result.output);
+  if (!parsed) return;
+  const command =
+    typeof (tc.arguments as Record<string, unknown>)?.command === 'string'
+      ? ((tc.arguments as Record<string, unknown>).command as string)
+      : undefined;
+  const cwd =
+    typeof (tc.arguments as Record<string, unknown>)?.cwd === 'string'
+      ? ((tc.arguments as Record<string, unknown>).cwd as string)
+      : undefined;
+  const transcript = buildShellTranscript({
+    stdout: parsed.stdout,
+    stderr: parsed.stderr,
+    exitCode: parsed.exitCode,
+    signal: parsed.signal,
+    truncatedStdout: parsed.truncatedStdout,
+    truncatedStderr: parsed.truncatedStderr,
+    timedOut: parsed.timedOut,
+    durationMs: parsed.durationMs,
+    ...(command ? { command } : {}),
+    ...(cwd ? { cwd } : {}),
+  });
+  safeEmitShellOutput(args, {
+    streamId: args.streamId,
+    toolUseId: tc.id,
+    stream: 'meta',
+    chunk: `${transcript}\r\n`,
+    final: true,
+  });
+}
+
+function safeEmitShellOutput(args: RunStreamArgs, payload: ShellOutputEvent): void {
+  try {
+    args.sink.emitShellOutput?.(payload);
+  } catch (err) {
+    logger.error({ err, streamId: args.streamId }, 'failed to emit shell:output');
+  }
+}
+
+interface ParsedShellResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  signal: string | null;
+  truncatedStdout: boolean;
+  truncatedStderr: boolean;
+  timedOut: boolean;
+  durationMs: number;
+}
+
+function parseShellResult(output: unknown): ParsedShellResult | null {
+  if (typeof output !== 'object' || output === null) return null;
+  const o = output as Record<string, unknown>;
+  if (typeof o.stdout !== 'string') return null;
+  if (typeof o.stderr !== 'string') return null;
+  if (o.exitCode !== null && typeof o.exitCode !== 'number') return null;
+  if (o.signal !== null && typeof o.signal !== 'string') return null;
+  if (typeof o.truncatedStdout !== 'boolean') return null;
+  if (typeof o.truncatedStderr !== 'boolean') return null;
+  if (typeof o.timedOut !== 'boolean') return null;
+  if (typeof o.durationMs !== 'number') return null;
+  return {
+    stdout: o.stdout,
+    stderr: o.stderr,
+    exitCode: o.exitCode as number | null,
+    signal: o.signal as string | null,
+    truncatedStdout: o.truncatedStdout,
+    truncatedStderr: o.truncatedStderr,
+    timedOut: o.timedOut,
+    durationMs: o.durationMs,
+  };
 }
 
 function auditToolCall(args: RunStreamArgs, tc: ToolCallEvent, patch: AuditPatch): void {

@@ -35,6 +35,7 @@ import type {
   ProviderTestResult,
 } from './provider-config';
 import type { SelectedModel } from './selected-model';
+import type { ShellOutputEvent } from './shell-output';
 import type { SetThemeRequest, ThemeChangedEvent, ThemePreference } from './theme';
 import type {
   ToolCallAuditPurgeResult,
@@ -46,6 +47,8 @@ import type { ToolListItem } from './tools';
 import type {
   AddMcpServerRequest,
   McpPromptEntry,
+  McpReindexResourcesResult,
+  McpResourceEntry,
   McpServerChangedEvent,
   McpServerPreset,
   McpState,
@@ -225,6 +228,14 @@ export interface IpcInvokeChannels {
     request: void;
     response: McpPromptEntry[];
   };
+  'mcp:list-resources': {
+    request: void;
+    response: McpResourceEntry[];
+  };
+  'mcp:reindex-resources': {
+    request: void;
+    response: McpReindexResourcesResult;
+  };
   'onboarding:get-state': {
     request: void;
     response: { complete: boolean };
@@ -289,6 +300,23 @@ export interface IpcInvokeChannels {
     request: void;
     response: AgentRun[];
   };
+  'agent:get-merge-bundle': {
+    request: { runId: string };
+    response: {
+      runId: string;
+      diff: string;
+      files: string[];
+      branch: string;
+    };
+  };
+  'agent:accept-merge': {
+    request: { runId: string };
+    response: { ok: boolean; error?: string };
+  };
+  'agent:reject-merge': {
+    request: { runId: string };
+    response: { ok: boolean; error?: string };
+  };
   'file-tree:list': {
     request: { path?: string };
     response: {
@@ -313,6 +341,7 @@ export interface IpcEventChannels {
   'plugins:changed': PluginsChangedEvent;
   'chat:read-only-changed': { readOnly: boolean };
   'agent:runs-changed': AgentRunsChangedEvent;
+  'shell:output': ShellOutputEvent;
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

@@ -18,6 +18,7 @@ export default defineConfig({
       '@opencodex/plugin-sdk': r('./packages/plugin-sdk/src/index.ts'),
       '@opencodex/mcp-client': r('./packages/mcp-client/src/index.ts'),
       '@opencodex/provider-voyage': r('./packages/provider-voyage/src/index.ts'),
+      '@opencodex/rag-chunker': r('./packages/rag-chunker/src/index.ts'),
     },
   },
   test: {

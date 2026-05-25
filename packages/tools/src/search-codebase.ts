@@ -9,12 +9,21 @@ const inputSchema = z.object({
   maxResults: z.number().int().min(1).max(500).optional().default(100),
 });
 
-type SearchHit = {
+export type SearchHitSource = 'workspace' | 'mcp';
+
+export type SearchHit = {
   file: string;
   line: number;
   preview: string;
   score: number;
+  source: SearchHitSource;
 };
+
+export const MCP_INDEX_PREFIX = 'mcp:';
+
+export function sourceOfPath(filePath: string): SearchHitSource {
+  return filePath.startsWith(MCP_INDEX_PREFIX) ? 'mcp' : 'workspace';
+}
 
 function escapeRegex(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -23,7 +32,7 @@ function escapeRegex(input: string): string {
 export const searchCodebaseTool = defineTool({
   name: 'search_codebase',
   description:
-    'Search the active workspace for occurrences of a pattern. Returns ranked file:line hits with previews. Use this before opening files when looking for symbols, references, or examples.',
+    'Search the active workspace (and any indexed MCP resources) for occurrences of a pattern. Returns ranked file:line hits with previews. Each hit has a "source" field ("workspace" for files under the workspace root, "mcp" for MCP resources whose key is prefixed with "mcp:"). Use this before opening files when looking for symbols, references, or examples.',
   inputZod: inputSchema,
   permissionTier: 'read',
   async execute(input, ctx) {
@@ -58,6 +67,7 @@ function rank(hits: readonly GrepMatch[], query: string): SearchHit[] {
         line: h.line,
         preview: h.text,
         score,
+        source: sourceOfPath(h.file),
       };
     })
     .sort((a, b) => b.score - a.score);

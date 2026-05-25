@@ -32,6 +32,7 @@ import type {
   ProviderTestResult,
 } from '../shared/provider-config';
 import type { SelectedModel } from '../shared/selected-model';
+import type { ShellOutputEvent } from '../shared/shell-output';
 import {
   parseInitialThemeArg,
   resolveEffectiveTheme,
@@ -49,6 +50,8 @@ import type { ToolListItem } from '../shared/tools';
 import type {
   AddMcpServerRequest,
   McpPromptEntry,
+  McpReindexResourcesResult,
+  McpResourceEntry,
   McpServerChangedEvent,
   McpServerPreset,
   McpState,
@@ -73,6 +76,7 @@ import type {
 
 type DeepLinkListener = (url: string) => void;
 type ChatEventListener = (payload: ChatStreamEvent) => void;
+type ShellOutputListener = (payload: ShellOutputEvent) => void;
 type ApprovalRequestListener = (req: ApprovalRequest) => void;
 type ThemeChangedListener = (payload: ThemeChangedEvent) => void;
 type WorkspaceChangedListener = (payload: WorkspaceChangedEvent) => void;
@@ -157,6 +161,12 @@ const chat = {
     ipcRenderer.on('chat:read-only-changed', wrapped);
     return () => ipcRenderer.off('chat:read-only-changed', wrapped);
   },
+  onShellOutput: (listener: ShellOutputListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: ShellOutputEvent): void =>
+      listener(payload);
+    ipcRenderer.on('shell:output', wrapped);
+    return () => ipcRenderer.off('shell:output', wrapped);
+  },
 };
 
 const approvals = {
@@ -226,6 +236,9 @@ const mcp = {
     ipcRenderer.invoke('mcp:set-enabled', req),
   presets: (): Promise<ReadonlyArray<McpServerPreset>> => ipcRenderer.invoke('mcp:presets'),
   listPrompts: (): Promise<McpPromptEntry[]> => ipcRenderer.invoke('mcp:list-prompts'),
+  listResources: (): Promise<McpResourceEntry[]> => ipcRenderer.invoke('mcp:list-resources'),
+  reindexResources: (): Promise<McpReindexResourcesResult> =>
+    ipcRenderer.invoke('mcp:reindex-resources'),
   onChanged: (listener: McpChangedListener): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: McpServerChangedEvent): void =>
       listener(payload);
@@ -279,6 +292,14 @@ const agent = {
     ipcRenderer.on('agent:runs-changed', wrapped);
     return () => ipcRenderer.off('agent:runs-changed', wrapped);
   },
+  getMergeBundle: (
+    runId: string,
+  ): Promise<{ runId: string; diff: string; files: string[]; branch: string }> =>
+    ipcRenderer.invoke('agent:get-merge-bundle', { runId }),
+  acceptMerge: (runId: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('agent:accept-merge', { runId }),
+  rejectMerge: (runId: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('agent:reject-merge', { runId }),
 };
 
 const api = {

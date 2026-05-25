@@ -1,7 +1,13 @@
-import { McpClient, type McpPrompt, type McpServerConfig } from '@opencodex/mcp-client';
+import {
+  McpClient,
+  type McpPrompt,
+  type McpResource,
+  type McpServerConfig,
+} from '@opencodex/mcp-client';
 import type {
   McpConnectionStatus,
   McpPromptEntry,
+  McpResourceEntry,
   McpServerEntry,
   McpServerStatus,
   McpState,
@@ -19,11 +25,15 @@ interface RuntimeState {
   resourceCount: number;
   promptCount: number;
   prompts: McpPrompt[];
+  resources: McpResource[];
   lastError?: string;
   connectedAt?: string;
   reconnectTimer?: NodeJS.Timeout;
   registeredTools: string[];
 }
+
+export type ConnectedListener = (serverId: string) => void;
+const connectedListeners = new Set<ConnectedListener>();
 
 type StateListener = (state: McpState) => void;
 
@@ -48,6 +58,7 @@ function ensureRuntime(id: string): RuntimeState {
       resourceCount: 0,
       promptCount: 0,
       prompts: [],
+      resources: [],
       registeredTools: [],
     };
     runtime.set(id, r);
@@ -62,6 +73,8 @@ function unregisterServerTools(serverId: string): void {
   r.registeredTools = [];
   r.prompts = [];
   r.promptCount = 0;
+  r.resources = [];
+  r.resourceCount = 0;
 }
 
 function readState(): McpState {
@@ -118,9 +131,41 @@ export function getAvailablePrompts(): McpPromptEntry[] {
   return out;
 }
 
+export function getAvailableResources(): McpResourceEntry[] {
+  const servers = getMcpServers();
+  const out: McpResourceEntry[] = [];
+  for (const s of servers) {
+    if (!s.enabled) continue;
+    const r = ensureRuntime(s.id);
+    if (r.status !== 'connected') continue;
+    for (const res of r.resources) {
+      out.push({
+        serverId: s.id,
+        serverDisplayName: s.displayName,
+        resource: {
+          uri: res.uri,
+          name: res.name,
+          ...(res.description !== undefined ? { description: res.description } : {}),
+          ...(res.mimeType !== undefined ? { mimeType: res.mimeType } : {}),
+        },
+      });
+    }
+  }
+  return out;
+}
+
+export function getClientForServer(serverId: string): McpClient | null {
+  return runtime.get(serverId)?.client ?? null;
+}
+
 export function onMcpStateChange(listener: StateListener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
+}
+
+export function onMcpServerConnected(listener: ConnectedListener): () => void {
+  connectedListeners.add(listener);
+  return () => connectedListeners.delete(listener);
 }
 
 async function connectServer(server: McpServerEntry, attempt = 0): Promise<void> {
@@ -161,6 +206,13 @@ async function connectServer(server: McpServerEntry, attempt = 0): Promise<void>
     r.connectedAt = new Date().toISOString();
     await refreshCounts(server.id, client);
     emit();
+    for (const l of connectedListeners) {
+      try {
+        l(server.id);
+      } catch (err) {
+        logger.warn({ err, serverId: server.id }, 'mcp connected listener threw');
+      }
+    }
   } catch (err) {
     r.status = 'error';
     r.client = null;
@@ -200,8 +252,11 @@ async function refreshCounts(serverId: string, client: McpClient): Promise<void>
     r.toolCount = 0;
   }
   try {
-    r.resourceCount = (await client.listResources()).length;
+    const remoteResources = await client.listResources();
+    r.resources = remoteResources;
+    r.resourceCount = remoteResources.length;
   } catch {
+    r.resources = [];
     r.resourceCount = 0;
   }
   try {

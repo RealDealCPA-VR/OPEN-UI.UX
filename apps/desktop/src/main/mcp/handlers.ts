@@ -5,6 +5,7 @@ import { registerInvoke } from '../ipc/registry';
 import {
   addServer,
   getAvailablePrompts,
+  getAvailableResources,
   getMcpState,
   onMcpStateChange,
   removeServer,
@@ -12,6 +13,7 @@ import {
   startAllServers,
 } from './manager';
 import { MCP_PRESETS } from './presets';
+import { indexAllMcpResources, startMcpResourceAutoIndexing } from './resource-indexer';
 
 export function registerMcpHandlers(): void {
   registerInvoke('mcp:list', z.void(), () => getMcpState());
@@ -26,6 +28,8 @@ export function registerMcpHandlers(): void {
   );
   registerInvoke('mcp:presets', z.void(), () => MCP_PRESETS);
   registerInvoke('mcp:list-prompts', z.void(), () => getAvailablePrompts());
+  registerInvoke('mcp:list-resources', z.void(), () => getAvailableResources());
+  registerInvoke('mcp:reindex-resources', z.void(), () => indexAllMcpResources());
 
   onMcpStateChange((state) => {
     for (const win of BrowserWindow.getAllWindows()) {
@@ -33,5 +37,6 @@ export function registerMcpHandlers(): void {
     }
   });
 
+  startMcpResourceAutoIndexing();
   void startAllServers();
 }

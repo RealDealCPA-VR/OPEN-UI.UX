@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   __resetForTests,
   clear,
+  getRun,
   listRuns,
   onRunsChanged,
   recordComplete,
   recordError,
   recordStart,
+  setMergeStatus,
 } from './run-registry';
 import type { SubagentResult } from './subagent';
 
@@ -127,6 +129,49 @@ describe('run-registry', () => {
     off();
     recordStart({ task: 't', providerId: 'p', modelId: 'm' });
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('records worktree fields when provided and marks mergeStatus pending', () => {
+    const id = recordStart({
+      task: 't',
+      providerId: 'p',
+      modelId: 'm',
+      worktreePath: '/abs/path/wt',
+      worktreeBranch: 'opencodex/subagent/abc',
+      worktreeRepoRoot: '/abs/repo',
+    });
+    const run = getRun(id);
+    expect(run).toBeDefined();
+    expect(run!.worktreePath).toBe('/abs/path/wt');
+    expect(run!.worktreeBranch).toBe('opencodex/subagent/abc');
+    expect(run!.worktreeRepoRoot).toBe('/abs/repo');
+    expect(run!.mergeStatus).toBe('pending');
+  });
+
+  it('leaves worktree fields null and mergeStatus null when not provided', () => {
+    const id = recordStart({ task: 't', providerId: 'p', modelId: 'm' });
+    const run = getRun(id);
+    expect(run!.worktreePath).toBeNull();
+    expect(run!.worktreeBranch).toBeNull();
+    expect(run!.worktreeRepoRoot).toBeNull();
+    expect(run!.mergeStatus).toBeNull();
+  });
+
+  it('setMergeStatus updates the run and is a no-op for unknown id', () => {
+    const id = recordStart({
+      task: 't',
+      providerId: 'p',
+      modelId: 'm',
+      worktreePath: '/x',
+      worktreeBranch: 'b',
+      worktreeRepoRoot: '/r',
+    });
+    setMergeStatus(id, 'merged');
+    expect(getRun(id)!.mergeStatus).toBe('merged');
+    setMergeStatus(id, 'rejected');
+    expect(getRun(id)!.mergeStatus).toBe('rejected');
+    setMergeStatus('missing', 'merged');
+    expect(getRun('missing')).toBeUndefined();
   });
 
   it('caps history at MAX_RUNS (100), evicting oldest', () => {

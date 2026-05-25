@@ -16,12 +16,25 @@ interface AgentRunRowProps {
   expanded: boolean;
   onToggle: () => void;
   now: number;
+  onReview?: (runId: string) => void;
 }
 
-export function AgentRunRow({ run, expanded, onToggle, now }: AgentRunRowProps): JSX.Element {
+export function AgentRunRow({
+  run,
+  expanded,
+  onToggle,
+  now,
+  onReview,
+}: AgentRunRowProps): JSX.Element {
   const duration = runDurationMs(run, now);
   const tool = currentToolName(run);
   const errors = toolErrorCount(run);
+  const showReview =
+    onReview !== undefined &&
+    run.worktreePath !== null &&
+    run.worktreeBranch !== null &&
+    run.status !== 'running' &&
+    run.mergeStatus === 'pending';
 
   return (
     <li className="audit-row agent-run-row">
@@ -85,6 +98,20 @@ export function AgentRunRow({ run, expanded, onToggle, now }: AgentRunRowProps):
                 </dd>
               </div>
             )}
+            {run.worktreeBranch && (
+              <div>
+                <dt>Worktree branch</dt>
+                <dd>
+                  <code>{run.worktreeBranch}</code>
+                </dd>
+              </div>
+            )}
+            {run.mergeStatus && (
+              <div>
+                <dt>Merge status</dt>
+                <dd>{run.mergeStatus}</dd>
+              </div>
+            )}
             {run.error && (
               <div>
                 <dt>Error</dt>
@@ -92,6 +119,13 @@ export function AgentRunRow({ run, expanded, onToggle, now }: AgentRunRowProps):
               </div>
             )}
           </dl>
+          {showReview && onReview && (
+            <div className="audit-row-section">
+              <button type="button" className="audit-clear-button" onClick={() => onReview(run.id)}>
+                Review changes
+              </button>
+            </div>
+          )}
           {run.toolEvents.length > 0 && (
             <div className="audit-row-section">
               <div className="audit-row-section-head">

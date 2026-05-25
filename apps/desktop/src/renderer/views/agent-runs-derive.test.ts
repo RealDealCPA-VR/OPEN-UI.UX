@@ -27,6 +27,10 @@ function makeRun(overrides: Partial<AgentRun> = {}): AgentRun {
     toolEvents: [],
     stopReason: null,
     error: null,
+    worktreePath: null,
+    worktreeBranch: null,
+    worktreeRepoRoot: null,
+    mergeStatus: null,
     ...overrides,
   };
 }

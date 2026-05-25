@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AgentRunRow } from '../components/AgentRunRow';
+import { MergeReviewModal } from '../components/MergeReviewModal';
 import type { AgentRun } from '../../shared/agent-runs';
 
 export function AgentView(): JSX.Element {
@@ -8,6 +9,16 @@ export function AgentView(): JSX.Element {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
   const [clearing, setClearing] = useState(false);
+  const [reviewRunId, setReviewRunId] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const next = await window.opencodex.agent.listRuns();
+      setRuns(next);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,9 +104,20 @@ export function AgentView(): JSX.Element {
               expanded={expandedId === run.id}
               onToggle={() => setExpandedId(expandedId === run.id ? null : run.id)}
               now={now}
+              onReview={(id) => setReviewRunId(id)}
             />
           ))}
         </ul>
+      )}
+
+      {reviewRunId && (
+        <MergeReviewModal
+          runId={reviewRunId}
+          onClose={() => setReviewRunId(null)}
+          onResolved={() => {
+            void refresh();
+          }}
+        />
       )}
     </section>
   );

@@ -92,3 +92,22 @@ export interface McpPromptEntry {
   serverDisplayName: string;
   prompt: McpPromptInfo;
 }
+
+export interface McpResourceInfo {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface McpResourceEntry {
+  serverId: string;
+  serverDisplayName: string;
+  resource: McpResourceInfo;
+}
+
+export interface McpReindexResourcesResult {
+  indexed: number;
+  failed: number;
+  failures: Array<{ serverId: string; uri: string; error: string }>;
+}

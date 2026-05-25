@@ -38,7 +38,9 @@
       "@opencodex/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"],
       "@opencodex/plugin-sdk/*": ["./packages/plugin-sdk/src/*"],
       "@opencodex/mcp-client": ["./packages/mcp-client/src/index.ts"],
-      "@opencodex/mcp-client/*": ["./packages/mcp-client/src/*"]
+      "@opencodex/mcp-client/*": ["./packages/mcp-client/src/*"],
+      "@opencodex/rag-chunker": ["./packages/rag-chunker/src/index.ts"],
+      "@opencodex/rag-chunker/*": ["./packages/rag-chunker/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "build", "out"]
