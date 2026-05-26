@@ -103,7 +103,15 @@
       "Bash(pnpm --filter @opencodex/desktop test -- src/main/chat)",
       "Bash(pnpm --filter @opencodex/desktop exec eslint apps/desktop/src/renderer/views/CodebaseView.tsx)",
       "Bash(grep -E \"\\(\\\\.tsx?$|✖|warning|error\\)\")",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(node -e \"console.log\\(require\\('electron-store/package.json'\\).version\\)\")",
+      "Bash(grep -n \"process\\\\$1\\\\|require.*process\\\\|require.*electron\" out/main/chunks/settings-B6rPfEDF.cjs)",
+      "Bash(powershell -Command \"Get-ChildItem Env:ELECTRON_* | Format-Table -AutoSize; echo '---'; [System.Environment]::GetEnvironmentVariable\\('ELECTRON_RUN_AS_NODE', 'User'\\); echo '---'; [System.Environment]::GetEnvironmentVariable\\('ELECTRON_RUN_AS_NODE', 'Machine'\\)\")",
+      "Bash(powershell -Command \"Get-Process -Name electron -ErrorAction SilentlyContinue | Select-Object -First 3 ProcessName, Id, StartTime\")",
+      "PowerShell(Get-Process -Name electron -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "PowerShell(\"done\")",
+      "PowerShell(\"stopped\")"
     ],
     "additionalDirectories": ["c:\\c\\Users\\VR\\Projects\\OPEN UI.UX\\apps\\desktop"]
   }
