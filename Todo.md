@@ -227,6 +227,108 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 
 ---
 
+## Phase 8 — Scheduled tasks (cron)
+
+Goal: let users register prompts/agent runs that fire on a cron schedule, reusing the existing agent loop, approval system, audit log, and merge-review flow. Builds directly on the `setTimeout`/`setInterval` pattern in [apps/desktop/src/main/updater.ts](apps/desktop/src/main/updater.ts) and the subagent infra in [apps/desktop/src/main/agent/](apps/desktop/src/main/agent/).
+
+### Storage + schema
+
+- [ ] Add SQLite migration v5 (or next available) creating `scheduled_tasks` table (id, name, description, cron_expr, prompt, provider_id, model, workspace_path, trigger_type, allowed_tools_json, use_worktree, enabled, last_run_at, next_run_at, last_status, last_run_id, created_at, updated_at) in [apps/desktop/src/main/storage/db.ts](apps/desktop/src/main/storage/db.ts)
+- [ ] Add SQLite migration creating `scheduled_task_runs` table (id, task_id FK, started_at, completed_at, status, agent_run_id, error_message) — separate from `agent/run-registry.ts` so history survives app restarts
+- [ ] `apps/desktop/src/main/scheduler/store.ts` — typed CRUD over both tables; Zod-validated row shapes; cursor pagination on runs
+- [ ] Add `cron-parser` dependency (parse-only, ~30kB) — do NOT add `node-cron` (we don't need its scheduler)
+
+### Scheduler runtime
+
+- [ ] `apps/desktop/src/main/scheduler/scheduler.ts` — single `setTimeout` to the next-due task across all enabled tasks; recomputes on completion, on enable/disable, and on cron-expr edit. Modeled on `startAutoCheckLoop()` in updater.ts
+- [ ] `apps/desktop/src/main/scheduler/runner.ts` — fires a task: spawns through existing [worker-host.ts](apps/desktop/src/main/agent/worker-host.ts) so it gets a fresh provider, fresh tool registry, allowed-tool filter, and budget caps. Records into both `run-registry` (live) and `scheduled_task_runs` (persistent)
+- [ ] Wire scheduler start into `apps/desktop/src/main/index.ts` after DB migrations run; stop on `before-quit`
+- [ ] Catch-up policy on app start: for each enabled task whose `next_run_at` is in the past, fire once with `was_catchup: true` (don't fire all missed runs — just the most recent)
+- [ ] Concurrent-run guard: if a task is already running when its next tick fires, log + skip + advance `next_run_at` (matches cron semantics)
+
+### Approval handling for unattended runs
+
+- [ ] Default policy for scheduled tasks: auto-spawn into a git worktree (reuses [worktrees.ts](apps/desktop/src/main/agent/worktrees.ts)) so writes are isolated and queued for `MergeReviewModal` rather than blocking on user approval
+- [ ] Fallback for non-git workspaces: per-task `allowedTools[]` whitelist enforced in [worker-entry.ts](apps/desktop/src/main/agent/worker-entry.ts); any tool outside the whitelist short-circuits the run with `stopReason: 'unauthorized_tool'`
+- [ ] New notification path: scheduled run completion → tray notification + badge on Agent view; clicking opens the merge-review modal
+- [ ] Audit log entry for every scheduled fire (extends existing `tool_calls` audit pattern with a `trigger_source: 'scheduled'` field)
+
+### UI
+
+- [ ] New Settings section `ScheduledTasksPanel.tsx` (Settings becomes 13 sections; add slug `scheduled-tasks` to [SettingsView.tsx](apps/desktop/src/renderer/views/SettingsView.tsx) deep-link routing)
+- [ ] Task list: name, cron expr (human-readable via `cron-parser` `humanize` helper or in-house formatter), next run, last status pill, enable toggle, Run-now button
+- [ ] Task editor modal: name, description, cron preset dropdown (Hourly / Daily 9am / Weekly Mon 9am / Custom), raw cron field with live next-5-runs preview, prompt textarea, provider/model picker (reuse `ModelPicker`), workspace picker, "Use worktree" toggle (default on), allowed-tools multi-select (reuse approval-policy UI)
+- [ ] Run-history drawer per task: reuses `AgentRunRow` from existing AgentView; shows transcript + merge-review CTA where applicable
+- [ ] Surface scheduled-run-in-flight on AgentView's active-runs grid with a `scheduled` badge so users see them alongside manual spawns
+
+### IPC + preload
+
+- [ ] IPC channels in [apps/desktop/src/shared/ipc-types.ts](apps/desktop/src/shared/ipc-types.ts): `scheduler:list-tasks`, `scheduler:create-task`, `scheduler:update-task`, `scheduler:delete-task`, `scheduler:run-now`, `scheduler:list-runs`, `scheduler:get-run`; event `scheduler:tasks-changed`, `scheduler:run-completed`
+- [ ] Preload bridge: `window.opencodex.scheduler.*` mirroring above
+- [ ] Zod schemas for all payloads; cron-expr validation rejects on save (not on tick)
+
+### Tests + docs
+
+- [ ] Unit tests: cron-parser integration, next-run computation, catch-up semantics, concurrent-run guard, allowed-tool short-circuit
+- [ ] Integration test: end-to-end fire of a scheduled task against a real Ollama provider in CI (or mock provider)
+- [ ] Docs: new page `website/pages/guides/scheduled-tasks.mdx` covering cron syntax, worktree review flow, common recipes (nightly docs sync, weekly security audit, daily dependency check)
+
+---
+
+## Phase 8.5 — Skills (markdown-based prompt templates)
+
+Goal: let users (and the community) author reusable, parameterized prompts as plain `.md` files with frontmatter, surfaced as `/` commands in chat — no TypeScript, no build step, no plugin manifest. Reuses the slash-command UI from [apps/desktop/src/renderer/components/slash-commands.ts](apps/desktop/src/renderer/components/slash-commands.ts) that already works for MCP prompts.
+
+### File format + loader
+
+- [ ] Define `~/.opencodex/skills/<name>/SKILL.md` convention (also support project-local `<workspace>/.opencodex/skills/<name>/SKILL.md`)
+- [ ] Zod schema for frontmatter: `name` (kebab-case), `description`, `triggers?: string[]`, `tools?: string[]` (allowlist passed to runner), `cron?: string` (optional auto-schedule wiring into Phase 8), `arguments?: {name, description, required}[]`
+- [ ] `apps/desktop/src/main/skills/loader.ts` — scan both directories at startup, parse frontmatter (use `gray-matter`), validate, return `Skill[]`
+- [ ] `apps/desktop/src/main/skills/watcher.ts` — chokidar on both skill dirs (debounced 250ms, same pattern as `rag/watcher.ts`) → reload + emit `skills:changed`
+- [ ] Body of `SKILL.md` is the prompt template; substitute `{{arg}}` placeholders at invocation; `{{workspace}}` / `{{date}}` / `{{git_branch}}` built-in vars resolved from main-process context
+
+### Wiring into chat composer
+
+- [ ] Extend [slash-commands.ts](apps/desktop/src/renderer/components/slash-commands.ts) dropdown to include skills as a grouped category alongside MCP prompts (group header: "Skills" vs. "MCP — &lt;server&gt;")
+- [ ] On selection, insert `/skill:<name> arg1=<placeholder>` template — same UX as MCP prompts already use
+- [ ] On message submit, detect `/skill:<name>` prefix in [chat/runner.ts](apps/desktop/src/main/chat/runner.ts), resolve skill body + substitute args, prepend as system message before sending to provider
+- [ ] If skill defines `tools[]` allowlist, scope the tool registry for that one turn only (don't mutate global registry)
+
+### UI
+
+- [ ] New Settings section `SkillsPanel.tsx` (becomes 14th section; slug `skills`): list installed skills (user + project), enable/disable toggle (writes a `.disabled` file in the skill dir so it survives reload), Edit-in-place button (opens system editor via `shell.openPath`), "New skill from template" button, "Import from URL" (downloads + writes a skill dir, with consent prompt — no exec, just markdown)
+- [ ] Surface project-local skills with a "project" badge so users see scope at a glance
+- [ ] Inline "💡 Try /<skill> for this" suggestion in chat composer when last user message matches one of a skill's `triggers[]` (simple substring match, debounced)
+
+### IPC + preload
+
+- [ ] IPC: `skills:list`, `skills:reload`, `skills:create-from-template`, `skills:import-from-url`, `skills:set-enabled`, `skills:open-in-editor`; event `skills:changed`
+- [ ] Preload bridge: `window.opencodex.skills.*`
+
+### Bundled starter skills
+
+- [ ] Ship 3 example skills in `examples/skills/`: `daily-standup` (summarize git activity since yesterday), `security-audit` (scan for hardcoded secrets, weak crypto), `dependency-check` (outdated deps + known CVEs via web_fetch)
+- [ ] Copy these into `~/.opencodex/skills/` on first run, gated by onboarding wizard (with a "skip" option)
+
+### Tests + docs
+
+- [ ] Unit tests for frontmatter parser, arg substitution, `{{workspace}}`/`{{date}}`/`{{git_branch}}` resolution, disabled-file behavior
+- [ ] Integration test: create a skill on disk, verify it appears in `skills:list` and in the slash-command dropdown
+- [ ] Docs: `website/pages/guides/authoring-skills.mdx` covering frontmatter fields, arg substitution, built-in vars, sharing a skill, when to use a skill vs. a plugin
+
+---
+
+## Phase 8.75 — Shared trigger model (binds 8 + 8.5)
+
+Goal: scheduled tasks and skills share a common "trigger" abstraction so we don't paint ourselves into a corner when adding file-watch, git-hook, or webhook triggers later.
+
+- [ ] `apps/desktop/src/main/triggers/types.ts` — discriminated union: `{type: 'manual'} | {type: 'cron', expr: string} | {type: 'file-change', glob: string} | {type: 'git-hook', hook: 'post-commit' | 'pre-push'} | {type: 'webhook', secret: string}`
+- [ ] Refactor `scheduled_tasks.cron_expr` to `scheduled_tasks.trigger_json` storing the full trigger object (still cron-only at first; future trigger types slot in)
+- [ ] Allow skills' optional `cron:` frontmatter to auto-register a scheduled task pointing at the skill — single source of truth for "a skill that runs on a schedule"
+- [ ] Task templates as the natural bridge: a `SKILL.md` with `{{arg}}` placeholders + a `cron:` field IS a scheduled task. Surface this in the skill editor UI with a "Schedule this skill" button that prefills the Phase 8 task editor.
+
+---
+
 ## Backlog (post-v0.1)
 
 - [ ] Cloud / background tasks (Codex's headline feature) — requires a backend
@@ -235,3 +337,7 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 - [ ] Team workspaces (shared settings, shared plugins)
 - [ ] Visual workflow builder for multi-agent pipelines
 - [ ] First-class JetBrains / VSCode integration
+- [ ] File-change triggers for scheduled tasks (Phase 8.75 follow-up)
+- [ ] Git-hook triggers (Phase 8.75 follow-up)
+- [ ] Webhook triggers for external systems (Phase 8.75 follow-up)
+- [ ] Community skill gallery + one-click install (Phase 8.5 follow-up)
