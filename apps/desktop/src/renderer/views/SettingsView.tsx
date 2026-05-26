@@ -11,6 +11,8 @@ import { McpServersPanel } from './McpServersPanel';
 import { MemoryPanel } from './MemoryPanel';
 import { PluginsPanel } from './PluginsPanel';
 import { ProvidersPanel } from './ProvidersPanel';
+import { ScheduledTasksPanel } from './ScheduledTasksPanel';
+import { SkillsPanel } from './SkillsPanel';
 import {
   DEFAULT_SETTINGS_SLUG,
   filterSettingsSections,
@@ -131,6 +133,18 @@ function SettingsSectionBody({ section }: { section: SettingsSection }): JSX.Ele
       return (
         <SettingsSectionCard title={section.title} description={section.description}>
           <IndexingPanel />
+        </SettingsSectionCard>
+      );
+    case 'scheduled-tasks':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <ScheduledTasksPanel />
+        </SettingsSectionCard>
+      );
+    case 'skills':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <SkillsPanel />
         </SettingsSectionCard>
       );
     default:

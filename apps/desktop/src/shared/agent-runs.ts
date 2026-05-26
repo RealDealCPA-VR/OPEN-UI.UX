@@ -5,7 +5,10 @@ export type AgentRunStopReason =
   | 'tool_use'
   | 'max_tokens'
   | 'budget_exceeded'
-  | 'error';
+  | 'error'
+  | 'unauthorized_tool';
+
+export type AgentRunTriggerSource = 'user' | 'scheduled';
 
 export interface AgentRunToolEvent {
   name: string;
@@ -31,6 +34,8 @@ export interface AgentRun {
   worktreeBranch: string | null;
   worktreeRepoRoot: string | null;
   mergeStatus: 'pending' | 'merged' | 'rejected' | null;
+  triggerSource: AgentRunTriggerSource;
+  scheduledTaskId: string | null;
 }
 
 export interface AgentRunsChangedEvent {

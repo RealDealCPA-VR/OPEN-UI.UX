@@ -55,9 +55,11 @@ function parseDeepLink(raw: string): string | null {
   try {
     const url = new URL(raw);
     if (url.protocol !== 'opencodex:') return null;
-    const segment = url.hostname || url.pathname.replace(/^\/+/, '');
-    if (!segment) return null;
-    return `/${segment}`;
+    const host = url.hostname.replace(/^\/+|\/+$/g, '');
+    const pathRest = url.pathname.replace(/^\/+|\/+$/g, '');
+    const combined = [host, pathRest].filter((s) => s.length > 0).join('/');
+    if (!combined) return null;
+    return `/${combined}`;
   } catch {
     return null;
   }

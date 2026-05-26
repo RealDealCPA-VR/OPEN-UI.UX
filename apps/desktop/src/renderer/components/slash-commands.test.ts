@@ -1,12 +1,41 @@
 import { describe, expect, it } from 'vitest';
 import type { McpPromptEntry } from '../../shared/mcp';
+import type { Skill } from '../../shared/skills';
 import {
   applyInsert,
+  buildSlashGroups,
   filterPrompts,
+  filterSkills,
+  findSkillsForTriggerText,
   formatPromptInsert,
+  formatSkillInsert,
   getSlashTrigger,
   groupByServer,
 } from './slash-commands';
+
+function makeSkill(
+  name: string,
+  opts: Partial<Skill['frontmatter']> & { disabled?: boolean; scope?: 'user' | 'project' } = {},
+): Skill {
+  const { disabled, scope, ...fm } = opts;
+  return {
+    id: `${scope ?? 'user'}:${name}`,
+    name,
+    scope: scope ?? 'user',
+    description: fm.description ?? `${name} description`,
+    frontmatter: {
+      name,
+      description: fm.description ?? `${name} description`,
+      ...(fm.triggers ? { triggers: fm.triggers } : {}),
+      ...(fm.tools ? { tools: fm.tools } : {}),
+      ...(fm.arguments ? { arguments: fm.arguments } : {}),
+      ...(fm.cron ? { cron: fm.cron } : {}),
+    },
+    body: 'body',
+    sourcePath: `/tmp/${name}/SKILL.md`,
+    disabled: disabled ?? false,
+  };
+}
 
 const entry = (
   serverId: string,
@@ -142,5 +171,116 @@ describe('applyInsert', () => {
     const result = applyInsert(value, trigger, 10, '/git:commit ');
     expect(result.value).toBe('line1\n/git:commit ');
     expect(result.caret).toBe('line1\n/git:commit '.length);
+  });
+});
+
+describe('filterSkills', () => {
+  const skills = [
+    makeSkill('daily-standup', { description: 'standup report' }),
+    makeSkill('security-audit', { description: 'find secrets' }),
+    makeSkill('dependency-check', { description: 'outdated deps' }),
+    makeSkill('disabled-one', { description: 'should never show', disabled: true }),
+  ];
+
+  it('returns all enabled skills on empty query', () => {
+    const result = filterSkills(skills, '');
+    expect(result.map((s) => s.name)).toEqual([
+      'daily-standup',
+      'security-audit',
+      'dependency-check',
+    ]);
+  });
+
+  it('filters by skill name', () => {
+    expect(filterSkills(skills, 'security').map((s) => s.name)).toEqual(['security-audit']);
+  });
+
+  it('filters by description', () => {
+    expect(filterSkills(skills, 'secret').map((s) => s.name)).toEqual(['security-audit']);
+  });
+
+  it('is case-insensitive', () => {
+    expect(filterSkills(skills, 'SECURITY').length).toBe(1);
+  });
+
+  it('matches the skill: prefix', () => {
+    expect(filterSkills(skills, 'skill:depend').length).toBe(1);
+  });
+
+  it('excludes disabled skills', () => {
+    expect(filterSkills(skills, 'disabled').length).toBe(0);
+  });
+});
+
+describe('formatSkillInsert', () => {
+  it('formats a skill without arguments', () => {
+    expect(formatSkillInsert(makeSkill('foo'))).toBe('/skill:foo ');
+  });
+
+  it('formats a skill with required arguments', () => {
+    const s = makeSkill('foo', {
+      arguments: [{ name: 'topic', description: 't', required: true }],
+    });
+    expect(formatSkillInsert(s)).toBe('/skill:foo topic=<topic>');
+  });
+
+  it('marks optional arguments with a ? suffix', () => {
+    const s = makeSkill('foo', {
+      arguments: [{ name: 'amend', description: 'a', required: false }],
+    });
+    expect(formatSkillInsert(s)).toBe('/skill:foo amend=<amend?>');
+  });
+});
+
+describe('buildSlashGroups', () => {
+  it('puts the Skills group before MCP groups', () => {
+    const skills = [makeSkill('foo')];
+    const prompts: McpPromptEntry[] = [
+      { serverId: 'git', serverDisplayName: 'git', prompt: { name: 'commit' } },
+    ];
+    const groups = buildSlashGroups(prompts, skills, '');
+    expect(groups[0]?.header).toBe('Skills');
+    expect(groups[1]?.header).toBe('MCP — git');
+  });
+
+  it('omits empty groups', () => {
+    const groups = buildSlashGroups([], [], '');
+    expect(groups).toEqual([]);
+  });
+
+  it('filters by query across both', () => {
+    const skills = [makeSkill('security-audit', { description: 'desc' })];
+    const prompts: McpPromptEntry[] = [
+      { serverId: 'git', serverDisplayName: 'git', prompt: { name: 'commit' } },
+    ];
+    const groups = buildSlashGroups(prompts, skills, 'security');
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.header).toBe('Skills');
+  });
+});
+
+describe('findSkillsForTriggerText', () => {
+  const skills = [
+    makeSkill('audit', { triggers: ['security audit', 'secret scan'] }),
+    makeSkill('standup', { triggers: ['daily summary'] }),
+    makeSkill('disabled-one', { triggers: ['anything'], disabled: true }),
+  ];
+
+  it('returns skills whose triggers match a substring of the text', () => {
+    const result = findSkillsForTriggerText(skills, "let's do a security audit later");
+    expect(result.map((s) => s.name)).toEqual(['audit']);
+  });
+
+  it('is case-insensitive', () => {
+    const result = findSkillsForTriggerText(skills, 'SECURITY AUDIT please');
+    expect(result.map((s) => s.name)).toEqual(['audit']);
+  });
+
+  it('excludes disabled skills', () => {
+    expect(findSkillsForTriggerText(skills, 'anything').length).toBe(0);
+  });
+
+  it('returns empty for empty text', () => {
+    expect(findSkillsForTriggerText(skills, '')).toEqual([]);
   });
 });

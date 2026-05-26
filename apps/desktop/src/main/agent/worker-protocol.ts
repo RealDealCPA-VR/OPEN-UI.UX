@@ -17,7 +17,14 @@ export const workerStartMessageSchema = z.object({
   systemPrompt: z.string().optional(),
 });
 
-const stopReasonSchema = z.enum(['end_turn', 'tool_use', 'max_tokens', 'budget_exceeded', 'error']);
+const stopReasonSchema = z.enum([
+  'end_turn',
+  'tool_use',
+  'max_tokens',
+  'budget_exceeded',
+  'error',
+  'unauthorized_tool',
+]);
 
 const toolEventSchema = z.object({
   name: z.string(),

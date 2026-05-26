@@ -39,7 +39,13 @@ export interface SubagentResult {
   toolEvents: SubagentToolEvent[];
   inputTokens: number;
   outputTokens: number;
-  stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | 'budget_exceeded' | 'error';
+  stopReason:
+    | 'end_turn'
+    | 'tool_use'
+    | 'max_tokens'
+    | 'budget_exceeded'
+    | 'error'
+    | 'unauthorized_tool';
   error?: string;
   iterations: number;
 }
@@ -145,6 +151,25 @@ export async function runSubagent(opts: SubagentRunOptions): Promise<SubagentRes
     if (pendingToolCalls.length === 0) {
       stopReason = turnStop;
       break;
+    }
+
+    if (opts.allowedToolNames) {
+      const allowed = new Set(opts.allowedToolNames);
+      for (const call of pendingToolCalls) {
+        if (!allowed.has(call.name)) {
+          toolEvents.push({
+            name: call.name,
+            input: call.arguments,
+            output: { error: `tool not in allowedToolNames whitelist: ${call.name}` },
+            isError: true,
+            durationMs: 0,
+          });
+          return finalize(
+            'unauthorized_tool',
+            `tool not in allowedToolNames whitelist: ${call.name}`,
+          );
+        }
+      }
     }
 
     const toolResults: ContentBlock[] = [];

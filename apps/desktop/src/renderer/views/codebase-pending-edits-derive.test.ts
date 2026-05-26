@@ -25,6 +25,8 @@ function makeRun(overrides: Partial<AgentRun> = {}): AgentRun {
     worktreeBranch: null,
     worktreeRepoRoot: null,
     mergeStatus: null,
+    triggerSource: 'user',
+    scheduledTaskId: null,
     ...overrides,
   };
 }

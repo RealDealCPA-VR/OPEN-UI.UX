@@ -5110,3 +5110,220 @@ body {
   border: 1px solid var(--border);
   color: var(--text-secondary);
 }
+
+/* Scheduled tasks panel */
+.scheduled-tasks-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.scheduled-tasks-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.scheduled-task-row {
+  padding: 12px 16px;
+}
+
+.scheduled-task-row-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.scheduled-task-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.scheduled-task-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+
+.scheduled-task-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.scheduled-task-meta code {
+  background: var(--bg-elevated);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.scheduled-task-description {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.scheduled-task-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.scheduled-task-editor .scheduled-task-trigger {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scheduled-task-editor .scheduled-task-trigger legend {
+  padding: 0 6px;
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+.scheduled-task-cron {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.scheduled-task-cron-preview {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  padding: 8px 10px;
+  border-radius: 4px;
+}
+
+.scheduled-task-cron-preview ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.scheduled-task-tools {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.scheduled-task-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.scheduled-task-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.scheduled-task-tool-row code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scheduled-task-tool-tier {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.scheduled-task-runs-drawer {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: min(560px, 100vw);
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.scheduled-task-runs-loadmore {
+  margin-top: 12px;
+  display: flex;
+  justify-content: center;
+}
+
+.chat-skill-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin: 6px 0 0 12px;
+  background: var(--surface-1, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-1, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-2, #9aa);
+  width: fit-content;
+}
+
+.chat-skill-hint-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--link, #6cf);
+  text-decoration: underline;
+}
+
+.chat-skill-hint-dismiss {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.skills-panel .skills-toolbar {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skills-create-row,
+.skills-import-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.skills-create-row input[type='text'],
+.skills-import-row input[type='text'] {
+  flex: 1;
+  min-width: 0;
+}

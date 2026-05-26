@@ -9,8 +9,10 @@ import { Markdown } from '../components/Markdown';
 import { SlashCommands } from '../components/SlashCommands';
 import {
   applyInsert,
-  filterPrompts,
+  buildSlashGroups,
+  findSkillsForTriggerText,
   formatPromptInsert,
+  formatSkillInsert,
   getSlashTrigger,
   type SlashCommandTrigger,
 } from '../components/slash-commands';
@@ -28,6 +30,7 @@ import type {
   StoredMessage,
 } from '../../shared/conversation';
 import type { McpPromptEntry } from '../../shared/mcp';
+import type { Skill } from '../../shared/skills';
 
 export function ChatView(): JSX.Element {
   const { selected, selectedCapabilities, loading: modelLoading } = useSelectedModel();
@@ -342,8 +345,11 @@ function ChatPane({
   const [toolsEnabled, setToolsEnabled] = useState(true);
   const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
   const [mcpPrompts, setMcpPrompts] = useState<McpPromptEntry[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [slashTrigger, setSlashTrigger] = useState<SlashCommandTrigger | null>(null);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  const [debouncedInput, setDebouncedInput] = useState('');
+  const [dismissedHintSkillIds, setDismissedHintSkillIds] = useState<Set<string>>(new Set());
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -393,6 +399,28 @@ function ChatPane({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = (): void => {
+      void window.opencodex.skills
+        .list()
+        .then((res) => {
+          if (!cancelled) setSkills(res.skills);
+        })
+        .catch(() => {
+          // ignore — skills are optional
+        });
+    };
+    refresh();
+    const off = window.opencodex.skills.onChanged((payload) => {
+      if (!cancelled) setSkills(payload.skills);
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, []);
+
   useLayoutEffect(() => {
     if (!scrollToMessageId) return;
     if (consumedScrollRef.current.has(scrollToMessageId)) return;
@@ -434,10 +462,11 @@ function ChatPane({
     el.scrollTop = el.scrollHeight;
   }, [chatMessages, chatDraft]);
 
-  const filteredSlashPrompts = useMemo(
-    () => (slashTrigger ? filterPrompts(mcpPrompts, slashTrigger.query) : []),
-    [slashTrigger, mcpPrompts],
+  const slashGroups = useMemo(
+    () => (slashTrigger ? buildSlashGroups(mcpPrompts, skills, slashTrigger.query) : []),
+    [slashTrigger, mcpPrompts, skills],
   );
+  const flatSlashEntries = useMemo(() => slashGroups.flatMap((g) => g.entries), [slashGroups]);
   const slashOpen = slashTrigger !== null;
 
   const handleSubmit = (e: React.FormEvent): void => {
@@ -528,6 +557,62 @@ function ChatPane({
     }
   };
 
+  const insertSkill = (skill: Skill): void => {
+    if (!slashTrigger) return;
+    const el = inputRef.current;
+    const caret = el ? (el.selectionEnd ?? input.length) : input.length;
+    const insert = formatSkillInsert(skill);
+    const next = applyInsert(input, slashTrigger, caret, insert);
+    setInput(next.value);
+    closeSlash();
+    if (el) {
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(next.caret, next.caret);
+      });
+    }
+  };
+
+  // Inline "Try /<skill>" hint — debounced 300ms; substring match against
+  // skill.triggers[]. Suppressed when the composer already starts with a slash.
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedInput(input);
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [input]);
+
+  const triggerHintSkill = useMemo<Skill | null>(() => {
+    if (input.startsWith('/') || input.length === 0) return null;
+    if (debouncedInput.length === 0 || debouncedInput.startsWith('/')) return null;
+    const matches = findSkillsForTriggerText(skills, debouncedInput);
+    return matches.find((s) => !dismissedHintSkillIds.has(s.id)) ?? null;
+  }, [input, debouncedInput, skills, dismissedHintSkillIds]);
+
+  const dismissTriggerHint = (): void => {
+    if (!triggerHintSkill) return;
+    const id = triggerHintSkill.id;
+    setDismissedHintSkillIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
+
+  const applyTriggerHint = (): void => {
+    if (!triggerHintSkill) return;
+    const insert = formatSkillInsert(triggerHintSkill);
+    const next = `${insert}${input.length > 0 ? '\n' + input : ''}`;
+    setInput(next);
+    const el = inputRef.current;
+    if (el) {
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(insert.length, insert.length);
+      });
+    }
+  };
+
   const updateSlashFromCaret = (value: string, caret: number): void => {
     const trigger = getSlashTrigger(value, caret);
     setSlashTrigger(trigger);
@@ -552,24 +637,25 @@ function ChatPane({
         closeSlash();
         return;
       }
-      if (filteredSlashPrompts.length > 0) {
+      if (flatSlashEntries.length > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
-          setSlashActiveIndex((i) => (i + 1) % filteredSlashPrompts.length);
+          setSlashActiveIndex((i) => (i + 1) % flatSlashEntries.length);
           return;
         }
         if (e.key === 'ArrowUp') {
           e.preventDefault();
-          setSlashActiveIndex(
-            (i) => (i - 1 + filteredSlashPrompts.length) % filteredSlashPrompts.length,
-          );
+          setSlashActiveIndex((i) => (i - 1 + flatSlashEntries.length) % flatSlashEntries.length);
           return;
         }
         if (e.key === 'Enter' || e.key === 'Tab') {
           e.preventDefault();
-          const idx = Math.min(slashActiveIndex, filteredSlashPrompts.length - 1);
-          const entry = filteredSlashPrompts[idx];
-          if (entry) insertPrompt(entry);
+          const idx = Math.min(slashActiveIndex, flatSlashEntries.length - 1);
+          const entry = flatSlashEntries[idx];
+          if (entry) {
+            if (entry.kind === 'mcp') insertPrompt(entry.entry);
+            else insertSkill(entry.skill);
+          }
           return;
         }
       }
@@ -730,8 +816,10 @@ function ChatPane({
             <SlashCommands
               query={slashTrigger.query}
               prompts={mcpPrompts}
-              activeIndex={Math.min(slashActiveIndex, Math.max(0, filteredSlashPrompts.length - 1))}
-              onSelect={insertPrompt}
+              skills={skills}
+              activeIndex={Math.min(slashActiveIndex, Math.max(0, flatSlashEntries.length - 1))}
+              onSelectMcp={insertPrompt}
+              onSelectSkill={insertSkill}
               onActiveIndexChange={setSlashActiveIndex}
               onClose={closeSlash}
             />
@@ -751,6 +839,25 @@ function ChatPane({
             disabled={chat.streaming}
           />
         </div>
+        {triggerHintSkill && !slashOpen ? (
+          <div className="chat-skill-hint" role="status">
+            <span>
+              Try{' '}
+              <button type="button" className="chat-skill-hint-link" onClick={applyTriggerHint}>
+                <code>/skill:{triggerHintSkill.name}</code>
+              </button>{' '}
+              for this
+            </span>
+            <button
+              type="button"
+              className="chat-skill-hint-dismiss"
+              onClick={dismissTriggerHint}
+              aria-label="Dismiss skill suggestion"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
         <div className="chat-composer-actions">
           {supportsTools ? (
             <label className="toggle">

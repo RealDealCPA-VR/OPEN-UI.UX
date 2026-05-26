@@ -63,6 +63,11 @@ export function AgentRunRow({
           <span className="audit-row-tool">
             <code className="approvals-tool-name">{truncate(run.task, 80)}</code>
           </span>
+          {run.triggerSource === 'scheduled' && (
+            <span className="pill" title="Fired by a scheduled task">
+              scheduled
+            </span>
+          )}
           <span className={statusPillClass(run.status)}>{statusLabel(run.status)}</span>
           <span className="audit-row-duration">
             {formatTokens(run.inputTokens)} in · {formatTokens(run.outputTokens)} out

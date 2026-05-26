@@ -107,6 +107,29 @@ import type {
   CrashReportingSetConfigRequest,
 } from './crash-reporting';
 import type { UpdateStatus, UpdatesCheckResult } from './updates';
+import type {
+  CreateScheduledTaskRequest,
+  DeleteScheduledTaskRequest,
+  GetRunRequest,
+  ListRunsRequest,
+  ListRunsResponse,
+  RunNowRequest,
+  RunNowResponse,
+  ScheduledRunCompletedEvent,
+  ScheduledTask,
+  ScheduledTaskRun,
+  ScheduledTasksChangedEvent,
+  UpdateScheduledTaskRequest,
+} from './scheduled-tasks';
+import type {
+  CreateSkillFromTemplateRequest,
+  ImportSkillFromUrlRequest,
+  OpenSkillInEditorRequest,
+  SetSkillEnabledRequest,
+  SkillRegistryEntry,
+  SkillsChangedEvent,
+  SkillsListResponse,
+} from './skills';
 
 export interface IpcInvokeChannels {
   'app:version': {
@@ -458,6 +481,90 @@ export interface IpcInvokeChannels {
     request: void;
     response: MemoryStatus;
   };
+  'scheduler:list-tasks': {
+    request: void;
+    response: ScheduledTask[];
+  };
+  'scheduler:create-task': {
+    request: CreateScheduledTaskRequest;
+    response: ScheduledTask;
+  };
+  'scheduler:update-task': {
+    request: UpdateScheduledTaskRequest;
+    response: ScheduledTask;
+  };
+  'scheduler:delete-task': {
+    request: DeleteScheduledTaskRequest;
+    response: { ok: boolean };
+  };
+  'scheduler:run-now': {
+    request: RunNowRequest;
+    response: RunNowResponse;
+  };
+  'scheduler:list-runs': {
+    request: ListRunsRequest;
+    response: ListRunsResponse;
+  };
+  'scheduler:get-run': {
+    request: GetRunRequest;
+    response: ScheduledTaskRun | null;
+  };
+  'scheduler:get-trigger-url': {
+    request: { taskId: string };
+    response: { url: string | null };
+  };
+  'scheduler:install-git-hook': {
+    request: { taskId: string };
+    response: { ok: boolean; error?: string };
+  };
+  'scheduler:uninstall-git-hook': {
+    request: { taskId: string };
+    response: { ok: boolean; error?: string };
+  };
+  'scheduler:reinstall-git-hooks': {
+    request: void;
+    response: { installed: number; errors: string[] };
+  };
+  'skills:get-registry-url': {
+    request: void;
+    response: { url: string | null };
+  };
+  'skills:set-registry-url': {
+    request: { url: string | null };
+    response: { url: string | null };
+  };
+  'skills:fetch-registry': {
+    request: void;
+    response: { entries: SkillRegistryEntry[]; error: string | null };
+  };
+  'skills:list': {
+    request: void;
+    response: SkillsListResponse;
+  };
+  'skills:reload': {
+    request: void;
+    response: SkillsListResponse;
+  };
+  'skills:create-from-template': {
+    request: CreateSkillFromTemplateRequest;
+    response: SkillsListResponse;
+  };
+  'skills:import-from-url': {
+    request: ImportSkillFromUrlRequest;
+    response: SkillsListResponse;
+  };
+  'skills:set-enabled': {
+    request: SetSkillEnabledRequest;
+    response: SkillsListResponse;
+  };
+  'skills:open-in-editor': {
+    request: OpenSkillInEditorRequest;
+    response: { ok: boolean; error?: string };
+  };
+  'skills:install-starter-pack': {
+    request: { names?: string[] };
+    response: SkillsListResponse;
+  };
 }
 
 export interface IpcEventChannels {
@@ -475,6 +582,9 @@ export interface IpcEventChannels {
   'crash-reporting:config-changed': CrashReportingConfigChangedEvent;
   'updates:status-changed': UpdateStatus;
   'memory:config-changed': MemoryConfigChangedEvent;
+  'scheduler:tasks-changed': ScheduledTasksChangedEvent;
+  'scheduler:run-completed': ScheduledRunCompletedEvent;
+  'skills:changed': SkillsChangedEvent;
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

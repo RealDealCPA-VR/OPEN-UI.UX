@@ -77,6 +77,9 @@ const SettingsSchema = z.object({
   crashReportingDsn: z.string().default(''),
   crashReportingEnvironment: z.string().default('production'),
   autoCheckForUpdates: z.boolean().default(false),
+  schedulerEnabledInDev: z.boolean().default(false),
+  schedulerListenerPort: z.number().int().min(1).max(65535).nullable().default(null),
+  skillRegistryUrl: z.string().url().nullable().default(null),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -308,4 +311,31 @@ export function getAutoCheckForUpdates(): boolean {
 export function setAutoCheckForUpdates(value: boolean): boolean {
   const next = updateSettings({ autoCheckForUpdates: value });
   return next.autoCheckForUpdates;
+}
+
+export function getSchedulerEnabledInDev(): boolean {
+  return getSettings().schedulerEnabledInDev;
+}
+
+export function setSchedulerEnabledInDev(value: boolean): boolean {
+  const next = updateSettings({ schedulerEnabledInDev: value });
+  return next.schedulerEnabledInDev;
+}
+
+export function getSchedulerListenerPort(): number | null {
+  return getSettings().schedulerListenerPort;
+}
+
+export function setSchedulerListenerPort(port: number | null): number | null {
+  const next = updateSettings({ schedulerListenerPort: port });
+  return next.schedulerListenerPort;
+}
+
+export function getSkillRegistryUrl(): string | null {
+  return getSettings().skillRegistryUrl;
+}
+
+export function setSkillRegistryUrl(url: string | null): string | null {
+  const next = updateSettings({ skillRegistryUrl: url });
+  return next.skillRegistryUrl;
 }

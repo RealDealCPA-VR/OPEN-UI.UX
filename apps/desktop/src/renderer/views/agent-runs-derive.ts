@@ -50,6 +50,7 @@ const STOP_REASON_LABEL: Record<AgentRunStopReason, string> = {
   max_tokens: 'max_tokens',
   budget_exceeded: 'budget_exceeded',
   error: 'error',
+  unauthorized_tool: 'unauthorized_tool',
 };
 
 export function stopReasonLabel(reason: AgentRunStopReason | null): string {

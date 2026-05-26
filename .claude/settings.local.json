@@ -111,7 +111,9 @@
       "PowerShell(Get-Process -Name electron -ErrorAction SilentlyContinue)",
       "PowerShell(Stop-Process -Force)",
       "PowerShell(\"done\")",
-      "PowerShell(\"stopped\")"
+      "PowerShell(\"stopped\")",
+      "Bash(grep -E '\\\\.\\(ts|tsx|js|jsx|mjs|cjs\\)$')",
+      "Bash(xargs -0 -I{} echo \"{}\")"
     ],
     "additionalDirectories": ["c:\\c\\Users\\VR\\Projects\\OPEN UI.UX\\apps\\desktop"]
   }

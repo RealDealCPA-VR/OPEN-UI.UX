@@ -7,8 +7,8 @@ import type {
   Role,
   StopReason,
   ToolCallEvent,
-  ToolRegistry,
 } from '@opencodex/core';
+import { ToolRegistry } from '@opencodex/core';
 import type { ChatStartResponse, ChatStreamEvent } from '../../shared/chat';
 import type { ChatAttachment } from '../../shared/attachments';
 import type { StoredMessage } from '../../shared/conversation';
@@ -16,6 +16,7 @@ import type { ShellOutputEvent } from '../../shared/shell-output';
 import { buildShellTranscript } from '../../shared/shell-output';
 import { logger } from '../logger';
 import { getToolRegistry } from '../tools/registry';
+import { detectSkillInvocation, resolveSkillInvocation } from '../skills/invoke';
 import { appendMessage, listMessages, updateAssistantMessage } from '../storage/conversations';
 import { recordToolCall, type ToolCallAuditDecision } from '../storage/tool-audit';
 import { type ApprovalManager, type ApprovalOutcome, getApprovalManager } from './approvals';
@@ -83,11 +84,26 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
   const controller = new AbortController();
   active.set(streamId, { controller });
 
-  const registry = opts.toolRegistry === undefined ? getToolRegistry() : opts.toolRegistry;
+  const workspaceRoot = opts.workspaceRoot ?? process.cwd();
+
+  let registry = opts.toolRegistry === undefined ? getToolRegistry() : opts.toolRegistry;
   const approvals =
     opts.approvalManager === undefined ? safeGetApprovalManager() : opts.approvalManager;
 
-  const workspaceRoot = opts.workspaceRoot ?? process.cwd();
+  const skillInvocation = detectSkillInvocation(opts.userMessage);
+  if (skillInvocation) {
+    try {
+      const resolved = await resolveSkillInvocation(skillInvocation, { workspace: workspaceRoot });
+      if (resolved.systemPrompt) {
+        messages.unshift({ role: 'system', content: resolved.systemPrompt });
+      }
+      if (resolved.allowedToolNames && resolved.allowedToolNames.length > 0 && registry) {
+        registry = filterRegistry(registry, resolved.allowedToolNames);
+      }
+    } catch (err) {
+      logger.warn({ err, skill: skillInvocation.name }, 'failed to resolve skill invocation');
+    }
+  }
 
   void runStream({
     streamId,
@@ -538,6 +554,23 @@ function parseShellResult(output: unknown): ParsedShellResult | null {
     timedOut: o.timedOut,
     durationMs: o.durationMs,
   };
+}
+
+/**
+ * Build a filtered view over the global ToolRegistry that only exposes a
+ * named subset. Does NOT mutate the underlying registry — the wrapper is
+ * scoped to the current turn and discarded after.
+ */
+function filterRegistry(base: ToolRegistry, allowed: readonly string[]): ToolRegistry {
+  const allowSet = new Set(allowed);
+  const filtered = new ToolRegistry();
+  for (const def of base.list()) {
+    if (!allowSet.has(def.name)) continue;
+    const tool = base.get(def.name);
+    if (!tool) continue;
+    filtered.register(tool);
+  }
+  return filtered;
 }
 
 function auditToolCall(args: RunStreamArgs, tc: ToolCallEvent, patch: AuditPatch): void {

@@ -4,7 +4,15 @@ import type { ProviderListItem } from '../../shared/provider-config';
 import type { WorkspaceState } from '../../shared/workspace';
 import { useSelectedModel } from '../state/selected-model-context';
 
-type Step = 'provider' | 'apikey' | 'workspace' | 'done';
+type Step = 'provider' | 'apikey' | 'workspace' | 'skills' | 'done';
+const STARTER_SKILLS: ReadonlyArray<{ name: string; description: string }> = [
+  { name: 'daily-standup', description: 'Summarize recent git activity in a standup-style report' },
+  {
+    name: 'security-audit',
+    description: 'Scan for hardcoded secrets, weak crypto, injection holes',
+  },
+  { name: 'dependency-check', description: 'Outdated deps + GitHub Advisory CVE lookup' },
+];
 
 export function OnboardingWizard(): JSX.Element | null {
   const [open, setOpen] = useState(false);
@@ -12,6 +20,9 @@ export function OnboardingWizard(): JSX.Element | null {
   const [chosenProviderId, setChosenProviderId] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [workspace, setWorkspace] = useState<WorkspaceState | null>(null);
+  const [selectedStarterSkills, setSelectedStarterSkills] = useState<Set<string>>(
+    () => new Set(STARTER_SKILLS.map((s) => s.name)),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,10 +47,17 @@ export function OnboardingWizard(): JSX.Element | null {
   }, []);
 
   const finish = useCallback(async () => {
+    if (selectedStarterSkills.size > 0) {
+      try {
+        await window.opencodex.skills.installStarterPack(Array.from(selectedStarterSkills));
+      } catch {
+        // not fatal — user can install later from Settings → Skills
+      }
+    }
     await window.opencodex.onboarding.setComplete(true);
     setOpen(false);
     navigate('/chat');
-  }, [navigate]);
+  }, [navigate, selectedStarterSkills]);
 
   const chosenProvider = useMemo<ProviderListItem | null>(
     () => providers.find((p) => p.info.id === chosenProviderId) ?? null,
@@ -116,9 +134,28 @@ export function OnboardingWizard(): JSX.Element | null {
                 setBusy(false);
               }
             }}
-            onSkipWorkspace={() => setStep('done')}
-            onNext={() => setStep('done')}
+            onSkipWorkspace={() => setStep('skills')}
+            onNext={() => setStep('skills')}
             configuredCount={configuredProviders.length}
+          />
+        )}
+        {step === 'skills' && (
+          <SkillsStep
+            selected={selectedStarterSkills}
+            onToggle={(name) =>
+              setSelectedStarterSkills((prev) => {
+                const next = new Set(prev);
+                if (next.has(name)) next.delete(name);
+                else next.add(name);
+                return next;
+              })
+            }
+            onBack={() => setStep('workspace')}
+            onSkip={() => {
+              setSelectedStarterSkills(new Set());
+              setStep('done');
+            }}
+            onNext={() => setStep('done')}
           />
         )}
         {step === 'done' && <DoneStep onFinish={() => void finish()} />}
@@ -262,6 +299,57 @@ function WorkspaceStep({
           until you add an API key.
         </p>
       )}
+    </div>
+  );
+}
+
+function SkillsStep({
+  selected,
+  onToggle,
+  onBack,
+  onSkip,
+  onNext,
+}: {
+  selected: Set<string>;
+  onToggle(name: string): void;
+  onBack(): void;
+  onSkip(): void;
+  onNext(): void;
+}): JSX.Element {
+  return (
+    <div className="onboarding-step">
+      <h3>Install starter skills?</h3>
+      <p className="onboarding-step-desc">
+        Skills are markdown templates that surface as <code>/skill:&lt;name&gt;</code> in chat. You
+        can edit them anytime in Settings → Skills, or skip and install later.
+      </p>
+      <ul className="onboarding-provider-list">
+        {STARTER_SKILLS.map((s) => (
+          <li key={s.name}>
+            <label className="onboarding-provider-row">
+              <input
+                type="checkbox"
+                checked={selected.has(s.name)}
+                onChange={() => onToggle(s.name)}
+              />
+              <span>
+                <code>{s.name}</code> — {s.description}
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="onboarding-step-actions">
+        <button type="button" onClick={onBack}>
+          Back
+        </button>
+        <button type="button" onClick={onSkip}>
+          Skip all
+        </button>
+        <button type="button" className="btn btn-primary" onClick={onNext}>
+          Next
+        </button>
+      </div>
     </div>
   );
 }

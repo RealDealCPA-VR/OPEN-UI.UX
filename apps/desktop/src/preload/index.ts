@@ -106,6 +106,26 @@ import type {
   MemoryStatus,
   TestConnectionResult,
 } from '../shared/memory';
+import type {
+  CreateScheduledTaskRequest,
+  ListRunsRequest,
+  ListRunsResponse,
+  RunNowResponse,
+  ScheduledRunCompletedEvent,
+  ScheduledTask,
+  ScheduledTaskRun,
+  ScheduledTasksChangedEvent,
+  UpdateScheduledTaskRequest,
+} from '../shared/scheduled-tasks';
+import type {
+  CreateSkillFromTemplateRequest,
+  ImportSkillFromUrlRequest,
+  OpenSkillInEditorRequest,
+  SetSkillEnabledRequest,
+  SkillRegistryEntry,
+  SkillsChangedEvent,
+  SkillsListResponse,
+} from '../shared/skills';
 
 type DeepLinkListener = (url: string) => void;
 type ChatEventListener = (payload: ChatStreamEvent) => void;
@@ -406,6 +426,73 @@ const updates = {
   },
 };
 
+type SchedulerTasksChangedListener = (payload: ScheduledTasksChangedEvent) => void;
+type SchedulerRunCompletedListener = (payload: ScheduledRunCompletedEvent) => void;
+
+const scheduler = {
+  listTasks: (): Promise<ScheduledTask[]> => ipcRenderer.invoke('scheduler:list-tasks'),
+  createTask: (req: CreateScheduledTaskRequest): Promise<ScheduledTask> =>
+    ipcRenderer.invoke('scheduler:create-task', req),
+  updateTask: (req: UpdateScheduledTaskRequest): Promise<ScheduledTask> =>
+    ipcRenderer.invoke('scheduler:update-task', req),
+  deleteTask: (id: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('scheduler:delete-task', { id }),
+  runNow: (id: string): Promise<RunNowResponse> => ipcRenderer.invoke('scheduler:run-now', { id }),
+  listRuns: (req: ListRunsRequest): Promise<ListRunsResponse> =>
+    ipcRenderer.invoke('scheduler:list-runs', req),
+  getRun: (id: string): Promise<ScheduledTaskRun | null> =>
+    ipcRenderer.invoke('scheduler:get-run', { id }),
+  getTriggerUrl: (taskId: string): Promise<{ url: string | null }> =>
+    ipcRenderer.invoke('scheduler:get-trigger-url', { taskId }),
+  installGitHook: (taskId: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('scheduler:install-git-hook', { taskId }),
+  uninstallGitHook: (taskId: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('scheduler:uninstall-git-hook', { taskId }),
+  reinstallGitHooks: (): Promise<{ installed: number; errors: string[] }> =>
+    ipcRenderer.invoke('scheduler:reinstall-git-hooks'),
+  onTasksChanged: (listener: SchedulerTasksChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: ScheduledTasksChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('scheduler:tasks-changed', wrapped);
+    return () => ipcRenderer.off('scheduler:tasks-changed', wrapped);
+  },
+  onRunCompleted: (listener: SchedulerRunCompletedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: ScheduledRunCompletedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('scheduler:run-completed', wrapped);
+    return () => ipcRenderer.off('scheduler:run-completed', wrapped);
+  },
+};
+
+type SkillsChangedListener = (payload: SkillsChangedEvent) => void;
+
+const skills = {
+  list: (): Promise<SkillsListResponse> => ipcRenderer.invoke('skills:list'),
+  reload: (): Promise<SkillsListResponse> => ipcRenderer.invoke('skills:reload'),
+  createFromTemplate: (req: CreateSkillFromTemplateRequest): Promise<SkillsListResponse> =>
+    ipcRenderer.invoke('skills:create-from-template', req),
+  importFromUrl: (req: ImportSkillFromUrlRequest): Promise<SkillsListResponse> =>
+    ipcRenderer.invoke('skills:import-from-url', req),
+  setEnabled: (req: SetSkillEnabledRequest): Promise<SkillsListResponse> =>
+    ipcRenderer.invoke('skills:set-enabled', req),
+  openInEditor: (req: OpenSkillInEditorRequest): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('skills:open-in-editor', req),
+  installStarterPack: (names?: string[]): Promise<SkillsListResponse> =>
+    ipcRenderer.invoke('skills:install-starter-pack', names ? { names } : {}),
+  getRegistryUrl: (): Promise<{ url: string | null }> =>
+    ipcRenderer.invoke('skills:get-registry-url'),
+  setRegistryUrl: (url: string | null): Promise<{ url: string | null }> =>
+    ipcRenderer.invoke('skills:set-registry-url', { url }),
+  fetchRegistry: (): Promise<{ entries: SkillRegistryEntry[]; error: string | null }> =>
+    ipcRenderer.invoke('skills:fetch-registry'),
+  onChanged: (listener: SkillsChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: SkillsChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('skills:changed', wrapped);
+    return () => ipcRenderer.off('skills:changed', wrapped);
+  },
+};
+
 type MemoryChangedListener = (payload: MemoryConfigChangedEvent) => void;
 
 const memory = {
@@ -458,6 +545,8 @@ const api = {
   crashReporting,
   updates,
   memory,
+  scheduler,
+  skills,
   fileTree: {
     list: (
       path?: string,

@@ -18,9 +18,22 @@ import { registerPluginHandlers } from './plugins/handlers';
 import { shutdownAllPlugins } from './plugins/manager';
 import { registerProviderHandlers } from './providers/handlers';
 import { setWatchedWorkspace, stopWatchedWorkspace } from './rag/watcher';
+import {
+  registerSchedulerHandlers,
+  startSchedulerForApp,
+  stopSchedulerForApp,
+} from './scheduler/handlers';
+import { registerSkillHandlers } from './skills/handlers';
+import { startSkills, stopSkills } from './skills/manager';
 import { registerSelectedModelHandlers } from './selected-model/handlers';
 import { openDb, closeDb } from './storage/db';
-import { getAuditRetentionDays, getSettings, getTheme, settingsStore } from './storage/settings';
+import {
+  getAuditRetentionDays,
+  getSchedulerEnabledInDev,
+  getSettings,
+  getTheme,
+  settingsStore,
+} from './storage/settings';
 import { purgeToolCallsOlderThan } from './storage/tool-audit';
 import { registerThemeHandlers } from './theme/handlers';
 import { registerToolAuditHandlers } from './tool-audit/handlers';
@@ -153,6 +166,16 @@ app.whenReady().then(() => {
 
   initWorkspaceWatcher();
 
+  try {
+    startSchedulerForApp({ enabledInDev: getSchedulerEnabledInDev() });
+  } catch (err) {
+    logger.warn({ err }, 'scheduler failed to start');
+  }
+
+  void startSkills().catch((err: unknown) => {
+    logger.warn({ err }, 'skills startup failed');
+  });
+
   if (app.isPackaged) initAutoUpdater();
 
   try {
@@ -185,6 +208,8 @@ app.on('before-quit', () => {
   void stopMemory();
   void stopWatchedWorkspace();
   void shutdownTelemetry();
+  stopSchedulerForApp();
+  void stopSkills();
   closeDb();
 });
 
@@ -238,4 +263,6 @@ function registerIpcHandlers(): void {
   registerCrashReportingHandlers();
   registerUpdateHandlers();
   registerMemoryHandlers();
+  registerSchedulerHandlers();
+  registerSkillHandlers();
 }

@@ -5,6 +5,8 @@ export type ToolCallAuditDecision =
   | 'prompt-allowed-always'
   | 'denied';
 
+export type ToolCallAuditTriggerSource = 'user' | 'scheduled';
+
 export type ToolCallAuditErrorFilter = 'any' | 'error' | 'success';
 
 export interface ToolCallAuditRow {
@@ -19,6 +21,7 @@ export interface ToolCallAuditRow {
   createdAt: string;
   inputTruncated: boolean;
   outputTruncated: boolean;
+  triggerSource: ToolCallAuditTriggerSource;
 }
 
 export interface ToolCallAuditQueryRow extends ToolCallAuditRow {

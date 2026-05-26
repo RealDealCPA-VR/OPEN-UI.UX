@@ -1,0 +1,115 @@
+# Authoring skills
+
+A **skill** is a markdown file with YAML frontmatter that surfaces in OpenCodex
+chat as a `/skill:<name>` slash command. Skills let you ship reusable prompt
+templates without writing TypeScript, building a package, or going through
+the plugin manifest dance.
+
+A skill is just:
+
+```
+~/.opencodex/skills/<name>/SKILL.md
+```
+
+OpenCodex watches both that user-global directory and the per-workspace
+`<workspace>/.opencodex/skills/<name>/SKILL.md` directory at all times — drop
+a file in, and it appears in the slash menu within a second.
+
+## Anatomy of a SKILL.md
+
+```yaml
+---
+name: daily-standup
+description: Summarize today's git activity into a standup-style report.
+triggers:
+  - standup
+  - daily summary
+tools:
+  - run_shell
+arguments:
+  - name: since
+    description: Date or git revspec, defaults to yesterday.
+    required: false
+cron: 0 9 * * 1-5
+---
+
+You are producing a daily-standup summary for `{{workspace}}` on {{date}}.
+Run `git log --since={{since}}` and group the work into shipped/in-progress/blockers.
+```
+
+### Frontmatter fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string (kebab-case) | Must match the directory name. Used as `/skill:<name>`. |
+| `description` | string | Shown in the slash dropdown and Settings → Skills list. |
+| `triggers` | string[] | Optional. Substrings that trigger the inline "Try /skill:foo" chip. |
+| `tools` | string[] | Optional. Allowlist of tool names. When set, the chat run for this skill is scoped to those tools only — every other tool is unavailable for that turn. |
+| `arguments` | array | Optional. Each item has `{name, description, required}`. The composer pre-fills `arg=<placeholder>` slots when you pick the skill. |
+| `cron` | string | Optional. When set, OpenCodex auto-registers a scheduled task pointing at this skill (see "Scheduling a skill" below). |
+
+## Argument substitution
+
+The body of the file is a template. OpenCodex substitutes `{{tokens}}` at
+invocation time:
+
+- `{{arg_name}}` is replaced with the value the user passed after the slash
+  command (parsed as `key=value` pairs; double-quote values that contain
+  spaces).
+- `{{workspace}}` resolves to the current workspace path, or empty string if
+  none is selected.
+- `{{date}}` resolves to today's ISO date (`YYYY-MM-DD`, UTC).
+- `{{git_branch}}` resolves to the current branch of the workspace, or
+  empty string if it isn't a git repo.
+
+Unknown tokens are left as-is and a warning is logged. Built-in vars take
+precedence — a user can't override `{{workspace}}` by passing
+`workspace=something`.
+
+## Scheduling a skill
+
+Two ways to put a skill on a schedule:
+
+1. **From inside the skill.** Add a `cron:` field to the frontmatter. The
+   moment the loader sees it, a scheduled task named `skill:<name>` is
+   registered with the skill's body as the prompt and the skill's `tools[]`
+   as the allowed-tools whitelist. Deleting the `cron:` field (or disabling
+   the skill, or deleting the file) removes the task automatically.
+2. **From the UI.** Settings → Skills lists every installed skill with a
+   "Schedule this skill" button that opens the Scheduled Tasks editor
+   pre-filled with the skill body. Use this when you want a one-off
+   schedule that lives outside the SKILL.md.
+
+Tasks created by the first mechanism have a `linkedSkillId` set; the
+Scheduled Tasks panel shows a "skill" badge on those rows and disables the
+prompt textbox to prevent drift between the SKILL.md and the task. Edits
+should happen in the SKILL.md — they propagate on the next reload.
+
+## Disabling without deleting
+
+Drop a zero-byte `.disabled` file next to a SKILL.md and OpenCodex keeps the
+skill in the list but stops surfacing it in the slash menu. The Skills panel
+exposes a toggle that writes / removes this marker. Disabling a skill with a
+`cron:` field also removes its linked scheduled task.
+
+## Sharing a skill
+
+Skills are plain files. Stuff them in a git repo, paste them in a gist, or
+publish them in a Notion page. To install, either:
+
+- Drop the directory into `~/.opencodex/skills/`, or
+- Paste a raw https URL into Settings → Skills → "Import from URL". OpenCodex
+  fetches over `https://` only (no `http://`, no `file://`), validates the
+  frontmatter, and saves it under the user-global root. It does not execute
+  the file — only the agent does, on demand.
+
+## Skill vs. plugin: when to use which
+
+- **Use a skill** when your contribution is just a prompt template — even one
+  with arguments. No build step, no manifest, edit in place.
+- **Use a plugin** when you need to ship code: a new tool, a custom provider,
+  or a UI panel.
+
+A skill that calls a plugin's tool is the most common pattern — write the
+plugin once, then create a skill that orchestrates it with a specific
+audience and arguments.

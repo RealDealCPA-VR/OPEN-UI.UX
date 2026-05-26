@@ -53,6 +53,11 @@ export function ActiveRunCard({ run, now, onSelect }: ActiveRunCardProps): JSX.E
     >
       <header className="active-run-card-head">
         <span className="pill pill-local">Running</span>
+        {run.triggerSource === 'scheduled' && (
+          <span className="pill" title="Fired by a scheduled task">
+            scheduled
+          </span>
+        )}
         <h3 className="active-run-card-title">{truncate(run.task, 140)}</h3>
       </header>
       <div className="active-run-card-meta">

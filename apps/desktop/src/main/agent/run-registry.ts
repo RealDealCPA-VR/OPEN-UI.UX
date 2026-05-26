@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { AgentRun, AgentRunStatus, AgentRunToolEvent } from '../../shared/agent-runs';
+import type {
+  AgentRun,
+  AgentRunStatus,
+  AgentRunToolEvent,
+  AgentRunTriggerSource,
+} from '../../shared/agent-runs';
 import type { SubagentResult, SubagentToolEvent } from './subagent';
 
 export type { AgentRun, AgentRunStatus, AgentRunToolEvent };
@@ -11,6 +16,8 @@ export interface StartRunInput {
   worktreePath?: string;
   worktreeBranch?: string;
   worktreeRepoRoot?: string;
+  triggerSource?: AgentRunTriggerSource;
+  scheduledTaskId?: string;
 }
 
 export type MergeStatus = 'pending' | 'merged' | 'rejected';
@@ -63,6 +70,8 @@ export function recordStart(input: StartRunInput): string {
     worktreeBranch: input.worktreeBranch ?? null,
     worktreeRepoRoot: input.worktreeRepoRoot ?? null,
     mergeStatus: hasWorktree ? 'pending' : null,
+    triggerSource: input.triggerSource ?? 'user',
+    scheduledTaskId: input.scheduledTaskId ?? null,
   };
   runs.set(id, run);
   insertionOrder.push(id);
@@ -86,7 +95,10 @@ export function setMergeStatus(id: string, status: MergeStatus): void {
 export function recordComplete(id: string, result: SubagentResult): void {
   const existing = runs.get(id);
   if (!existing) return;
-  const failed = result.stopReason === 'error' || result.stopReason === 'budget_exceeded';
+  const failed =
+    result.stopReason === 'error' ||
+    result.stopReason === 'budget_exceeded' ||
+    result.stopReason === 'unauthorized_tool';
   const updated: AgentRun = {
     ...existing,
     status: failed ? 'failed' : 'completed',

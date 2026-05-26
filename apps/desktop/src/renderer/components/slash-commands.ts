@@ -1,8 +1,17 @@
 import type { McpPromptEntry } from '../../shared/mcp';
+import type { Skill } from '../../shared/skills';
 
 export interface SlashCommandTrigger {
   query: string;
   start: number;
+}
+
+export type SlashEntry = { kind: 'mcp'; entry: McpPromptEntry } | { kind: 'skill'; skill: Skill };
+
+export interface SlashGroup {
+  header: string;
+  badge?: string;
+  entries: SlashEntry[];
 }
 
 export function getSlashTrigger(value: string, caret: number): SlashCommandTrigger | null {
@@ -66,6 +75,78 @@ export function formatPromptInsert(entry: McpPromptEntry): string {
     .map((a) => `${a.name}=<${a.required === false ? a.name + '?' : a.name}>`)
     .join(' ');
   return `${name} ${placeholders}`;
+}
+
+export function filterSkills(skills: ReadonlyArray<Skill>, query: string): Skill[] {
+  if (skills.length === 0) return [];
+  const q = query.trim().toLowerCase();
+  const enabled = skills.filter((s) => !s.disabled);
+  if (q === '') return enabled;
+  return enabled.filter((s) => {
+    const name = s.name.toLowerCase();
+    const desc = s.description.toLowerCase();
+    return name.includes(q) || desc.includes(q) || `skill:${name}`.includes(q);
+  });
+}
+
+export function formatSkillInsert(skill: Skill): string {
+  const head = `/skill:${skill.name}`;
+  const args = skill.frontmatter.arguments ?? [];
+  if (args.length === 0) return head + ' ';
+  const placeholders = args
+    .map((a) => `${a.name}=<${a.required === false ? a.name + '?' : a.name}>`)
+    .join(' ');
+  return `${head} ${placeholders}`;
+}
+
+/**
+ * Build the grouped entry list shown in the dropdown. Skills land in a single
+ * "Skills" group; MCP prompts get one group per server. Returns groups in the
+ * order: Skills (if any), then MCP groups in their original order.
+ */
+export function buildSlashGroups(
+  prompts: ReadonlyArray<McpPromptEntry>,
+  skills: ReadonlyArray<Skill>,
+  query: string,
+): SlashGroup[] {
+  const groups: SlashGroup[] = [];
+  const skillMatches = filterSkills(skills, query);
+  if (skillMatches.length > 0) {
+    groups.push({
+      header: 'Skills',
+      entries: skillMatches.map((skill) => ({ kind: 'skill', skill })),
+    });
+  }
+  const promptMatches = filterPrompts(prompts, query);
+  const promptGroups = groupByServer(promptMatches);
+  for (const g of promptGroups) {
+    groups.push({
+      header: `MCP — ${g.serverDisplayName}`,
+      entries: g.prompts.map((entry) => ({ kind: 'mcp', entry })),
+    });
+  }
+  return groups;
+}
+
+/**
+ * Find skills whose `triggers[]` contains a substring of `text`. Case-insensitive.
+ * Returns the matching skills in the order they appear in `skills`.
+ */
+export function findSkillsForTriggerText(skills: ReadonlyArray<Skill>, text: string): Skill[] {
+  if (text.length === 0) return [];
+  const lower = text.toLowerCase();
+  const out: Skill[] = [];
+  for (const skill of skills) {
+    if (skill.disabled) continue;
+    const triggers = skill.frontmatter.triggers ?? [];
+    for (const trig of triggers) {
+      if (lower.includes(trig.toLowerCase())) {
+        out.push(skill);
+        break;
+      }
+    }
+  }
+  return out;
 }
 
 export interface ApplyInsertResult {

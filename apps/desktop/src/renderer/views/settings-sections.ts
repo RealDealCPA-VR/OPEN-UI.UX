@@ -75,6 +75,18 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     title: 'Indexing',
     description: 'Codebase indexing for semantic search over your workspace.',
   },
+  {
+    slug: 'scheduled-tasks',
+    title: 'Scheduled tasks',
+    description:
+      'Cron-style schedules for unattended agent runs. Each task spawns a subagent with its own provider, model, allowed-tools whitelist, and (optionally) a git worktree for safe diff review.',
+  },
+  {
+    slug: 'skills',
+    title: 'Skills',
+    description:
+      'Reusable markdown prompt templates with frontmatter. Surface in chat as /skill:<name>. Skills can declare an allowed-tools whitelist and an optional cron schedule that auto-registers a scheduled task.',
+  },
 ] as const;
 
 export function slugify(input: string): string {

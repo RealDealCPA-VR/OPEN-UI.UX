@@ -1,5 +1,7 @@
 {
   "architecture": "Architecture",
   "security": "Security model",
-  "mcp": "MCP integration"
+  "mcp": "MCP integration",
+  "scheduled-tasks": "Scheduled tasks",
+  "authoring-skills": "Authoring skills"
 }

@@ -1,0 +1,142 @@
+# Scheduled tasks
+
+Scheduled tasks let you register agent runs that fire automatically on a cron
+schedule. They reuse the same agent loop, approval system, audit log, and
+merge-review flow as manual agent spawns — the only differences are how the
+run is triggered (a cron timer, not a button click) and the defaults for
+unattended execution (worktree by default, optional tool whitelist).
+
+Find them in `Settings → Scheduled tasks`.
+
+## When to use a scheduled task
+
+- **Nightly docs sync.** Run a docs-only agent against your codebase every day
+  at 3 AM and queue any diffs for review.
+- **Weekly security audit.** Have an agent scan for hardcoded secrets, weak
+  crypto patterns, and dependency CVEs every Monday morning.
+- **Daily dependency check.** Pull the latest npm advisories and propose
+  upgrades on a fresh branch every weekday morning.
+
+If you only want to fire a task on-demand, set the trigger to **Manual** —
+the task still gets all the other benefits (provider/model isolation,
+allowed-tools whitelist, worktree isolation) without an automatic schedule.
+
+## Cron syntax
+
+The expression field accepts the standard 5-field cron format:
+
+```
+┌───────────── minute (0–59)
+│ ┌─────────── hour (0–23, UTC)
+│ │ ┌───────── day of month (1–31)
+│ │ │ ┌─────── month (1–12)
+│ │ │ │ ┌───── day of week (0–7, 0 and 7 are Sunday)
+* * * * *
+```
+
+The editor includes presets (Hourly, Daily 9 AM UTC, Weekly Mon 9 AM UTC,
+Every 5 minutes) plus a free-form field with a live preview of the next
+5 fire times so you can sanity-check before saving.
+
+See the full syntax (including ranges, lists, `*/N` intervals, and
+month/day-of-week names) at the
+[cron-parser docs](https://github.com/harrisiirak/cron-parser).
+
+All cron expressions are evaluated in **UTC**. If you want a daily 9 AM run
+in your local timezone, convert the offset yourself — OpenCodex deliberately
+does not store per-task timezones to keep the schema portable.
+
+## Worktree review flow (default)
+
+By default, scheduled tasks run with **Use git worktree** enabled. When the
+task fires:
+
+1. OpenCodex creates a fresh worktree under
+   `<workspace>/.opencodex/worktrees/<id>` on branch
+   `opencodex/subagent/<id>`.
+2. The agent does its work inside the worktree. Writes never touch your
+   main checkout.
+3. When the run completes, the diff is queued for review.
+4. Open `Agent → History → Review changes` to inspect the diff and either
+   **Accept** (merges via `git merge --no-ff`) or **Reject** (discards the
+   worktree, branch and all).
+
+If the workspace is not a git repo, the task falls back to running directly
+against the workspace path — you'll see a warning in the logs. In that case,
+the **Allowed tools** whitelist is the only safety net.
+
+## Allowed tools whitelist
+
+The editor lists every registered tool (read, write, execute, network tiers).
+Tick the tools the task is permitted to use. If you leave the list empty,
+**all** registered tools are available.
+
+A scheduled run that tries to call a tool outside its whitelist short-circuits
+with `stopReason: 'unauthorized_tool'` and lands in the failed-runs list.
+The tool is never executed.
+
+## Catch-up policy
+
+If the app was closed when a task was scheduled to fire, OpenCodex fires the
+task **once** on startup with the `wasCatchup` flag set (visible in the
+run history drawer). It does **not** replay every missed tick — that would
+turn a long weekend into a flood of identical agent runs.
+
+## Concurrent-run guard
+
+If a previous run of the same task is still in flight when the next tick
+arrives, OpenCodex logs the conflict and advances the next-run time without
+firing again. This matches standard cron semantics.
+
+## IPC / preload surface
+
+For automation from other parts of the codebase (e.g. a future
+"Schedule this skill" button), the renderer-side bridge is
+`window.opencodex.scheduler.*`:
+
+| Method | Description |
+|---|---|
+| `listTasks()` | Read all scheduled tasks. |
+| `createTask(req)` | Create a new task. Throws if the cron expression is invalid. |
+| `updateTask(req)` | Patch fields on an existing task. |
+| `deleteTask(id)` | Remove a task (cascades to its run history). |
+| `runNow(id)` | Fire the task immediately, regardless of its trigger. |
+| `listRuns({ taskId, limit, beforeId })` | Cursor-paginated run history. |
+| `getRun(id)` | Look up a single run row. |
+| `onTasksChanged(listener)` | Subscribe to task-table changes. |
+| `onRunCompleted(listener)` | Fires when a scheduled run finishes. |
+
+Every payload is Zod-validated at both the renderer and main boundary;
+invalid cron expressions are rejected at save time, not at tick time.
+
+## Common recipes
+
+### Nightly docs sync
+
+- **Trigger:** `0 3 * * *` (3 AM UTC daily)
+- **Prompt:** "Walk every `.mdx` file under `website/pages/`, propose
+  fixes for any broken links, typos, or stale code references. Stop after
+  fixing 3 issues — open a PR for review."
+- **Allowed tools:** `read_file`, `glob`, `grep`, `edit_file`,
+  `write_file`, `search_codebase`
+- **Use worktree:** yes
+
+### Weekly security audit
+
+- **Trigger:** `0 9 * * 1` (9 AM UTC Monday)
+- **Prompt:** "Run a security audit: grep the workspace for hardcoded
+  secrets (api keys, tokens, passwords), weak crypto patterns
+  (md5, sha1, des), and dependency files (`package.json`, `requirements.txt`).
+  Cross-reference with known CVE feeds if web_fetch is available."
+- **Allowed tools:** `read_file`, `grep`, `glob`, `web_fetch`
+  (no write tools — pure analysis)
+- **Use worktree:** no (read-only run)
+
+### Daily dependency check
+
+- **Trigger:** `0 8 * * 1-5` (8 AM UTC, weekdays only)
+- **Prompt:** "Read `package.json`, check each dependency against the npm
+  registry for newer versions, and produce a short upgrade plan in
+  `UPGRADES.md`. Only flag breaking changes; don't auto-upgrade."
+- **Allowed tools:** `read_file`, `web_fetch`, `write_file`
+- **Use worktree:** yes

@@ -1,39 +1,52 @@
 import { useEffect, useMemo } from 'react';
 import type { McpPromptEntry } from '../../shared/mcp';
-import { filterPrompts, groupByServer } from './slash-commands';
+import type { Skill } from '../../shared/skills';
+import { buildSlashGroups, type SlashEntry } from './slash-commands';
 
 interface SlashCommandsProps {
   query: string;
   prompts: ReadonlyArray<McpPromptEntry>;
+  skills: ReadonlyArray<Skill>;
   activeIndex: number;
-  onSelect: (entry: McpPromptEntry) => void;
+  onSelectMcp: (entry: McpPromptEntry) => void;
+  onSelectSkill: (skill: Skill) => void;
   onActiveIndexChange: (index: number) => void;
   onClose: () => void;
+}
+
+function flattenEntries(groups: ReturnType<typeof buildSlashGroups>): SlashEntry[] {
+  const out: SlashEntry[] = [];
+  for (const g of groups) {
+    for (const e of g.entries) out.push(e);
+  }
+  return out;
 }
 
 export function SlashCommands({
   query,
   prompts,
+  skills,
   activeIndex,
-  onSelect,
+  onSelectMcp,
+  onSelectSkill,
   onActiveIndexChange,
 }: SlashCommandsProps): JSX.Element | null {
-  const filtered = useMemo(() => filterPrompts(prompts, query), [prompts, query]);
-  const groups = useMemo(() => groupByServer(filtered), [filtered]);
+  const groups = useMemo(() => buildSlashGroups(prompts, skills, query), [prompts, skills, query]);
+  const flat = useMemo(() => flattenEntries(groups), [groups]);
 
   useEffect(() => {
-    if (activeIndex >= filtered.length && filtered.length > 0) {
+    if (activeIndex >= flat.length && flat.length > 0) {
       onActiveIndexChange(0);
     }
-  }, [filtered.length, activeIndex, onActiveIndexChange]);
+  }, [flat.length, activeIndex, onActiveIndexChange]);
 
-  if (filtered.length === 0) {
+  if (flat.length === 0) {
     return (
       <div className="slash-commands slash-commands-empty" role="listbox">
         <div className="slash-commands-empty-text">
-          {prompts.length === 0
-            ? 'No MCP prompts available. Connect an MCP server in Settings.'
-            : `No prompts match "${query}"`}
+          {prompts.length === 0 && skills.length === 0
+            ? 'No skills or MCP prompts available. Add a skill in Settings → Skills, or connect an MCP server.'
+            : `No matches for "${query}"`}
         </div>
       </div>
     );
@@ -41,30 +54,48 @@ export function SlashCommands({
 
   let flatIndex = 0;
   return (
-    <div className="slash-commands" role="listbox" aria-label="MCP prompts">
+    <div className="slash-commands" role="listbox" aria-label="Slash commands">
       {groups.map((group) => (
-        <div key={group.serverId} className="slash-commands-group">
-          <div className="slash-commands-group-head">{group.serverDisplayName}</div>
-          {group.prompts.map((entry) => {
+        <div key={group.header} className="slash-commands-group">
+          <div className="slash-commands-group-head">{group.header}</div>
+          {group.entries.map((entry) => {
             const idx = flatIndex++;
             const active = idx === activeIndex;
+            const key =
+              entry.kind === 'mcp'
+                ? `mcp:${entry.entry.serverId}:${entry.entry.prompt.name}`
+                : `skill:${entry.skill.id}`;
+            const name =
+              entry.kind === 'mcp' ? entry.entry.prompt.name : `skill:${entry.skill.name}`;
+            const desc =
+              entry.kind === 'mcp'
+                ? (entry.entry.prompt.description ?? '')
+                : entry.skill.description;
+            const scopeBadge =
+              entry.kind === 'skill' && entry.skill.scope === 'project' ? 'project' : null;
             return (
               <button
-                key={`${entry.serverId}:${entry.prompt.name}`}
+                key={key}
                 type="button"
                 role="option"
                 aria-selected={active}
                 className={`slash-commands-item${active ? ' slash-commands-item-active' : ''}`}
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  onSelect(entry);
+                  if (entry.kind === 'mcp') onSelectMcp(entry.entry);
+                  else onSelectSkill(entry.skill);
                 }}
                 onMouseEnter={() => onActiveIndexChange(idx)}
               >
-                <span className="slash-commands-name">{entry.prompt.name}</span>
-                {entry.prompt.description ? (
-                  <span className="slash-commands-desc">{entry.prompt.description}</span>
-                ) : null}
+                <span className="slash-commands-name">
+                  {name}
+                  {scopeBadge && (
+                    <span className="pill" style={{ marginLeft: 8 }}>
+                      {scopeBadge}
+                    </span>
+                  )}
+                </span>
+                {desc ? <span className="slash-commands-desc">{desc}</span> : null}
               </button>
             );
           })}
