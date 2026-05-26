@@ -1,0 +1,121 @@
+import { Callout } from 'nextra/components';
+
+# Provider Authoring Guide
+
+<Callout type="info">
+  Mirrored from [`docs/provider-authoring.md`](https://github.com/TODO-org/TODO-repo/blob/main/docs/provider-authoring.md).
+</Callout>
+
+A "provider" in OpenCodex is anything that implements `LLMProvider`. Built-ins live one-per-package in `packages/provider-*`. Third parties contribute providers through the plugin SDK.
+
+## The `LLMProvider` interface
+
+```ts
+interface LLMProvider {
+  readonly id: string;
+  readonly displayName: string;
+
+  chat(req: ChatRequest): AsyncIterable<ChatEvent>;
+  embed(req: EmbedRequest): Promise<EmbedResult>;
+
+  listModels(): Promise<ModelCapabilities[]>;
+  capabilities(model: string): Promise<ModelCapabilities | undefined>;
+}
+```
+
+## `ChatRequest`
+
+```ts
+interface ChatRequest {
+  model: string;
+  messages: Message[];
+  tools?: ToolDefinition[];
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
+  stop?: string[];
+  signal?: AbortSignal;
+}
+```
+
+## `EmbedRequest` / `EmbedResult`
+
+```ts
+interface EmbedRequest {
+  model: string;
+  inputs: string[];
+  signal?: AbortSignal;
+}
+
+interface EmbedResult {
+  embeddings: number[][]; // one row per input, in input order
+  usage: { tokens: number };
+}
+```
+
+If your provider does not offer embeddings (e.g. Anthropic), `embed()` should throw — do not return zero-length vectors.
+
+## `ChatEvent`
+
+A streamed provider must emit a sequence of `ChatEvent`s:
+
+```ts
+type ChatEvent =
+  | { type: 'text_delta'; text: string }
+  | { type: 'tool_call'; id: string; name: string; arguments: unknown }
+  | { type: 'tool_result'; id: string; output: unknown; isError?: boolean }
+  | { type: 'usage'; inputTokens: number; outputTokens: number }
+  | { type: 'done'; stopReason: StopReason }
+  | { type: 'error'; error: { message: string; code?: string } };
+```
+
+Translate your provider's native stream (OpenAI SSE, Anthropic event stream, Gemini streamGenerateContent, Ollama NDJSON, etc.) into this discriminated union. The agent loop and UI know how to handle each variant.
+
+## Capabilities
+
+```ts
+interface ModelCapabilities {
+  id: string;
+  providerId: string;
+  displayName: string;
+  contextWindow: number;
+  toolUse: boolean;
+  vision: boolean;
+  streaming: boolean;
+  embeddings?: boolean;
+  pricing?: { inputPerMTok: number; outputPerMTok: number };
+}
+```
+
+The UI reads these to gate features. Setting `toolUse: false` hides the tools panel, etc.
+
+## `ProviderFactory`
+
+Constructors wrap the provider with a Zod `configSchema`:
+
+```ts
+export const myProvider: ProviderFactory<MyConfig> = {
+  id: 'my-provider',
+  displayName: 'My Provider',
+  configSchema: myConfigSchema, // z.object({ apiKey: z.string().min(1), ... })
+  create(config) {
+    return new MyProvider(config);
+  },
+};
+```
+
+The host's `ProviderRegistry` runs `configSchema.parse(config)` at create-time and throws `ProviderConfigError` on validation failure. The renderer's provider-config UI shows the error in-line.
+
+## Worked example
+
+See `packages/provider-voyage/src/index.ts` — small, embeddings-only, follows the exact shape this guide describes.
+
+## HTTP transport tips
+
+- Honour `req.signal` via `init.signal = req.signal` on `fetch()`.
+- Use a small `safeReadText(response)` helper for error bodies so a JSON-parse failure doesn't swallow the original HTTP error message.
+- Translate provider-specific HTTP statuses into meaningful error messages (4xx → likely config/auth; 5xx → likely upstream).
+
+## Testing
+
+Per-adapter unit tests live next to each provider package. Stub `fetch` via `vi.stubGlobal('fetch', vi.fn(...))` to simulate streaming responses without network access. See `packages/provider-openai/src/provider.test.ts` for a working pattern.

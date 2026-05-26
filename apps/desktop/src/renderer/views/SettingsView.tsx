@@ -1,83 +1,196 @@
-import { OnboardingBanner, PROVIDERS_SECTION_ID } from '../components/OnboardingBanner';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { OnboardingBanner } from '../components/OnboardingBanner';
+import { SettingsRail } from '../components/SettingsRail';
+import { SettingsSectionCard } from '../components/SettingsSectionCard';
 import { ApprovalsPanel } from './ApprovalsPanel';
 import { AuditLogPanel } from './AuditLogPanel';
+import { CrashReportingPanel } from './CrashReportingPanel';
 import { IndexingPanel } from './IndexingPanel';
 import { McpServersPanel } from './McpServersPanel';
+import { MemoryPanel } from './MemoryPanel';
 import { PluginsPanel } from './PluginsPanel';
 import { ProvidersPanel } from './ProvidersPanel';
+import {
+  DEFAULT_SETTINGS_SLUG,
+  filterSettingsSections,
+  findSectionBySlug,
+  SETTINGS_SECTIONS,
+  type SettingsSection,
+} from './settings-sections';
+import { TelemetryPanel } from './TelemetryPanel';
 import { ThemePanel } from './ThemePanel';
+import { UpdatesPanel } from './UpdatesPanel';
 import { WorkspacePanel } from './WorkspacePanel';
 
 export function SettingsView(): JSX.Element {
+  const navigate = useNavigate();
+  const { section: sectionParam } = useParams<{ section?: string }>();
+  const [query, setQuery] = useState('');
+
+  const defaultSection =
+    findSectionBySlug(SETTINGS_SECTIONS, DEFAULT_SETTINGS_SLUG) ?? SETTINGS_SECTIONS[0];
+  if (!defaultSection) throw new Error('SETTINGS_SECTIONS must have at least one entry');
+  const currentSection: SettingsSection =
+    findSectionBySlug(SETTINGS_SECTIONS, sectionParam ?? DEFAULT_SETTINGS_SLUG) ?? defaultSection;
+
+  // If the URL slug is unknown (or missing), normalize to the resolved one.
+  useEffect(() => {
+    if (sectionParam !== currentSection.slug) {
+      navigate(`/settings/${currentSection.slug}`, { replace: true });
+    }
+  }, [sectionParam, currentSection.slug, navigate]);
+
+  const filtered = useMemo(() => filterSettingsSections(SETTINGS_SECTIONS, query), [query]);
+
+  const handleSelect = useCallback(
+    (slug: string) => {
+      navigate(`/settings/${slug}`);
+    },
+    [navigate],
+  );
+
   return (
-    <section className="view settings-view">
-      <header className="settings-section-head">
-        <h1>Settings</h1>
-        <p>Workspace, providers, approvals, MCP servers, plugins, theme, indexing.</p>
-      </header>
-      <OnboardingBanner />
-      <section className="settings-section">
-        <h2>Theme</h2>
-        <p className="settings-section-desc">
-          Light, dark, or follow the OS preference. Applied immediately.
-        </p>
-        <ThemePanel />
-      </section>
-      <section className="settings-section">
-        <h2>Workspace</h2>
-        <p className="settings-section-desc">
-          Pick the folder the agent operates in. File-system tools (read, write, edit, glob, grep,
-          run_shell) are sandboxed to this directory.
-        </p>
-        <WorkspacePanel />
-      </section>
-      <section className="settings-section" id={PROVIDERS_SECTION_ID}>
-        <h2 tabIndex={-1}>Providers</h2>
-        <p className="settings-section-desc">
-          Add an API key to enable a provider. Keys are stored in your OS keychain; everything else
-          lives in the local settings file.
-        </p>
-        <ProvidersPanel />
-      </section>
-      <section className="settings-section">
-        <h2>Approvals</h2>
-        <p className="settings-section-desc">
-          Control which tool calls run automatically, which ask first, and which are blocked. Tier
-          defaults apply to every tool in that tier; per-tool overrides take precedence.
-        </p>
-        <ApprovalsPanel />
-      </section>
-      <section className="settings-section">
-        <h2>Plugins</h2>
-        <p className="settings-section-desc">
-          Install third-party plugins from a local folder. Plugins can contribute tools, providers,
-          and slash commands. They run in-process — only install plugins you trust.
-        </p>
-        <PluginsPanel />
-      </section>
-      <section className="settings-section">
-        <h2>MCP servers</h2>
-        <p className="settings-section-desc">
-          Model Context Protocol servers expose tools, resources, and prompts to the agent. Add a
-          curated preset or paste a custom config — connections start automatically.
-        </p>
-        <McpServersPanel />
-      </section>
-      <section className="settings-section">
-        <h2>Audit log</h2>
-        <p className="settings-section-desc">
-          Every tool call the agent runs is recorded here. Filter by tool, decision, result, or time
-          range. Click a row to inspect the input and output.
-        </p>
-        <AuditLogPanel />
-      </section>
-      <section className="settings-section">
-        <h2>Indexing</h2>
-        <p className="settings-section-desc">
-          Codebase indexing for semantic search over your workspace.
-        </p>
-        <IndexingPanel />
-      </section>
+    <section className="view settings-view settings-view-two-pane">
+      <SettingsRail
+        sections={filtered}
+        activeSlug={currentSection.slug}
+        onSelect={handleSelect}
+        query={query}
+        onQueryChange={setQuery}
+      />
+      <div className="settings-pane">
+        <OnboardingBanner />
+        <SettingsSectionBody section={currentSection} />
+      </div>
     </section>
+  );
+}
+
+function SettingsSectionBody({ section }: { section: SettingsSection }): JSX.Element {
+  switch (section.slug) {
+    case 'theme':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <ThemePanel />
+        </SettingsSectionCard>
+      );
+    case 'workspace':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <WorkspacePanel />
+        </SettingsSectionCard>
+      );
+    case 'providers':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <ProvidersPanel />
+        </SettingsSectionCard>
+      );
+    case 'approvals':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <ApprovalsPanel />
+        </SettingsSectionCard>
+      );
+    case 'plugins':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <PluginsPanel />
+        </SettingsSectionCard>
+      );
+    case 'mcp':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <McpServersPanel />
+        </SettingsSectionCard>
+      );
+    case 'memory':
+      return <MemorySection section={section} />;
+    case 'updates':
+      return <UpdatesSection section={section} />;
+    case 'telemetry':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <TelemetryPanel />
+        </SettingsSectionCard>
+      );
+    case 'crash-reporting':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <CrashReportingPanel />
+        </SettingsSectionCard>
+      );
+    case 'audit-log':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <AuditLogPanel />
+        </SettingsSectionCard>
+      );
+    case 'indexing':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <IndexingPanel />
+        </SettingsSectionCard>
+      );
+    default:
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <p className="chat-empty">Unknown section.</p>
+        </SettingsSectionCard>
+      );
+  }
+}
+
+function MemorySection({ section }: { section: SettingsSection }): JSX.Element {
+  const [reloading, setReloading] = useState(false);
+  const handleReload = async (): Promise<void> => {
+    setReloading(true);
+    try {
+      await window.opencodex.memory.reload();
+    } catch {
+      // Surface via the panel's own status pills — nothing else to do here.
+    } finally {
+      setReloading(false);
+    }
+  };
+  return (
+    <SettingsSectionCard
+      title={section.title}
+      description={section.description}
+      actions={
+        <button
+          type="button"
+          className="btn"
+          onClick={() => void handleReload()}
+          disabled={reloading}
+        >
+          {reloading ? 'Reloading…' : 'Reload'}
+        </button>
+      }
+    >
+      <MemoryPanel />
+    </SettingsSectionCard>
+  );
+}
+
+function UpdatesSection({ section }: { section: SettingsSection }): JSX.Element {
+  const checkRef = useRef<(() => void) | null>(null);
+  return (
+    <SettingsSectionCard
+      title={section.title}
+      description={section.description}
+      actions={
+        <button type="button" className="btn" onClick={() => checkRef.current?.()}>
+          Check now
+        </button>
+      }
+    >
+      <UpdatesPanel
+        onCheckRef={(fn) => {
+          checkRef.current = fn;
+        }}
+      />
+    </SettingsSectionCard>
   );
 }

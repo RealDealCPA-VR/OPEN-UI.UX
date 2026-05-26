@@ -2,6 +2,20 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import type { AgentRun, AgentRunsChangedEvent } from '../shared/agent-runs';
 import type {
+  AgentAbortRunResponse,
+  AgentSpawnFromUiRequest,
+  AgentSpawnFromUiResponse,
+  GitIsRepoResponse,
+  ShellShowItemResponse,
+} from '../shared/agent-spawn';
+import type {
+  CodebasePendingEditsResponse,
+  CodebaseReadFileRequest,
+  CodebaseReadFileResponse,
+  CodebaseSearchRequest,
+  CodebaseSearchResponse,
+} from '../shared/codebase-search';
+import type {
   ApprovalPolicies,
   ApprovalRequest,
   ApprovalResponse,
@@ -74,6 +88,24 @@ import type {
   WorkspaceChangedEvent,
   WorkspaceState,
 } from '../shared/workspace';
+import type {
+  TelemetryConfig,
+  TelemetryConfigChangedEvent,
+  TelemetrySetConfigRequest,
+} from '../shared/telemetry';
+import type {
+  CrashReportingConfig,
+  CrashReportingConfigChangedEvent,
+  CrashReportingSetConfigRequest,
+} from '../shared/crash-reporting';
+import type { UpdateStatus, UpdatesCheckResult } from '../shared/updates';
+import type {
+  MemoryBackendId,
+  MemoryConfig,
+  MemoryConfigChangedEvent,
+  MemoryStatus,
+  TestConnectionResult,
+} from '../shared/memory';
 
 type DeepLinkListener = (url: string) => void;
 type ChatEventListener = (payload: ChatStreamEvent) => void;
@@ -306,6 +338,96 @@ const agent = {
     ipcRenderer.invoke('agent:accept-merge', { runId }),
   rejectMerge: (runId: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('agent:reject-merge', { runId }),
+  spawnFromUi: (req: AgentSpawnFromUiRequest): Promise<AgentSpawnFromUiResponse> =>
+    ipcRenderer.invoke('agent:spawn-from-ui', req),
+  abortRun: (runId: string): Promise<AgentAbortRunResponse> =>
+    ipcRenderer.invoke('agent:abort-run', { runId }),
+};
+
+const codebase = {
+  search: (req: CodebaseSearchRequest): Promise<CodebaseSearchResponse> =>
+    ipcRenderer.invoke('codebase:search', req),
+  readFile: (req: CodebaseReadFileRequest): Promise<CodebaseReadFileResponse> =>
+    ipcRenderer.invoke('codebase:read-file', req),
+  getPendingEdits: (): Promise<CodebasePendingEditsResponse> =>
+    ipcRenderer.invoke('codebase:get-pending-edits'),
+};
+
+const git = {
+  isRepo: (path: string): Promise<GitIsRepoResponse> => ipcRenderer.invoke('git:is-repo', { path }),
+};
+
+const shellBridge = {
+  showItemInFolder: (workspaceRoot: string, path: string): Promise<ShellShowItemResponse> =>
+    ipcRenderer.invoke('shell:show-item-in-folder', { workspaceRoot, path }),
+};
+
+type TelemetryConfigChangedListener = (payload: TelemetryConfigChangedEvent) => void;
+
+const telemetry = {
+  getConfig: (): Promise<TelemetryConfig> => ipcRenderer.invoke('telemetry:get-config'),
+  setConfig: (req: TelemetrySetConfigRequest): Promise<TelemetryConfig> =>
+    ipcRenderer.invoke('telemetry:set-config', req),
+  onConfigChanged: (listener: TelemetryConfigChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: TelemetryConfigChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('telemetry:config-changed', wrapped);
+    return () => ipcRenderer.off('telemetry:config-changed', wrapped);
+  },
+};
+
+type CrashReportingConfigChangedListener = (payload: CrashReportingConfigChangedEvent) => void;
+
+const crashReporting = {
+  getConfig: (): Promise<CrashReportingConfig> => ipcRenderer.invoke('crash-reporting:get-config'),
+  setConfig: (req: CrashReportingSetConfigRequest): Promise<CrashReportingConfig> =>
+    ipcRenderer.invoke('crash-reporting:set-config', req),
+  onConfigChanged: (listener: CrashReportingConfigChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: CrashReportingConfigChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('crash-reporting:config-changed', wrapped);
+    return () => ipcRenderer.off('crash-reporting:config-changed', wrapped);
+  },
+};
+
+type UpdatesStatusListener = (payload: UpdateStatus) => void;
+
+const updates = {
+  check: (): Promise<UpdatesCheckResult> => ipcRenderer.invoke('updates:check'),
+  download: (): Promise<void> => ipcRenderer.invoke('updates:download'),
+  quitAndInstall: (): Promise<void> => ipcRenderer.invoke('updates:quit-and-install'),
+  getStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('updates:get-status'),
+  setAutoCheck: (enabled: boolean): Promise<{ enabled: boolean }> =>
+    ipcRenderer.invoke('updates:set-auto-check', { enabled }),
+  onStatusChanged: (listener: UpdatesStatusListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: UpdateStatus): void => listener(payload);
+    ipcRenderer.on('updates:status-changed', wrapped);
+    return () => ipcRenderer.off('updates:status-changed', wrapped);
+  },
+};
+
+type MemoryChangedListener = (payload: MemoryConfigChangedEvent) => void;
+
+const memory = {
+  getStatus: (): Promise<MemoryStatus> => ipcRenderer.invoke('memory:get-status'),
+  getConfig: async (): Promise<MemoryConfig> => {
+    const status = (await ipcRenderer.invoke('memory:get-status')) as MemoryStatus;
+    return status.config;
+  },
+  setConfig: (config: MemoryConfig): Promise<MemoryStatus> =>
+    ipcRenderer.invoke('memory:set-config', { config }),
+  testConnection: (backend: MemoryBackendId): Promise<TestConnectionResult> =>
+    ipcRenderer.invoke('memory:test-connection', { backend }),
+  setNotionToken: (token: string): Promise<MemoryStatus> =>
+    ipcRenderer.invoke('memory:set-notion-token', { token }),
+  clearNotionToken: (): Promise<MemoryStatus> => ipcRenderer.invoke('memory:clear-notion-token'),
+  reload: (): Promise<MemoryStatus> => ipcRenderer.invoke('memory:reload'),
+  onChanged: (listener: MemoryChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: MemoryConfigChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('memory:config-changed', wrapped);
+    return () => ipcRenderer.off('memory:config-changed', wrapped);
+  },
 };
 
 const api = {
@@ -329,6 +451,13 @@ const api = {
   onboarding,
   plugins,
   agent,
+  codebase,
+  git,
+  shell: shellBridge,
+  telemetry,
+  crashReporting,
+  updates,
+  memory,
   fileTree: {
     list: (
       path?: string,

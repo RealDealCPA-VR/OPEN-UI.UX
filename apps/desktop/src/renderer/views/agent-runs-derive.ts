@@ -68,3 +68,33 @@ export function toolErrorCount(run: AgentRun): number {
   for (const e of run.toolEvents) if (e.isError) n++;
   return n;
 }
+
+export function partitionRunsByActivity(runs: readonly AgentRun[]): {
+  active: AgentRun[];
+  history: AgentRun[];
+} {
+  const active: AgentRun[] = [];
+  const history: AgentRun[] = [];
+  for (const r of runs) {
+    if (r.status === 'running') active.push(r);
+    else history.push(r);
+  }
+  return { active, history };
+}
+
+/**
+ * Returns true when the run has no associated worktree (or merge already
+ * resolved). Callers can use this to skip pending-edit derivation.
+ */
+export function hasUnresolvedWorktree(run: AgentRun): boolean {
+  if (!run.worktreePath || !run.worktreeBranch || !run.worktreeRepoRoot) return false;
+  return run.mergeStatus === 'pending';
+}
+
+export function canContinueInChat(run: AgentRun): boolean {
+  return run.status === 'completed' || run.status === 'failed';
+}
+
+export function canAbort(run: AgentRun): boolean {
+  return run.status === 'running';
+}

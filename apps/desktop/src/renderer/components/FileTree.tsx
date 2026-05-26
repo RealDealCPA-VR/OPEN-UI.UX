@@ -12,6 +12,7 @@ export type EditAnnotation = 'pending' | 'applied' | 'rejected';
 interface FileTreeProps {
   annotations?: Record<string, EditAnnotation>;
   onOpenFile?: (path: string) => void;
+  onContextMenu?: (path: string, isDirectory: boolean, x: number, y: number) => void;
 }
 
 interface NodeState {
@@ -20,7 +21,7 @@ interface NodeState {
   loading: boolean;
 }
 
-export function FileTree({ annotations, onOpenFile }: FileTreeProps): JSX.Element {
+export function FileTree({ annotations, onOpenFile, onContextMenu }: FileTreeProps): JSX.Element {
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
   const [root, setRoot] = useState<NodeState>({ entries: [], expanded: true, loading: true });
   const [children, setChildren] = useState<Record<string, NodeState>>({});
@@ -88,6 +89,7 @@ export function FileTree({ annotations, onOpenFile }: FileTreeProps): JSX.Elemen
               nodeChildren={children}
               onToggle={(path) => void toggle(path)}
               onOpenFile={onOpenFile}
+              onContextMenu={onContextMenu}
               annotations={annotations}
             />
           ))}
@@ -103,6 +105,7 @@ function FileTreeNodeView({
   nodeChildren,
   onToggle,
   onOpenFile,
+  onContextMenu,
   annotations,
 }: {
   node: FileNode;
@@ -110,6 +113,7 @@ function FileTreeNodeView({
   nodeChildren: Record<string, NodeState>;
   onToggle(path: string): void;
   onOpenFile?: (path: string) => void;
+  onContextMenu?: (path: string, isDirectory: boolean, x: number, y: number) => void;
   annotations?: Record<string, EditAnnotation>;
 }): JSX.Element {
   const childState = nodeChildren[node.path];
@@ -120,6 +124,12 @@ function FileTreeNodeView({
     else onOpenFile?.(node.path);
   };
 
+  const handleContextMenu = (e: React.MouseEvent): void => {
+    if (!onContextMenu) return;
+    e.preventDefault();
+    onContextMenu(node.path, node.isDirectory, e.clientX, e.clientY);
+  };
+
   return (
     <li className="file-tree-node">
       <button
@@ -127,6 +137,7 @@ function FileTreeNodeView({
         className="file-tree-row"
         style={{ paddingLeft: `${depth * 14 + 6}px` }}
         onClick={onClick}
+        onContextMenu={handleContextMenu}
       >
         <span className="file-tree-icon">
           {node.isDirectory ? (childState?.expanded ? '▾' : '▸') : '·'}
@@ -151,6 +162,7 @@ function FileTreeNodeView({
                 nodeChildren={nodeChildren}
                 onToggle={onToggle}
                 onOpenFile={onOpenFile}
+                onContextMenu={onContextMenu}
                 annotations={annotations}
               />
             ))

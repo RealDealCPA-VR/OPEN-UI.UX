@@ -1,18 +1,17 @@
 import { useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSelectedModel } from '../state/selected-model-context';
 
 const PROVIDERS_SECTION_ID = 'settings-providers';
+const PROVIDERS_ROUTE = '/settings/providers';
 
 export function OnboardingBanner(): JSX.Element | null {
   const { configuredProviders, loading, error } = useSelectedModel();
+  const navigate = useNavigate();
 
-  const scrollToProviders = useCallback(() => {
-    const el = document.getElementById(PROVIDERS_SECTION_ID);
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    const heading = el.querySelector('h2');
-    if (heading instanceof HTMLElement) heading.focus({ preventScroll: true });
-  }, []);
+  const goToProviders = useCallback(() => {
+    navigate(PROVIDERS_ROUTE);
+  }, [navigate]);
 
   if (loading || error) return null;
   if (configuredProviders.length > 0) return null;
@@ -26,11 +25,11 @@ export function OnboardingBanner(): JSX.Element | null {
           and never leave this machine.
         </p>
       </div>
-      <button type="button" className="btn btn-primary" onClick={scrollToProviders}>
+      <button type="button" className="btn btn-primary" onClick={goToProviders}>
         Configure a provider
       </button>
     </aside>
   );
 }
 
-export { PROVIDERS_SECTION_ID };
+export { PROVIDERS_ROUTE, PROVIDERS_SECTION_ID };

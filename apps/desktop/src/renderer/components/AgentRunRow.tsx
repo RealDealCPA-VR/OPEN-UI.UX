@@ -1,5 +1,7 @@
 import type { AgentRun } from '../../shared/agent-runs';
+import { pushTransfer } from '../state/transfer';
 import {
+  canContinueInChat,
   currentToolName,
   formatDurationMs,
   formatTokens,
@@ -17,6 +19,7 @@ interface AgentRunRowProps {
   onToggle: () => void;
   now: number;
   onReview?: (runId: string) => void;
+  onContinueInChat?: () => void;
 }
 
 export function AgentRunRow({
@@ -25,6 +28,7 @@ export function AgentRunRow({
   onToggle,
   now,
   onReview,
+  onContinueInChat,
 }: AgentRunRowProps): JSX.Element {
   const duration = runDurationMs(run, now);
   const tool = currentToolName(run);
@@ -35,6 +39,15 @@ export function AgentRunRow({
     run.worktreeBranch !== null &&
     run.status !== 'running' &&
     run.mergeStatus === 'pending';
+  const showContinue = canContinueInChat(run);
+  const handleContinue = (): void => {
+    pushTransfer({
+      kind: 'agent-to-chat',
+      runId: run.id,
+      summary: summarizeRunForChat(run),
+    });
+    onContinueInChat?.();
+  };
 
   return (
     <li className="audit-row agent-run-row">
@@ -119,11 +132,22 @@ export function AgentRunRow({
               </div>
             )}
           </dl>
-          {showReview && onReview && (
-            <div className="audit-row-section">
-              <button type="button" className="audit-clear-button" onClick={() => onReview(run.id)}>
-                Review changes
-              </button>
+          {(showReview || showContinue) && (
+            <div className="audit-row-section agent-run-row-actions">
+              {showReview && onReview && (
+                <button
+                  type="button"
+                  className="audit-clear-button"
+                  onClick={() => onReview(run.id)}
+                >
+                  Review changes
+                </button>
+              )}
+              {showContinue && (
+                <button type="button" className="audit-clear-button" onClick={handleContinue}>
+                  Continue in chat
+                </button>
+              )}
             </div>
           )}
           {run.toolEvents.length > 0 && (
@@ -152,4 +176,18 @@ export function AgentRunRow({
       )}
     </li>
   );
+}
+
+function summarizeRunForChat(run: AgentRun): string {
+  const parts: string[] = [];
+  parts.push(`Subagent run ${run.id}`);
+  parts.push(`Task: ${run.task}`);
+  parts.push(`Provider/model: ${run.providerId} / ${run.modelId}`);
+  parts.push(`Status: ${run.status} (stop: ${run.stopReason ?? '—'})`);
+  parts.push(
+    `Tokens: ${run.inputTokens.toLocaleString()} in / ${run.outputTokens.toLocaleString()} out`,
+  );
+  if (run.toolEvents.length > 0) parts.push(`Tool events: ${run.toolEvents.length}`);
+  if (run.error) parts.push(`Error: ${run.error}`);
+  return parts.join('\n');
 }

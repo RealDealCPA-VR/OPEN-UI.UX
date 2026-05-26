@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react';
 const workspacePackages: Record<string, string> = {
   '@opencodex/core': 'packages/core/src/index.ts',
   '@opencodex/mcp-client': 'packages/mcp-client/src/index.ts',
+  '@opencodex/memory-notion': 'packages/memory-notion/src/index.ts',
+  '@opencodex/memory-obsidian': 'packages/memory-obsidian/src/index.ts',
   '@opencodex/plugin-sdk': 'packages/plugin-sdk/src/index.ts',
   '@opencodex/provider-anthropic': 'packages/provider-anthropic/src/index.ts',
   '@opencodex/provider-google': 'packages/provider-google/src/index.ts',
@@ -16,6 +18,8 @@ const workspacePackages: Record<string, string> = {
   '@opencodex/provider-xai': 'packages/provider-xai/src/index.ts',
   '@opencodex/rag-chunker': 'packages/rag-chunker/src/index.ts',
   '@opencodex/tools': 'packages/tools/src/index.ts',
+  '@opencodex/telemetry': 'packages/telemetry/src/index.ts',
+  '@opencodex/crash-reporting': 'packages/crash-reporting/src/index.ts',
 };
 
 const workspaceAliases = Object.fromEntries(

@@ -2,6 +2,7 @@ import Store from 'electron-store';
 import { z } from 'zod';
 import { type ApprovalPolicies, DEFAULT_TIER_POLICIES } from '../../shared/approvals';
 import { mcpServerEntrySchema, type McpServerEntry } from '../../shared/mcp';
+import { DEFAULT_MEMORY_CONFIG, memoryConfigSchema, type MemoryConfig } from '../../shared/memory';
 import { PermissionSchema } from '@opencodex/plugin-sdk';
 import type { ProviderTestResult } from '../../shared/provider-config';
 import type { SelectedModel } from '../../shared/selected-model';
@@ -68,6 +69,14 @@ const SettingsSchema = z.object({
     .default([]),
   pluginRegistryUrl: z.string().url().nullable().default(null),
   readOnlyChatMode: z.boolean().default(false),
+  memory: memoryConfigSchema.default(DEFAULT_MEMORY_CONFIG),
+  telemetryEnabled: z.boolean().default(false),
+  telemetryApiKey: z.string().default(''),
+  telemetryHost: z.string().url().nullable().default(null),
+  crashReportingEnabled: z.boolean().default(false),
+  crashReportingDsn: z.string().default(''),
+  crashReportingEnvironment: z.string().default('production'),
+  autoCheckForUpdates: z.boolean().default(false),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -222,4 +231,81 @@ export function getReadOnlyChatMode(): boolean {
 export function setReadOnlyChatMode(value: boolean): boolean {
   const next = updateSettings({ readOnlyChatMode: value });
   return next.readOnlyChatMode;
+}
+
+export function getMemoryConfig(): MemoryConfig {
+  return getSettings().memory;
+}
+
+export function setMemoryConfig(config: MemoryConfig): MemoryConfig {
+  const parsed = memoryConfigSchema.parse(config);
+  const next = updateSettings({ memory: parsed });
+  return next.memory;
+}
+
+export interface TelemetrySettings {
+  enabled: boolean;
+  apiKey: string;
+  host: string | null;
+}
+
+export function getTelemetrySettings(): TelemetrySettings {
+  const s = getSettings();
+  return {
+    enabled: s.telemetryEnabled,
+    apiKey: s.telemetryApiKey,
+    host: s.telemetryHost,
+  };
+}
+
+export function setTelemetrySettings(patch: Partial<TelemetrySettings>): TelemetrySettings {
+  const update: Partial<Settings> = {};
+  if (patch.enabled !== undefined) update.telemetryEnabled = patch.enabled;
+  if (patch.apiKey !== undefined) update.telemetryApiKey = patch.apiKey;
+  if (patch.host !== undefined) update.telemetryHost = patch.host;
+  const next = updateSettings(update);
+  return {
+    enabled: next.telemetryEnabled,
+    apiKey: next.telemetryApiKey,
+    host: next.telemetryHost,
+  };
+}
+
+export interface CrashReportingSettings {
+  enabled: boolean;
+  dsn: string;
+  environment: string;
+}
+
+export function getCrashReportingSettings(): CrashReportingSettings {
+  const s = getSettings();
+  return {
+    enabled: s.crashReportingEnabled,
+    dsn: s.crashReportingDsn,
+    environment: s.crashReportingEnvironment,
+  };
+}
+
+export function setCrashReportingSettings(
+  patch: Partial<CrashReportingSettings>,
+): CrashReportingSettings {
+  const update: Partial<Settings> = {};
+  if (patch.enabled !== undefined) update.crashReportingEnabled = patch.enabled;
+  if (patch.dsn !== undefined) update.crashReportingDsn = patch.dsn;
+  if (patch.environment !== undefined) update.crashReportingEnvironment = patch.environment;
+  const next = updateSettings(update);
+  return {
+    enabled: next.crashReportingEnabled,
+    dsn: next.crashReportingDsn,
+    environment: next.crashReportingEnvironment,
+  };
+}
+
+export function getAutoCheckForUpdates(): boolean {
+  return getSettings().autoCheckForUpdates;
+}
+
+export function setAutoCheckForUpdates(value: boolean): boolean {
+  const next = updateSettings({ autoCheckForUpdates: value });
+  return next.autoCheckForUpdates;
 }

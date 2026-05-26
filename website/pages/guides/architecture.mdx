@@ -1,0 +1,154 @@
+import { Callout } from 'nextra/components';
+
+# Architecture
+
+<Callout type="info">
+  This page mirrors [`docs/architecture.md`](https://github.com/TODO-org/TODO-repo/blob/main/docs/architecture.md). Keep them in sync — the docs in the repo are the source of truth for in-tree contributors; this page is the source of truth for public readers.
+</Callout>
+
+Source of truth for OpenCodex's design. Code can drift; update this file whenever a load-bearing decision changes.
+
+## Goals
+
+1. **Provider-agnostic.** Any LLM works. The provider layer is the most important abstraction in the codebase.
+2. **Local-first.** No required backend. Your code, your keys, your machine.
+3. **Extensible.** Third-party plugins and MCP servers extend the same registries that built-in code uses.
+4. **Safe by default.** Every write or shell op goes through an explicit approval gate the user controls.
+
+## Process model (Electron)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Renderer (sandboxed browser context)                        │
+│  React UI: chat, diff viewer, file tree, terminal, settings │
+│        ↑                                                    │
+│        │ contextBridge (window.opencodex.*)                 │
+│        ↓                                                    │
+├─────────────────────────────────────────────────────────────┤
+│ Preload (typed IPC bridge)                                  │
+├─────────────────────────────────────────────────────────────┤
+│ Main process                                                │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │ Agent loop   │←→│ Tool registry│←→│ Approval gateway  │  │
+│  └──────┬───────┘  └──────┬───────┘  └───────────────────┘  │
+│         │                 │                                 │
+│  ┌──────▼───────┐  ┌──────▼───────┐  ┌───────────────────┐  │
+│  │ Provider     │  │ Built-in     │  │ MCP client        │  │
+│  │ registry     │  │ tools        │  │ (stdio/SSE/HTTP)  │  │
+│  └──────────────┘  └──────────────┘  └───────────────────┘  │
+│                                                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │ Plugin host  │  │ RAG indexer  │  │ SQLite + keytar   │  │
+│  └──────────────┘  └──────────────┘  └───────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│ Utility processes (one per concurrent subagent)             │
+│  Each has its own context, provider, tool subset, worktree  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The renderer is created with `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`. Every privileged operation crosses the typed IPC bridge.
+
+## Monorepo structure
+
+pnpm workspaces. Top-level layout:
+
+```
+apps/
+  desktop/             Electron app (main / preload / renderer)
+packages/
+  core/                LLMProvider, Tool, ChatEvent — the contracts
+  provider-openai/     Built-in adapters, one package per provider
+  provider-anthropic/
+  provider-google/
+  provider-xai/
+  provider-mistral/
+  provider-ollama/
+  provider-openrouter/
+  tools/               Built-in tools (read_file, run_shell, glob, ...)
+  plugin-sdk/          Public SDK for third-party plugin authors
+  mcp-client/          Model Context Protocol client (stdio / SSE / HTTP)
+  rag-chunker/         Tree-sitter chunker
+  telemetry/           Opt-in PostHog telemetry adapter
+  crash-reporting/     Opt-in Sentry adapter
+examples/
+  plugins/hello-world  Reference plugin
+docs/
+```
+
+## Provider abstraction
+
+Every LLM goes through one interface:
+
+```ts
+interface LLMProvider {
+  readonly id: string;
+  readonly displayName: string;
+
+  chat(req: ChatRequest): AsyncIterable<ChatEvent>;
+  embed(req: EmbedRequest): Promise<EmbedResult>;
+  listModels(): Promise<ModelCapabilities[]>;
+  capabilities(model: string): Promise<ModelCapabilities | undefined>;
+}
+```
+
+Providers are constructed by a `ProviderFactory` that owns a Zod `configSchema`. The `ProviderRegistry` validates config at create-time and throws `ProviderConfigError` on schema failure.
+
+A `ChatEvent` is a discriminated union of `text_delta`, `tool_call`, `tool_result`, `usage`, `done`, `error`. Provider adapters translate their native streaming format into this common event series.
+
+## Tool layer
+
+A `Tool` extends a `ToolDefinition` with an `inputZod` schema and an `execute(input, ctx)` function. Each declares a `permissionTier`: `'read' | 'write' | 'execute' | 'network'`.
+
+Tools come from three sources, all flowing through the same registry:
+
+1. **Built-in** (`@opencodex/tools`) — `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `list_dir`, `run_shell`, `web_fetch`, `search_codebase`, `spawn_subagent`.
+2. **MCP** (`@opencodex/mcp-client`) — every connected MCP server's tools.
+3. **Plugins** (`@opencodex/plugin-sdk`) — third-party tools registered via the plugin host.
+
+## Agent loop
+
+`startChatStream()` appends the user message, creates an empty assistant message, expands stored history into provider-shaped `Message[]`, then dispatches `runStream()`.
+
+`runStream()` iterates over `provider.chat({ model, messages, tools, signal })`, accumulating `text_delta` into a buffer and collecting `tool_call` events. After each provider turn:
+
+- If `stopReason === 'tool_use'` and tools were called, each tool runs through `executeToolCall()` — which checks the approval policy, executes via the `ToolRegistry`, audits the call, and pushes a `tool_result` block back into history for the next iteration.
+- Otherwise the loop emits `done` and exits.
+
+Hard cap at `MAX_TOOL_ITERATIONS = 10` prevents runaway tool loops.
+
+## IPC contract
+
+The wire format is typed in `apps/desktop/src/shared/ipc-types.ts`. Every invoke handler is registered through `registerInvoke()`, which `safeParse()`s the raw payload on every call against a Zod schema.
+
+## Storage
+
+- **SQLite** via `better-sqlite3` in the OS user-data dir, WAL mode, `foreign_keys = ON`. Schema is versioned through migrations.
+- **`electron-store`** for non-secret preferences, Zod-validated.
+- **`keytar`** for secrets — provider API keys live in the OS keychain under service `opencodex`. Never logged, never in SQLite or settings JSON.
+
+## RAG / codebase chat
+
+- **Chunker**: tree-sitter for AST-aware splits.
+- **Storage**: LanceDB for vectors + SQLite FTS5 for keyword.
+- **Retrieval**: hybrid via Reciprocal Rank Fusion.
+- **Embeddings**: provider-agnostic (same `LLMProvider.embed` interface).
+- **Updates**: chokidar file watcher → incremental reindex.
+
+## Multi-agent orchestration
+
+- `spawn_subagent` tool lets an orchestrator agent fan out work.
+- Each subagent runs in an Electron `utilityProcess` with its own provider, context, tool subset, and (optionally) git worktree.
+- Subagent diffs come back as a bundle for the orchestrator to merge-review.
+- Budget caps prevent runaway spawning.
+
+## MCP integration
+
+When a server connects, its `tools/list` is registered through the same `ToolRegistry`, its `resources/list` feeds the RAG retriever, and its `prompts/list` shows up as `/` commands in the chat.
+
+## Plugin model
+
+Plugin packages ship a `opencodex.plugin.json` manifest declaring `permissions[]` and `contributions{}`. On install the user reviews permissions and confirms. The loader hands the entry module a `PluginHost` restricted to declared permissions, and registers contributions with the relevant registries.
+
+## Why Electron, not Tauri
+
+Electron chosen for iteration velocity. Pure Node/TS means the same SDKs work everywhere without a Rust↔TS boundary. Cost: bundle size (~150MB) and a slightly weaker sandbox model — both mitigated by aggressively using `sandbox: true` + `contextIsolation: true` and routing all privileged work through the IPC bridge.

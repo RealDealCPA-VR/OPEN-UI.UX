@@ -1,0 +1,104 @@
+import { describe, expect, it } from 'vitest';
+import type { AgentRun } from '../../shared/agent-runs';
+import {
+  annotationMapFromPending,
+  pendingEditsFingerprint,
+  runsWithPendingEdits,
+} from './codebase-pending-edits-derive';
+
+function makeRun(overrides: Partial<AgentRun> = {}): AgentRun {
+  return {
+    id: 'r1',
+    task: 'task',
+    providerId: 'p',
+    modelId: 'm',
+    status: 'completed',
+    startedAt: 1,
+    completedAt: 2,
+    inputTokens: 0,
+    outputTokens: 0,
+    iterations: 0,
+    toolEvents: [],
+    stopReason: 'end_turn',
+    error: null,
+    worktreePath: null,
+    worktreeBranch: null,
+    worktreeRepoRoot: null,
+    mergeStatus: null,
+    ...overrides,
+  };
+}
+
+describe('runsWithPendingEdits', () => {
+  it('returns only completed runs with pending mergeStatus', () => {
+    const runs = [
+      makeRun({ id: 'a', status: 'running' }),
+      makeRun({
+        id: 'b',
+        worktreePath: '/x',
+        worktreeBranch: 'b',
+        worktreeRepoRoot: '/r',
+        mergeStatus: 'pending',
+      }),
+      makeRun({
+        id: 'c',
+        worktreePath: '/x',
+        worktreeBranch: 'c',
+        worktreeRepoRoot: '/r',
+        mergeStatus: 'merged',
+      }),
+      makeRun({ id: 'd', mergeStatus: 'pending' }),
+    ];
+    const out = runsWithPendingEdits(runs);
+    expect(out.map((r) => r.id)).toEqual(['b']);
+  });
+});
+
+describe('annotationMapFromPending', () => {
+  it('dedupes paths from multiple runs', () => {
+    const out = annotationMapFromPending([
+      { runId: 'r1', path: 'src/a.ts', branch: 'b' },
+      { runId: 'r2', path: 'src/a.ts', branch: 'c' },
+      { runId: 'r1', path: 'src/b.ts', branch: 'b' },
+    ]);
+    expect(out).toEqual({ 'src/a.ts': 'pending', 'src/b.ts': 'pending' });
+  });
+  it('returns empty for empty input', () => {
+    expect(annotationMapFromPending([])).toEqual({});
+  });
+});
+
+describe('pendingEditsFingerprint', () => {
+  it('changes when mergeStatus changes', () => {
+    const base = makeRun({
+      id: 'r1',
+      worktreePath: '/x',
+      worktreeBranch: 'b',
+      worktreeRepoRoot: '/r',
+      mergeStatus: 'pending',
+    });
+    const a = pendingEditsFingerprint([base]);
+    const b = pendingEditsFingerprint([{ ...base, mergeStatus: 'merged' }]);
+    expect(a).not.toBe(b);
+  });
+  it('ignores running runs and runs without worktree', () => {
+    const r1 = makeRun({ id: 'r1', status: 'running' });
+    const r2 = makeRun({ id: 'r2' });
+    expect(pendingEditsFingerprint([r1, r2])).toBe('');
+  });
+  it('is stable under reordering', () => {
+    const a = makeRun({
+      id: 'a',
+      worktreePath: '/x',
+      mergeStatus: 'pending',
+      completedAt: 100,
+    });
+    const b = makeRun({
+      id: 'b',
+      worktreePath: '/y',
+      mergeStatus: 'pending',
+      completedAt: 200,
+    });
+    expect(pendingEditsFingerprint([a, b])).toBe(pendingEditsFingerprint([b, a]));
+  });
+});

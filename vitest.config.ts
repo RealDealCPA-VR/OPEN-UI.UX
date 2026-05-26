@@ -19,6 +19,10 @@ export default defineConfig({
       '@opencodex/mcp-client': r('./packages/mcp-client/src/index.ts'),
       '@opencodex/provider-voyage': r('./packages/provider-voyage/src/index.ts'),
       '@opencodex/rag-chunker': r('./packages/rag-chunker/src/index.ts'),
+      '@opencodex/memory-obsidian': r('./packages/memory-obsidian/src/index.ts'),
+      '@opencodex/memory-notion': r('./packages/memory-notion/src/index.ts'),
+      '@opencodex/telemetry': r('./packages/telemetry/src/index.ts'),
+      '@opencodex/crash-reporting': r('./packages/crash-reporting/src/index.ts'),
     },
   },
   test: {

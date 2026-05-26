@@ -1,0 +1,228 @@
+import { Callout } from 'nextra/components';
+
+# Plugin SDK API Reference
+
+<Callout type="info">
+  Generated from [`packages/plugin-sdk/src/`](https://github.com/TODO-org/TODO-repo/tree/main/packages/plugin-sdk/src). Keep this page in sync when SDK shapes change.
+</Callout>
+
+The `@opencodex/plugin-sdk` package is the public surface for plugin authors. Everything below is exported from the package root.
+
+## Imports at a glance
+
+```ts
+import {
+  // manifest
+  ManifestSchema,
+  PermissionSchema,
+  ContributionSchema,
+  type PluginManifest,
+  type Permission,
+  // host
+  type PluginHost,
+  type PluginLogger,
+  // plugin
+  definePlugin,
+  type Plugin,
+  // loader (host-side; plugin authors don't usually call these)
+  readManifest,
+  loadPluginModule,
+  PluginLoadError,
+} from '@opencodex/plugin-sdk';
+```
+
+---
+
+## `PluginManifest`
+
+The Zod-validated shape of every `opencodex.plugin.json`:
+
+```ts
+const ManifestSchema = z.object({
+  name: z.string().min(1),
+  version: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  author: z.string().optional(),
+  license: z.string().optional(),
+  homepage: z.string().url().optional(),
+  entry: z.string(),                              // relative path to the JS entry
+  engines: z.object({ opencodex: z.string() }),   // semver range
+  permissions: z.array(PermissionSchema).default([]),
+  contributions: ContributionSchema.default({}),
+});
+
+type PluginManifest = z.infer<typeof ManifestSchema>;
+```
+
+### Field reference
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `name` | `string` (min 1) | Unique plugin id within the install. Lowercase + hyphens. |
+| `version` | `string` (min 1) | Semver. |
+| `displayName` | `string` (min 1) | Shown in the Plugins panel. |
+| `description` | `string?` | One-line summary. |
+| `author` | `string?` | Free-form. |
+| `license` | `string?` | SPDX id (e.g. `MIT`). |
+| `homepage` | `url?` | Validated as a URL if present. |
+| `entry` | `string` | Path relative to plugin root pointing at the module that default-exports a `Plugin`. |
+| `engines.opencodex` | `string` | Semver range of OpenCodex versions this plugin supports. |
+| `permissions` | `Permission[]` | Defaults to `[]`. |
+| `contributions` | `Contribution` | Defaults to `{}`. |
+
+---
+
+## `Permission`
+
+```ts
+type Permission =
+  | 'workspace.read'
+  | 'workspace.write'
+  | 'shell.execute'
+  | 'network.fetch'
+  | 'settings.read'
+  | 'settings.write'
+  | 'ui.panel';
+```
+
+| Permission | What it unlocks |
+| --- | --- |
+| `workspace.read` | Register `permissionTier: 'read'` tools. |
+| `workspace.write` | Register `permissionTier: 'write'` tools. |
+| `shell.execute` | Register `permissionTier: 'execute'` tools. |
+| `network.fetch` | Register `permissionTier: 'network'` tools. |
+| `settings.read` | `host.getSetting(key)` returns values. |
+| `settings.write` | `host.setSetting(key, value)` persists. |
+| `ui.panel` | Manifest may declare `contributions.panels[]`. |
+
+---
+
+## `Contribution`
+
+```ts
+const ContributionSchema = z.object({
+  tools: z.array(z.string()).optional(),
+  providers: z.array(z.string()).optional(),
+  panels: z.array(z.object({
+    id: z.string(),
+    title: z.string(),
+    entry: z.string(),
+  })).optional(),
+  slashCommands: z.array(z.object({
+    name: z.string(),
+    entry: z.string(),
+  })).optional(),
+});
+```
+
+| Field | Element shape | Notes |
+| --- | --- | --- |
+| `tools` | `string` | Names of tools this plugin registers via `host.registerTool()`. Must match the registered `Tool.name`. |
+| `providers` | `string` | Names of `ProviderFactory.id`s this plugin registers. |
+| `panels` | `{ id, title, entry }` | `entry` is the HTML file (relative to plugin root). Loaded into a sandboxed iframe. |
+| `slashCommands` | `{ name, entry }` | `entry` resolves a handler — surfaced as `/<name>` in the chat composer. |
+
+---
+
+## `PluginHost`
+
+```ts
+interface PluginHost {
+  readonly pluginId: string;
+  readonly logger: PluginLogger;
+
+  registerTool(tool: Tool): void;
+  registerProvider(provider: ProviderFactory): void;
+  registerSlashCommand(name: string, handler: (args: string) => Promise<void>): void;
+
+  getSetting<T = unknown>(key: string): Promise<T | undefined>;
+  setSetting<T = unknown>(key: string, value: T): Promise<void>;
+}
+```
+
+| Member | Description |
+| --- | --- |
+| `pluginId` | Echoes `manifest.name`. Useful for namespacing keys. |
+| `logger` | Pino-shaped: `info(msg, meta?)`, `warn(...)`, `error(...)`. Output goes to the host's log file. |
+| `registerTool(tool)` | Adds a `Tool` to the shared `ToolRegistry` as `plugin__<id>__<name>`. Unregistered on `deactivate()` or uninstall. |
+| `registerProvider(provider)` | Adds a `ProviderFactory` to the host registry. |
+| `registerSlashCommand(name, handler)` | Surface a `/`-command in the chat composer. |
+| `getSetting(key)` | Reads from the plugin's namespaced settings bucket. Requires `settings.read`. Returns `undefined` if unset. |
+| `setSetting(key, value)` | Persists into the plugin's namespaced settings bucket. Requires `settings.write`. |
+
+---
+
+## `PluginLogger`
+
+```ts
+interface PluginLogger {
+  info(msg: string, meta?: unknown): void;
+  warn(msg: string, meta?: unknown): void;
+  error(msg: string, meta?: unknown): void;
+}
+```
+
+---
+
+## `Plugin`
+
+```ts
+interface Plugin {
+  activate(host: PluginHost): void | Promise<void>;
+  deactivate?(): void | Promise<void>;
+}
+```
+
+`activate(host)` runs once when the plugin is enabled. Register tools/providers/etc. here.
+`deactivate()` is best-effort cleanup on disable/uninstall. Host already auto-unregisters anything you registered through the `PluginHost` methods, so this hook is for your own resources (timers, child processes, etc.).
+
+---
+
+## `definePlugin(plugin)`
+
+```ts
+function definePlugin(plugin: Plugin): Plugin
+```
+
+Identity function with the type narrowed. Always use this for the default export so the TypeScript shape is checked at build time:
+
+```ts
+import { definePlugin } from '@opencodex/plugin-sdk';
+
+export default definePlugin({
+  async activate(host) { /* ... */ },
+});
+```
+
+---
+
+## Loader helpers (host-side)
+
+These are exported for the host to load plugins from disk. Plugin authors rarely call them directly.
+
+### `readManifest(pluginPath)`
+
+```ts
+function readManifest(pluginPath: string): Promise<PluginManifest>
+```
+
+Reads `<pluginPath>/opencodex.plugin.json`, JSON.parses, and runs `ManifestSchema.safeParse()`. Throws `PluginLoadError` on any failure.
+
+### `loadPluginModule(pluginPath, manifest)`
+
+```ts
+function loadPluginModule(pluginPath: string, manifest: PluginManifest): Promise<Plugin>
+```
+
+Dynamically imports the entry module, locates the default `Plugin` export, validates it has an `activate` function. Throws `PluginLoadError` on failure.
+
+### `PluginLoadError`
+
+```ts
+class PluginLoadError extends Error {
+  readonly pluginPath: string;
+}
+```
+
+Thrown by both loader helpers when manifest validation, JSON parsing, or module import fails. `pluginPath` is the disk path so the host can surface it in the install UI.

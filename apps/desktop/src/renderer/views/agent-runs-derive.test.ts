@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentRun } from '../../shared/agent-runs';
 import {
+  canAbort,
+  canContinueInChat,
   currentToolName,
   formatDurationMs,
   formatTokens,
+  hasUnresolvedWorktree,
+  partitionRunsByActivity,
   runDurationMs,
   statusLabel,
   statusPillClass,
@@ -146,5 +150,63 @@ describe('toolErrorCount', () => {
   });
   it('returns 0 when there are no tool events', () => {
     expect(toolErrorCount(makeRun())).toBe(0);
+  });
+});
+
+describe('partitionRunsByActivity', () => {
+  it('splits running and non-running runs', () => {
+    const a = makeRun({ id: 'a', status: 'running' });
+    const b = makeRun({ id: 'b', status: 'completed' });
+    const c = makeRun({ id: 'c', status: 'failed' });
+    const d = makeRun({ id: 'd', status: 'running' });
+    const { active, history } = partitionRunsByActivity([a, b, c, d]);
+    expect(active.map((r) => r.id)).toEqual(['a', 'd']);
+    expect(history.map((r) => r.id)).toEqual(['b', 'c']);
+  });
+  it('handles empty input', () => {
+    const { active, history } = partitionRunsByActivity([]);
+    expect(active).toEqual([]);
+    expect(history).toEqual([]);
+  });
+});
+
+describe('hasUnresolvedWorktree', () => {
+  it('returns false when no worktree fields', () => {
+    expect(hasUnresolvedWorktree(makeRun())).toBe(false);
+  });
+  it('returns true only when mergeStatus is pending and worktree fields populated', () => {
+    expect(
+      hasUnresolvedWorktree(
+        makeRun({
+          worktreePath: '/x',
+          worktreeBranch: 'b',
+          worktreeRepoRoot: '/r',
+          mergeStatus: 'pending',
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      hasUnresolvedWorktree(
+        makeRun({
+          worktreePath: '/x',
+          worktreeBranch: 'b',
+          worktreeRepoRoot: '/r',
+          mergeStatus: 'merged',
+        }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('canContinueInChat + canAbort', () => {
+  it('allows continue-in-chat only for finished runs', () => {
+    expect(canContinueInChat(makeRun({ status: 'running' }))).toBe(false);
+    expect(canContinueInChat(makeRun({ status: 'completed' }))).toBe(true);
+    expect(canContinueInChat(makeRun({ status: 'failed' }))).toBe(true);
+  });
+  it('allows abort only for running runs', () => {
+    expect(canAbort(makeRun({ status: 'running' }))).toBe(true);
+    expect(canAbort(makeRun({ status: 'completed' }))).toBe(false);
+    expect(canAbort(makeRun({ status: 'failed' }))).toBe(false);
   });
 });

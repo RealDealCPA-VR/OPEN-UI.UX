@@ -1,0 +1,30 @@
+# OpenCodex
+
+OpenCodex is an open-source desktop coding agent that works with any LLM. Local-first, MIT-licensed, plugin-extensible.
+
+## What it is
+
+- **Electron + TypeScript** monorepo. Runs as a native app on macOS, Windows, and Linux.
+- **Any LLM**: OpenAI, Anthropic, Google, xAI, Mistral, Ollama, OpenRouter — all behind a single `LLMProvider` interface.
+- **Agentic**: a tool registry with permission tiers (`read` / `write` / `execute` / `network`) and an approval system for every mutation.
+- **RAG over your codebase**: Tree-sitter chunker + hybrid retrieval (LanceDB + SQLite FTS5).
+- **MCP-native**: Model Context Protocol servers are first-class tools.
+- **Plugin SDK**: tools, providers, and UI panels can be contributed by third-party packages.
+- **No backend**: API keys live in the OS keychain via `keytar`. Everything runs locally.
+
+## Where to start
+
+- [Architecture deep-dive](/guides/architecture/) — how the layers fit together.
+- [Security model](/guides/security/) — sandboxes, approvals, key storage.
+- [MCP integration](/guides/mcp/) — connect MCP servers as tools.
+- [Plugin authoring](/plugins/authoring/) — extend the host.
+- [Plugin SDK API reference](/plugins/api/) — every exported type.
+- [Provider authoring](/providers/authoring/) — bring a new LLM.
+
+## Project status
+
+OpenCodex is pre-1.0. The architecture is stable; expect minor breakages in the plugin SDK until v0.1 ships.
+
+## License
+
+MIT. Source code at [github.com/TODO-org/TODO-repo](https://github.com/TODO-org/TODO-repo).

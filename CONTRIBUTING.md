@@ -15,6 +15,8 @@ pnpm dev           # launches the Electron app in dev mode
 
 Requirements: **Node 20+**, **pnpm 9+**.
 
+> `pnpm dev` clears `ELECTRON_RUN_AS_NODE` inline via `cross-env` because some shells (notably Claude Code subprocess shells) set it globally. If it leaks through, Electron starts in Node-interpreter mode and `require('electron')` returns a string instead of the API. The dev script handles this for you — don't remove the `cross-env ELECTRON_RUN_AS_NODE=` prefix.
+
 ## Workflow
 
 This project uses a session-baton model between contributors (and AI agents).

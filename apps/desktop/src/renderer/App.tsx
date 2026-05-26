@@ -26,8 +26,10 @@ export function App(): JSX.Element {
               <Route index element={<Navigate to="/chat" replace />} />
               <Route path="/chat" element={<ChatView />} />
               <Route path="/agent" element={<AgentView />} />
+              <Route path="/agent/:runId" element={<AgentView />} />
               <Route path="/codebase" element={<CodebaseView />} />
-              <Route path="/settings" element={<SettingsView />} />
+              <Route path="/settings" element={<Navigate to="/settings/theme" replace />} />
+              <Route path="/settings/:section" element={<SettingsView />} />
               <Route path="/plugins/:pluginId/:panelId" element={<PluginPanelHost />} />
               <Route path="*" element={<Navigate to="/chat" replace />} />
             </Route>

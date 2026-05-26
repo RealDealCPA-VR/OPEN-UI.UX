@@ -1,0 +1,115 @@
+import { Callout } from 'nextra/components';
+
+# Security Model
+
+<Callout type="info">
+  Mirrored from [`docs/security-model.md`](https://github.com/TODO-org/TODO-repo/blob/main/docs/security-model.md). The repo file is the source of truth — keep this page synced when you change either.
+</Callout>
+
+OpenCodex runs untrusted model output in a privileged context (your machine, your repo, your API keys). The security model is defense-in-depth: Electron sandbox at the OS layer, Zod validation at every IPC boundary, permission tiers + approval prompts at the tool layer, scrubbed shell environment for execution, OS keychain for secrets.
+
+## Sandboxes: main vs renderer
+
+The renderer process runs in Chromium's sandbox with no Node integration:
+
+```ts
+mainWindow = new BrowserWindow({
+  webPreferences: {
+    preload: join(__dirname, '../preload/index.cjs'),
+    sandbox: true,
+    contextIsolation: true,
+    nodeIntegration: false,
+  },
+});
+```
+
+- `sandbox: true` — Chromium sandbox at the OS level. No file open, no process spawn, no arbitrary memory.
+- `contextIsolation: true` — preload script runs in a separate JS context from page scripts.
+- `nodeIntegration: false` — no `require`, no `process`, no Node APIs in the renderer.
+
+The preload script exposes a curated API surface via `contextBridge.exposeInMainWorld('opencodex', api)`. Renderer JS calls `window.opencodex.providers.list()`; preload turns that into `ipcRenderer.invoke('providers:list')`; main process Zod-validates and dispatches.
+
+## IPC contract
+
+Every invoke handler is registered through `registerInvoke()` which `safeParse()`s a Zod schema on every call:
+
+```ts
+ipcMain.handle(channel, async (_event, raw: unknown) => {
+  const parsed = requestSchema.safeParse(raw);
+  if (!parsed.success) throw new Error(`invalid request for ${channel}`);
+  return handler(parsed.data);
+});
+```
+
+Renderer, preload, and main all import from a single `ipc-types.ts` — TypeScript catches drift at compile time, Zod catches it at runtime.
+
+## Permission tiers
+
+```ts
+type PermissionTier = 'read' | 'write' | 'execute' | 'network';
+```
+
+Default policies:
+
+| Tier | Default | Example tools |
+| --- | --- | --- |
+| `read` | `auto` | `read_file`, `glob`, `grep`, `list_dir` |
+| `write` | `prompt` | `write_file`, `edit_file` |
+| `execute` | `prompt` | `run_shell` |
+| `network` | `prompt` | `web_fetch` (plus allowlist gate) |
+
+Users can override per-tier or per-tool. Per-tool overrides win.
+
+## Approval system
+
+Three response scopes:
+
+- `'once'` — allow/deny just this call.
+- `'session'` — allow/deny for the rest of this chat stream.
+- `'always'` — write the decision into per-tool overrides for all future calls.
+
+Every decision is audit-logged with `messageId`, `toolName`, full input JSON, full output JSON, decision, isError, durationMs, timestamp. Retention configurable.
+
+## Shell sandbox
+
+`run_shell` defenses:
+
+- **cwd lock** to workspace root.
+- **env scrub** — only a whitelist of env vars passes through (`PATH`, `HOME`, `USER`, `LANG`, ...). Extend via `OPENCODEX_SHELL_ENV_KEEP`.
+- **PATH allowlist** — `OPENCODEX_SHELL_PATH` overrides PATH with a curated directory list.
+- **Output cap** — 1 MiB default per stream, up to 10 MiB.
+- **Timeout** — 30s default, max 600s.
+- **Process-tree kill** — Windows `taskkill /F /T /PID`, POSIX `process.kill(-pid)` on the process group.
+- **Abort propagation** — `ctx.signal` from the agent loop wires into the same kill path.
+
+## web_fetch
+
+- **Denied by default** — host must be in `OPENCODEX_WEB_FETCH_ALLOWLIST` (`*.example.com` wildcards supported).
+- **Protocol guard** — `http:` / `https:` only.
+- **Body cap** — 1 MiB default, max 10 MiB.
+- **Timeout** — 30s default, max 120s.
+
+## Key storage
+
+API keys never live in JSON, settings, SQLite, or logs. They go through `keytar` to the OS keychain:
+
+- macOS: Keychain Access.
+- Windows: Credential Manager.
+- Linux: Secret Service (libsecret / gnome-keyring / KWallet).
+
+Service name `opencodex`, account `provider:<id>:apiKey`.
+
+## Path traversal
+
+Any tool that touches the workspace must use `resolveWithinWorkspace()`. It resolves the requested path, computes the relative-to-root form, and throws `PathEscapesWorkspaceError` if it escapes.
+
+## MCP server trust boundaries
+
+- **stdio** — you spawn the binary. Trust depends on what you spawn. OpenCodex passes only the user-configured `env`, never the parent's full environment.
+- **SSE / HTTP** — the server sees every tool argument you send it. Treat as a third-party API.
+
+In every case MCP tools route through the same approval gateway as built-in tools — a malicious MCP server cannot trigger silent writes.
+
+## Opt-in telemetry & crash reporting
+
+Telemetry (PostHog) and crash reporting (Sentry) are **opt-in**, off by default, and never include conversation content, file paths, or PII. Provider and model IDs are hashed before being sent. See `packages/telemetry/` and `packages/crash-reporting/` for the adapters; configure via Settings.

@@ -100,7 +100,10 @@
       "Bash(pnpm --filter @opencodex/desktop test -- src/main/selected-model)",
       "Bash(pnpm --filter @opencodex/provider-openrouter test)",
       "Bash(pnpm --filter @opencodex/desktop test -- src/main/providers src/main/selected-model)",
-      "Bash(pnpm --filter @opencodex/desktop test -- src/main/chat)"
+      "Bash(pnpm --filter @opencodex/desktop test -- src/main/chat)",
+      "Bash(pnpm --filter @opencodex/desktop exec eslint apps/desktop/src/renderer/views/CodebaseView.tsx)",
+      "Bash(grep -E \"\\(\\\\.tsx?$|✖|warning|error\\)\")",
+      "Bash(git add *)"
     ],
     "additionalDirectories": ["c:\\c\\Users\\VR\\Projects\\OPEN UI.UX\\apps\\desktop"]
   }

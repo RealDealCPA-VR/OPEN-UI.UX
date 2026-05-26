@@ -41,4 +41,6 @@ linux:
     - target: rpm
       arch: [x64]
   artifactName: ${productName}-${version}-${arch}.${ext}
-publish: null
+publish:
+  provider: github
+  releaseType: draft

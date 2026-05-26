@@ -7,10 +7,12 @@ import { registerAgentHandlers } from './agent/handlers';
 import { registerApprovalHandlers } from './chat/approval-handlers';
 import { registerChatHandlers } from './chat/handlers';
 import { registerReadOnlyChatHandlers } from './chat/read-only-handlers';
+import { registerCodebaseHandlers } from './codebase/handlers';
 import { registerFileTreeHandlers } from './file-tree/handlers';
 import { registerInvoke } from './ipc/registry';
 import { registerMcpHandlers } from './mcp/handlers';
-import { shutdownAllServers as shutdownAllMcpServers } from './mcp/manager';
+import { onMcpServerConnected, shutdownAllServers as shutdownAllMcpServers } from './mcp/manager';
+import { registerMemoryHandlers, startMemory, stopMemory } from './memory';
 import { registerOnboardingHandlers } from './onboarding/handlers';
 import { registerPluginHandlers } from './plugins/handlers';
 import { shutdownAllPlugins } from './plugins/manager';
@@ -25,8 +27,12 @@ import { registerToolAuditHandlers } from './tool-audit/handlers';
 import { registerToolHandlers } from './tools/handlers';
 import { resolveAppIconPath } from './app-icon';
 import { createTray, destroyTray } from './tray';
-import { initAutoUpdater } from './updater';
+import { initAutoUpdater, registerUpdateHandlers } from './updater';
 import { registerWorkspaceHandlers } from './workspace/handlers';
+import { initTelemetry, shutdownTelemetry, track } from './telemetry/manager';
+import { registerTelemetryHandlers } from './telemetry/handlers';
+import { initCrashReporting } from './crash/manager';
+import { registerCrashReportingHandlers } from './crash/handlers';
 import { INITIAL_THEME_ARG_PREFIX } from '../shared/theme';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -137,12 +143,31 @@ app.whenReady().then(() => {
   }
 
   registerIpcHandlers();
+  initTelemetry();
+  void initCrashReporting();
+  void startMemory().catch((err: unknown) => {
+    logger.warn({ err }, 'memory startup failed');
+  });
   createWindow();
   createTray(() => mainWindow);
 
   initWorkspaceWatcher();
 
   if (app.isPackaged) initAutoUpdater();
+
+  try {
+    track('app.launched', { platform: process.platform, version: app.getVersion() });
+  } catch {
+    // never let telemetry block app startup
+  }
+
+  onMcpServerConnected((serverId) => {
+    try {
+      track('mcp.server_connected', { serverId });
+    } catch {
+      // ignore
+    }
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -157,7 +182,9 @@ app.on('before-quit', () => {
   destroyTray();
   shutdownAllPlugins();
   void shutdownAllMcpServers();
+  void stopMemory();
   void stopWatchedWorkspace();
+  void shutdownTelemetry();
   closeDb();
 });
 
@@ -206,4 +233,9 @@ function registerIpcHandlers(): void {
   registerOnboardingHandlers();
   registerPluginHandlers();
   registerAgentHandlers();
+  registerCodebaseHandlers();
+  registerTelemetryHandlers();
+  registerCrashReportingHandlers();
+  registerUpdateHandlers();
+  registerMemoryHandlers();
 }

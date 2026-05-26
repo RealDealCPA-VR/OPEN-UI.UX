@@ -1,6 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type { ContentBlock } from '@opencodex/core';
+import {
+  extractFilePathsFromMessages,
+  lastUserMessageText,
+} from '../components/extract-file-paths';
 import { Markdown } from '../components/Markdown';
 import { SlashCommands } from '../components/SlashCommands';
 import {
@@ -15,6 +19,7 @@ import { groupContentBlocks } from '../components/tool-block-grouping';
 import { useChat, type AssistantDraft } from '../state/chat-context';
 import { useCollapseState } from '../state/use-collapse-state';
 import { useSelectedModel } from '../state/selected-model-context';
+import { consumeTransfer, pushTransfer, useTransferPending } from '../state/transfer';
 import type { ChatAttachment } from '../../shared/attachments';
 import type {
   Conversation,
@@ -27,16 +32,54 @@ import type { McpPromptEntry } from '../../shared/mcp';
 export function ChatView(): JSX.Element {
   const { selected, selectedCapabilities, loading: modelLoading } = useSelectedModel();
   const chat = useChat();
-  const { activeId: chatActiveId, selectConversation } = chat;
+  const { activeId: chatActiveId, selectConversation, createConversation } = chat;
   const [searchParams, setSearchParams] = useSearchParams();
   const urlConversationId = searchParams.get('conversationId');
   const urlMessageId = searchParams.get('messageId');
+  const transfer = useTransferPending();
+  const [seededInput, setSeededInput] = useState<string | null>(null);
 
   useEffect(() => {
     if (!urlConversationId) return;
     if (chatActiveId === urlConversationId) return;
     selectConversation(urlConversationId);
   }, [urlConversationId, chatActiveId, selectConversation]);
+
+  // Handle inbound transfers from the agent / codebase views.
+  useEffect(() => {
+    if (!transfer) return;
+    if (transfer.kind === 'agent-to-chat') {
+      const ctx = transfer;
+      consumeTransfer();
+      void (async () => {
+        const created = await createConversation(
+          selected?.providerId ?? null,
+          selected?.modelId ?? null,
+        );
+        try {
+          await window.opencodex.conversations.appendMessage({
+            conversationId: created.id,
+            role: 'system',
+            content: `Continuing from subagent run.\n\n${ctx.summary}`,
+          });
+        } catch {
+          // Not fatal — the conversation still exists; user can re-send.
+        }
+        selectConversation(created.id);
+      })();
+    } else if (transfer.kind === 'codebase-to-chat') {
+      const ctx = transfer;
+      consumeTransfer();
+      void (async () => {
+        const created = await createConversation(
+          selected?.providerId ?? null,
+          selected?.modelId ?? null,
+        );
+        selectConversation(created.id);
+        setSeededInput(`Re: ${ctx.filePath}\n\n`);
+      })();
+    }
+  }, [transfer, createConversation, selectConversation, selected]);
 
   return (
     <section className="chat-layout">
@@ -63,6 +106,8 @@ export function ChatView(): JSX.Element {
             chat={chat}
             scrollToMessageId={urlMessageId}
             scrollToConversationId={urlConversationId}
+            seededInput={seededInput}
+            onConsumedSeededInput={() => setSeededInput(null)}
             onConsumeScrollTarget={() => {
               const next = new URLSearchParams(searchParams);
               next.delete('messageId');
@@ -275,6 +320,8 @@ interface ChatPaneProps {
   chat: ReturnType<typeof useChat>;
   scrollToMessageId: string | null;
   scrollToConversationId: string | null;
+  seededInput?: string | null;
+  onConsumedSeededInput?: () => void;
   onConsumeScrollTarget: () => void;
 }
 
@@ -286,8 +333,11 @@ function ChatPane({
   chat,
   scrollToMessageId,
   scrollToConversationId,
+  seededInput,
+  onConsumedSeededInput,
   onConsumeScrollTarget,
 }: ChatPaneProps): JSX.Element {
+  const navigate = useNavigate();
   const [input, setInput] = useState('');
   const [toolsEnabled, setToolsEnabled] = useState(true);
   const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
@@ -551,11 +601,76 @@ function ChatPane({
     activeWorkspace !== null &&
     activeWorkspace !== streamWorkspaceRoot;
 
+  const [lastAppliedSeed, setLastAppliedSeed] = useState<string | null>(null);
+  if (seededInput && seededInput !== lastAppliedSeed) {
+    setLastAppliedSeed(seededInput);
+    setInput(seededInput);
+  }
+
+  useEffect(() => {
+    if (!seededInput || seededInput !== lastAppliedSeed) return;
+    onConsumedSeededInput?.();
+    const seedLen = seededInput.length;
+    const handle = requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(seedLen, seedLen);
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [seededInput, lastAppliedSeed, onConsumedSeededInput]);
+
+  const handleSendToAgent = useCallback((): void => {
+    if (!chat.activeId) return;
+    const lastUser = lastUserMessageText(chat.messages);
+    const taskSeed =
+      lastUser.trim().length > 0
+        ? lastUser
+        : (chat.messages[chat.messages.length - 1]?.content ?? '');
+    pushTransfer({
+      kind: 'chat-to-agent',
+      conversationId: chat.activeId,
+      lastUserMessage: taskSeed,
+      workspaceRoot: activeWorkspace ?? '',
+    });
+    navigate('/agent');
+  }, [chat.activeId, chat.messages, activeWorkspace, navigate]);
+
+  const handleSendToCodebase = useCallback((): void => {
+    const filePaths = extractFilePathsFromMessages(chat.messages, { assistantOnly: true });
+    pushTransfer({
+      kind: 'chat-to-codebase',
+      filePaths,
+      workspaceRoot: activeWorkspace ?? '',
+    });
+    navigate('/codebase');
+  }, [chat.messages, activeWorkspace, navigate]);
+
   return (
     <div className="chat-pane">
       <header className="chat-header">
         <div className="chat-header-title">{modelName}</div>
         <UsageSummary usage={chat.usage} />
+        <div className="chat-header-transfer">
+          <button
+            type="button"
+            className="btn"
+            disabled={!chat.activeId || chat.streaming}
+            onClick={handleSendToAgent}
+            title="Hand the conversation to the Agent view as a new autonomous run"
+          >
+            Send to Agent
+          </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={!chat.activeId}
+            onClick={handleSendToCodebase}
+            title="Open the Codebase view with file paths mentioned in this chat"
+          >
+            Send to Codebase
+          </button>
+        </div>
         <ExportMenu
           disabled={!chat.activeId || chat.streaming}
           onExport={(fmt) => {

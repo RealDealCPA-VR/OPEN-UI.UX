@@ -2,67 +2,95 @@
 
 ## Last Session Summary
 
-- **Got `pnpm dev` actually launching.** Five separate Electron/CJS/ESM/ABI issues were stacked; all patched (uncommitted). Diagnostic-by-elimination: `ELECTRON_RUN_AS_NODE=1` was the smoking gun — the user's shell env globally forces electron.exe into Node interpreter mode, so `require('electron')` returned the binary path string instead of the API. Unsetting it inside `pnpm dev` is now required.
-- **Raycast/Arc-style visual redesign sweep** through `apps/desktop/src/renderer/styles.css` (~3600 lines). New design tokens (warm-zinc bases, indigo-violet accent, soft layered shadows, radii scale, Inter+JetBrains Mono fonts), pill-style active sidebar with custom-drawn SVG mask icons, frosted topbar/statusbar/chat-header via `backdrop-filter`, softer chat bubbles, button gradient with inset highlight, focus glow on inputs, glassy onboarding wizard (was completely unstyled before), translucent scrollbars.
-- **No Todo.md items checked this session** — all work was orthogonal to the tracked backlog.
+- **Massive Todo.md sweep — 30 items closed in one session via parallel subagent fan-out.** Every remaining engineering item in Phase 6 (polish & ship) and the entire Phase 7 (UX polish + long-term memory) backlog is now `[x]`. Four items remain `[ ]`, all credential- or human-action-bound — see the **Cannot Be Closed Here** section below.
+- **Wave 1 (3 parallel agents):** (1) shipping infra — `release.yml`, `docs.yml`, electron-updater wiring with GitHub Releases, new `@opencodex/telemetry` (PostHog) + `@opencodex/crash-reporting` (Sentry Electron) packages, Nextra docs site under `website/`, `RELEASE_NOTES_TEMPLATE.md`, `docs/release-signing.md`, `cross-env` fix for `pnpm dev` (kills the `ELECTRON_RUN_AS_NODE` footgun for good). (2) memory providers — `@opencodex/memory-obsidian` (BM25, filesystem-backed) + `@opencodex/memory-notion` (fetch-only Notion API), `MemoryManager` wired into the shared `ToolRegistry` under `memory__<backend>__*` namespace. (3) AgentView + CodebaseView full rewrites — active-runs grid with abort, spawn-from-UI modal, per-run drawer, Monaco preview pane, ripgrep-backed search, pending-edit pills, right-click context menu, cross-view transfer (chat ↔ agent ↔ codebase).
+- **Wave 2 (sequential, integrates wave-1 IPC):** two-pane Settings refresh with 12 sections, section search, deep-link routing (`/settings/<slug>`), sticky section headers with per-section action buttons, new `Memory` / `Updates` / `Telemetry` / `Crash reporting` panels that consume the wave-1 preload bridges. Collapsible chat sidebar + main nav rail with `prefers-reduced-motion`-aware width transitions.
+- **No commits made — the user is committing manually.** Working tree is hot with all the wave changes.
 
 ## Verify Before Continuing
 
-- [ ] **Working tree is dirty with 8 uncommitted files.** Don't blindly commit them — the user has seen the dev launch + redesign and may want to keep iterating before a commit. Run `git status` first; ask before committing. Files:
-  - `apps/desktop/electron.vite.config.ts` (workspace aliasing + CJS output for main/preload)
-  - `apps/desktop/package.json` (`main: out/main/index.cjs`)
-  - `apps/desktop/src/main/index.ts` (preload path `.mjs` → `.cjs`)
-  - `apps/desktop/src/main/agent/worker-host.ts` (worker entry path `.js` → `.cjs`)
-  - `apps/desktop/src/main/storage/settings.ts` (added `projectName: 'opencodex'` to electron-store)
-  - `apps/desktop/src/main/updater.ts` (deferred `pkg.autoUpdater` access to fn-body so init is gated by `app.isPackaged`)
-  - `apps/desktop/src/renderer/styles.css` (huge redesign diff)
-  - `.claude/settings.local.json` (incidental)
+- [ ] **Walk every Settings section in the dev app.** The Settings two-pane refresh is the single largest UI delta. Open `/settings/theme`, then click through Workspace, Providers, Approvals, Plugins, MCP, Memory, Updates, Telemetry, Crash reporting, Audit log, Indexing. Confirm section search filters the rail, deep-link URLs work (paste `/settings/memory` directly), sticky headers stay pinned on scroll, and the `Reload` (Memory) + `Check now` (Updates) action buttons fire correctly.
 
-- [ ] **Run `pnpm dev` correctly:** It MUST be invoked with `ELECTRON_RUN_AS_NODE` unset. Bash: `unset ELECTRON_RUN_AS_NODE && pnpm dev`. PowerShell: `Remove-Item Env:ELECTRON_RUN_AS_NODE; pnpm dev`. Otherwise `require('electron')` returns the binary path string and `BrowserWindow`/`app` are undefined. Consider patching the dev script to unset it inline so this footgun is gone — `cross-env ELECTRON_RUN_AS_NODE= electron-vite dev`.
+- [ ] **Memory backends:** in Settings → Memory, point Obsidian at a `.md`-bearing folder, hit Test connection (expect `ok: true, noteCount: N`). For Notion, paste an integration token, Save, Test connection (expect `ok: true, user: { name }`). Then start a chat and ask the agent to `memory_search` or `notion_search` — the tools must surface in the registry under `memory__obsidian__*` / `memory__notion__*`.
 
-- [ ] **`pnpm build`** — confirm it still succeeds end-to-end with the workspace-aliasing + CJS output changes. Last verified passing before the styles.css redesign; should still pass since CSS doesn't affect TS build.
+- [ ] **AgentView spawn flow:** click "Spawn task" → pick a provider/model → enter a task → optionally toggle "Use git worktree" (only available if active workspace is a git repo). Confirm the run appears in the active-runs grid with live token meter, current tool name, and a working Abort button. After completion, the drawer at `/agent/:runId` should show transcript + file changes + Merge-review CTA.
 
-- [ ] **Native modules rebuild.** `better-sqlite3` (and `keytar`) were rebuilt this session against Electron 30 ABI (NODE_MODULE_VERSION 123) via `pnpm dlx @electron/rebuild -f -w better-sqlite3 -v 30.5.1 -m apps/desktop`. If the user reruns `pnpm install` or `pnpm install --force` per the old HANDOFF instructions, the rebuild will be undone. Fix: pin `electron-rebuild` to a `postinstall` or document the manual step in the README.
+- [ ] **CodebaseView:** select a file → Monaco preview renders. Type in the search bar → debounce-fires `codebase:search` after 300ms, results dropdown navigates to file+line on click. Right-click a file → context menu offers Open / Reveal in OS / Copy path / Ask agent about this file. Trigger a multi-file agent edit through a worktree subagent and confirm pending-edit pills appear in the file tree.
 
-- [ ] **Visual: open the dev app and walk every screen** — Chat, Agent, Codebase, Settings (every subsection), Onboarding wizard. The CSS sweep is large and there are likely off-pixel cases I missed.
+- [ ] **Cross-view transfer:** from a chat with citations, click "Send to Codebase" → CodebaseView opens with cited paths pre-filtered. Click "Send to Agent" → AgentView opens with spawn modal pre-filled with the last user message. From a completed AgentRunRow, click "Continue in chat" → new conversation seeded with the run summary.
+
+- [ ] **`pnpm dev` no longer needs the manual env-var unset.** The dev script is now `cross-env ELECTRON_RUN_AS_NODE= electron-vite dev` — should launch cleanly without `Remove-Item Env:ELECTRON_RUN_AS_NODE` prep.
+
+- [ ] **`pnpm build` is green end-to-end** — verified this session (22.5s, all 21 packages + apps/desktop compile, renderer bundle splits clean). If you re-run it, expect the same.
+
+- [ ] **`pnpm test` baseline is at 668 passing / 86 failing — failures are pre-existing.** The 8 failing test files (better-sqlite3 ABI mismatch + electron-store needing Electron context) were present before this session; do not chase them unless you intend to fix that infrastructure separately. New tests added this session (memory, telemetry, crash-reporting, view derive helpers, transfer state) all pass.
+
+- [ ] **`website/` is intentionally outside the pnpm workspace.** Don't `pnpm install` inside `website/` from the root — `cd website && pnpm install` is the correct flow. The site has its own `README.md` explaining this.
+
+## Cannot Be Closed Here (4 items, all external)
+
+These remained `[ ]` and are documented as such in `Todo.md`:
+
+- **MCP OAuth handling** (Todo.md:116) — needs per-MCP-server OAuth app config; not a code task we can complete blind.
+- **macOS code signing + notarization** (Todo.md:174) — needs Apple Developer Program enrollment + Developer ID cert + Apple ID + app-specific password. Full walkthrough in `docs/release-signing.md`; `release.yml` already reads the required `CSC_*` + `APPLE_*` secrets.
+- **Windows code signing (Authenticode)** (Todo.md:175) — needs EV cert purchase (Sectigo/DigiCert) and hardware token. `release.yml` reads `WIN_CSC_*` secrets. Note in `docs/release-signing.md` that EV signing requires a manually-triggered build (hardware token can't live in CI).
+- **Public v0.1 release announcement** (Todo.md:186) — `RELEASE_NOTES_TEMPLATE.md` at repo root is ready to copy into a GitHub Release; actual publishing is the user's call.
+
+Phase 7 backlog (post-v0.1) items 232-237 (cloud tasks, voice mode, mobile companion, team workspaces, visual workflow builder, JetBrains/VSCode plugins) are out of scope for v0.1 — left untouched.
 
 ## Next Task
 
-The redesign is mid-iteration — the user explicitly asked for sleeker UI/UX, then asked specifically for icon swaps which were fixed (HashRouter + URL-encoded SVG masks). They have not yet greenlit the redesign as done. **Next session: continue the visual iteration loop** — open the dev app, get user feedback per screen, polish. Don't pivot to other Todo.md items unless the user redirects.
+**There is no engineering work left to ship v0.1.** The natural next step is for the user to:
 
-If the user does redirect to backlog work, the natural first item is wiring the existing `LanceVectorStore` (currently SQLite-shim) to a real `@lancedb/lancedb` install, then plugging the `chunkBySymbols` chunker into a real incremental indexer driven by the existing chokidar watcher.
+1. Review the working tree diff and stage commits as they prefer.
+2. Buy/enroll the signing certs (per `docs/release-signing.md`).
+3. Cut a `v0.1.0-rc.1` tag → `release.yml` produces draft GitHub Releases on all three platforms (signed where certs are present, unsigned where not).
+4. Walk the verify-checks above in the built dev app, file any fit-and-finish issues.
+5. Copy `RELEASE_NOTES_TEMPLATE.md` into the draft GitHub Release, publish.
+
+If the user redirects to anything else, the natural follow-up backlog from the wave reports:
+
+- **Polish:** keyboard navigation between Settings rail items (arrow keys, not just Tab). Updates panel could show download speed/ETA. Telemetry/Crash panels would benefit from a real "you're sending us X" sample-payload preview.
+- **Memory v0.2:** wire an `embedFn` in `MemoryManager` (the Obsidian package already accepts one via constructor; main just doesn't pass one yet). Hybrid retrieval via RRF is already implemented in `packages/memory-obsidian/src/bm25.ts`.
+- **Cleanup:** delete `PROVIDERS_SECTION_ID` from `OnboardingBanner.tsx` (dead since deep-link routing landed). Replace localStorage-based `useCollapseState` with real settings fields (`ui.chatSidebarCollapsed`, `ui.navRailCollapsed`) if cross-machine sync is wanted.
+- **Real LanceDB:** the `LanceVectorStore` is still a SQLite-backed shim. Swap to `@lancedb/lancedb` is a one-class change — public interface was kept identical for exactly this purpose. See `apps/desktop/src/main/rag/vector-store.ts`.
 
 ## Context Notes
 
-### Critical: `ELECTRON_RUN_AS_NODE` footgun
+### Cross-agent IPC surface added this session
 
-The user's shell has `ELECTRON_RUN_AS_NODE=1` set globally (Claude Code's own subprocess invocation pattern, by all signs). When `electron-vite dev` spawns `electron.exe`, the variable is inherited and Electron starts in Node-interpreter mode — `process.type` is `undefined` instead of `'browser'`, and `require('electron')` returns the path string from `node_modules/electron/index.js` instead of the runtime API. This is the root cause of "BrowserWindow is undefined" / "app is undefined" errors and is invisible without a smoke test. **Always unset before launching.**
+**Memory** (`window.opencodex.memory.*`): `getStatus`, `getConfig`, `setConfig`, `testConnection(backend)`, `setNotionToken(token)`, `clearNotionToken`, `reload`, `onChanged(listener)`. Event channel: `memory:config-changed`. Notion token lives in keychain under `memory.notion.token`; vault path is plain config in `settings.memory.backends.obsidian.vaultPath`.
 
-### Why main + preload moved to CJS
+**Telemetry** (`window.opencodex.telemetry.*`): `getConfig`, `setConfig`, `onConfigChanged`. Settings fields: `telemetryEnabled`, `telemetryApiKey`, `telemetryHost`. Event: `telemetry:config-changed`. Tracked events are PII-free: `app.launched`, `chat.message_sent` (provider+model hashed), `agent.subagent_spawned`, `mcp.server_connected`. `OPENCODEX_TELEMETRY_KEY` env var overrides the setting.
 
-`apps/desktop/package.json` has `"type": "module"`. Electron 30 does support ESM main process imports per the official docs, but `import { BrowserWindow } from 'electron'` failed in this configuration (even with `ELECTRON_RUN_AS_NODE` unset — the named-export resolution doesn't work for Electron's CJS builtin under Node's stock ESM loader). Switching to CJS output (with `.cjs` extension to opt out of the `"type": "module"` interpretation) bypassed the issue entirely. Renderer stays ESM since it's browser-side. Configured in [electron.vite.config.ts:21-44](apps/desktop/electron.vite.config.ts#L21-L44) via `output: { format: 'cjs', entryFileNames: '*.cjs', chunkFileNames: 'chunks/[name]-[hash].cjs' }`.
+**Crash reporting** (`window.opencodex.crashReporting.*`): `getConfig`, `setConfig`, `onConfigChanged`. Settings: `crashReportingEnabled`, `crashReportingDsn`, `crashReportingEnvironment`. Sentry SDK is `await import()`-loaded so disabled mode is genuinely free. `OPENCODEX_SENTRY_DSN` env overrides. `beforeSend` scrubs file paths from `event.request.url` and clears `event.user`.
 
-### Why workspace packages get bundled instead of externalized
+**Updates** (`window.opencodex.updates.*`): `check`, `download`, `quitAndInstall`, `getStatus`, `setAutoCheck`, `onStatusChanged`. Settings: `autoCheckForUpdates` (opt-in, default `false`). `startAutoCheckLoop()` runs check on `app.whenReady + 30s` then every 4h, gated by both the setting AND `app.isPackaged` (no update checks in dev).
 
-`externalizeDepsPlugin()` was leaving every `@opencodex/*` dep external, but those packages have `noEmit: true` in their tsconfigs (per the old HANDOFF: "switch to `tsup` before any `pnpm publish`"). So they have no `dist/index.js` to require at runtime. Fix: explicit `workspaceAliases` (maps `@opencodex/X` → `packages/X/src/index.ts`) + `externalizeDepsPlugin({ exclude: workspacePackageNames })` so Vite bundles them in. Also handles `electron-store@10` (ESM-only) the same way.
+**Agent spawn / abort** (`window.opencodex.agent.*`): `spawnFromUi({ task, providerId, modelId, workspaceRoot, useWorktree }) → { runId }`, `abortRun(runId) → { ok, error? }`. Separate from the `spawn_subagent` _tool_ (which is for agent-to-agent spawning); this is for direct UI spawning. Reuses the same `runSubagent` + `run-registry` infra.
 
-### Other targeted source patches
+**Codebase** (`window.opencodex.codebase.*`): `search({ workspaceRoot, query, mode, limit? })`, `readFile({ workspaceRoot, path, maxBytes? })`, `getPendingEdits()`. Plus `window.opencodex.git.isRepo(path)` and `window.opencodex.shell.showItemInFolder(workspaceRoot, path)`.
 
-- [src/main/storage/settings.ts:77-81](apps/desktop/src/main/storage/settings.ts#L77-L81) — `electron-store@10` requires `projectName` (v8 didn't); package name has `@` prefix which the auto-derive rejects.
-- [src/main/updater.ts:4-9](apps/desktop/src/main/updater.ts#L4-L9) — `const { autoUpdater } = pkg` at module load triggers `electron-updater`'s lazy getter, which constructs `NsisUpdater` → reads `app.version` BEFORE `app.whenReady()`. Moved access inside `getAutoUpdater()` fn; safe because `initAutoUpdater()` is gated by `app.isPackaged` (false in dev).
+### Pending-edits N+1 mitigation (CodebaseView)
 
-### Visual redesign — what to know
+`useAgentPendingEdits` hook avoids an IPC storm during streaming runs three ways:
 
-- **HashRouter quirk for icon selectors:** [src/renderer/App.tsx:17](apps/desktop/src/renderer/App.tsx#L17) uses `HashRouter`, so NavLink emits `href="#/chat"` not `href="/chat"`. Sidebar icon selectors in styles.css use `[href$='/chat']` (suffix match) — don't change to exact match.
-- **SVG mask icons:** Inline data URIs in `.sidebar-link[href$='...']::before` rules. SVG `stroke` is hard-coded `black` (mask uses alpha; visible color comes from `background: currentColor` on the `::before`). `<` and `>` are URL-encoded as `%3C` / `%3E` because Chromium rejects raw `<>` inside `url(...)`.
-- **Token system on `:root`** — about 75 CSS vars covering surfaces / borders / text / accent / status / shadows / radii / motion. Light theme override block on `:root[data-theme='light']` carries the same set. Adding new components: prefer adding to the token block, not hardcoding hex.
-- **Frosted surfaces:** sidebar/topbar/statusbar/chat-header/chat-composer use `background: color-mix(in oklab, var(--bg-panel) 75%, transparent)` + `backdrop-filter: saturate(140%) blur(10px)`. The ambient body gradient (`body::before`-style radial-gradients) is what shows through.
-- **Onboarding wizard styles** were missing entirely — the React component used `onboarding-wizard*` classes with zero matching CSS rules. Now appended at the bottom of styles.css. Probably worth a real eye-test in the dev app, since I wrote them blind.
-- **Scrollbars + selection** got global polish at file end too (translucent pill-shaped scrollbars, accent-tinted selection).
+1. **Fingerprint debouncing** — `pendingEditsFingerprint(runs)` hashes only `id|mergeStatus|completedAt` of runs that have a worktree. Token-only updates (which fire `agent:runs-changed` constantly during a live run) produce an identical fingerprint, so no IPC is sent.
+2. **In-flight guard** — `inFlight` ref prevents overlapping fetches.
+3. **Single aggregated IPC** — `codebase:get-pending-edits` aggregates all worktree runs in one round-trip; `prepareMergeBundle` runs in a `for` loop on main and skips failures.
+
+### `prefers-reduced-motion` is respected
+
+The wave-2 styles append a `@media (prefers-reduced-motion: reduce)` block that zeroes out transition durations for the chat sidebar + nav rail + Settings rail. If you add new transitions to the renderer, mirror this convention.
+
+### `website/` deploy
+
+`docs.yml` workflow builds Nextra + deploys via `actions/deploy-pages@v4`. Requires GitHub Pages enabled on the repo with "GitHub Actions" as source. `pages: write` + `id-token: write` permissions already set in the workflow.
 
 ### Pre-existing carry-overs still relevant
 
-- Node v20 pinned. `better-sqlite3` must be rebuilt against Electron's ABI (not Node's) — `@electron/rebuild` is the tool, NOT `pnpm install --force`.
+- Node v20 pinned. `better-sqlite3` must be rebuilt against Electron's ABI (not Node's) — `@electron/rebuild` is the tool, NOT `pnpm install --force`. The 8 pre-existing test failures stem from this; they don't repro under `pnpm dev` (Electron rebuild) but fail under bare `vitest`.
 - Path has space + period (`OPEN UI.UX`) — quote in shell.
-- `packages/*` tsconfig is `noEmit: true` — switch to `tsup` before any `pnpm publish`.
-- Pre-public placeholders remain in CODEOWNERS / SECURITY.md / README.md: `@TODO-set-github-handle`, `security@TODO-set-domain`, `github.com/TODO-org/TODO-repo`.
+- `packages/*` tsconfig is `noEmit: true` — switch to `tsup` before any `pnpm publish` of the standalone packages.
+- Pre-public placeholders remain in CODEOWNERS / SECURITY.md / README.md: `@TODO-set-github-handle`, `security@TODO-set-domain`, `github.com/TODO-org/TODO-repo`. Fill these before the first public tag.
+- `PROVIDERS_SECTION_ID` is still exported from `OnboardingBanner.tsx` for back-compat but is now dead code (deep-link routing replaced the scroll-to-anchor pattern). Safe to delete in a follow-up.

@@ -1,0 +1,101 @@
+import { Callout } from 'nextra/components';
+
+# Plugin Authoring Guide
+
+<Callout type="info">
+  Mirrored from [`docs/plugin-authoring.md`](https://github.com/TODO-org/TODO-repo/blob/main/docs/plugin-authoring.md). See also [SDK API reference](./api/).
+</Callout>
+
+OpenCodex plugins are npm packages that extend the host with tools, providers, slash commands, and UI panels. The same registries that hold built-in code accept plugin contributions, so a plugin tool is indistinguishable from a built-in tool at the agent layer.
+
+## What plugins can contribute
+
+| Contribution    | Status      | Where it lands |
+| --------------- | ----------- | -------------- |
+| Tools           | wired       | `ToolRegistry` (same registry as `@opencodex/tools` built-ins). |
+| Providers       | wired       | `ProviderRegistry` for `LLMProvider` factories. |
+| Slash commands  | host method | `PluginHost.registerSlashCommand`. |
+| UI panels       | wired       | sandboxed iframe with `postMessage` bridge. |
+| Settings access | wired       | `PluginHost.getSetting` / `setSetting`. |
+
+## Manifest
+
+Every plugin ships a `opencodex.plugin.json`:
+
+```json
+{
+  "name": "hello-world",
+  "version": "0.0.0",
+  "displayName": "Hello World",
+  "entry": "dist/index.js",
+  "engines": { "opencodex": "^0.1.0" },
+  "permissions": [],
+  "contributions": {
+    "tools": ["hello_world"]
+  }
+}
+```
+
+Permissions enum:
+
+```ts
+'workspace.read' |
+'workspace.write' |
+'shell.execute' |
+'network.fetch' |
+'settings.read' |
+'settings.write' |
+'ui.panel'
+```
+
+`ContributionSchema` lets you declare which named tools / providers / panels / slash commands your plugin owns:
+
+```ts
+{
+  tools?: string[],
+  providers?: string[],
+  panels?: Array<{ id: string; title: string; entry: string }>,
+  slashCommands?: Array<{ name: string; entry: string }>,
+}
+```
+
+## Lifecycle
+
+1. **Install** — user picks a tarball, registry URL, or local path. The loader extracts and locates `opencodex.plugin.json`.
+2. **Manifest validation** — `ManifestSchema.safeParse()` runs.
+3. **Permission grant** — OpenCodex shows the user the requested `permissions[]` and contributions. The user confirms or denies.
+4. **Module load** — entry imported dynamically. Must default-export a `Plugin` (use `definePlugin()`).
+5. **Activation** — `plugin.activate(host)` runs with a `PluginHost` restricted to the granted permissions.
+6. **Deactivation** — `plugin.deactivate?()` on disable/uninstall. Tools/providers registered through the host are auto-unregistered.
+
+## Hello-world plugin
+
+```ts
+import { definePlugin } from '@opencodex/plugin-sdk';
+import { defineTool } from '@opencodex/core';
+import { z } from 'zod';
+
+export default definePlugin({
+  async activate(host) {
+    host.registerTool(
+      defineTool({
+        name: 'hello_world',
+        description: 'Returns a greeting',
+        permissionTier: 'read',
+        inputZod: z.object({ name: z.string() }),
+        async execute(input) {
+          return { greeting: `Hello, ${input.name}!` };
+        },
+      }),
+    );
+  },
+});
+```
+
+## Sandbox & permissions
+
+Plugins run in the main-process host but the manifest-declared `permissions[]` gate which `PluginHost` methods actually function. A plugin without `settings.read` cannot call `host.getSetting`. A plugin without `workspace.write` cannot register a `permissionTier: 'write'` tool.
+
+UI panels render in sandboxed iframes (`sandbox="allow-scripts"`); `postMessage` is the only bridge. No Node access in panel JS.
+
+For the full TypeScript shape, see [SDK API reference](./api/).

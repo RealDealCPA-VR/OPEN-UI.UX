@@ -1,0 +1,47 @@
+import { Callout } from 'nextra/components';
+
+# MCP Integration
+
+<Callout type="info">
+  Mirrored from [`docs/mcp-integration.md`](https://github.com/TODO-org/TODO-repo/blob/main/docs/mcp-integration.md).
+</Callout>
+
+The **Model Context Protocol** (MCP) is an open spec for servers that expose tools, resources, and prompts to AI clients. OpenCodex treats MCP servers as a first-class extension surface — every tool an MCP server publishes flows through the same `ToolRegistry` as built-in tools and is gated by the same approval system.
+
+## Transports
+
+OpenCodex's MCP client (`@opencodex/mcp-client`) supports:
+
+- **stdio** — line-delimited JSON over a child process's stdin/stdout. Use for local Node/Python tools.
+- **SSE** — long-lived HTTPS connection. The server publishes a POST `endpoint` URL; client sends JSON-RPC requests as POSTs, receives responses as Server-Sent Events.
+- **HTTP streamable** — JSON-RPC over HTTP with a session header (`mcp-session-id`). Handles `application/json`, `text/event-stream`, and `202 Accepted` notifications.
+
+## Configuration
+
+In Settings → MCP servers, you can:
+
+- Pick from curated presets (filesystem, github, brave-search, sqlite).
+- Add a custom server: transport, command/args/env (stdio) or URL (sse/http).
+- Enable/disable per server. Disabled servers don't connect on launch.
+- Track live status (connecting / connected / error) and tool / resource / prompt counts.
+
+## What happens when a server connects
+
+1. The client performs the MCP handshake (`initialize`).
+2. Calls `tools/list` → each tool is registered in the `ToolRegistry` as `mcp__<serverId>__<toolName>`.
+3. Calls `resources/list` → the resource indexer reads each resource via `resources/read` and upserts into the workspace's FTS5 keyword index (1s debounced).
+4. Calls `prompts/list` → each prompt becomes a `/`-command available in the chat composer (grouped by server).
+
+## Trust boundary
+
+MCP tools route through the same approval gateway as built-in tools. A malicious MCP server cannot trigger silent writes — the user still sees a prompt with the tool name + arguments before anything runs.
+
+For stdio servers, OpenCodex passes only the user-configured `env` map to the child process — never the parent's full environment.
+
+## Tool naming
+
+To avoid collisions when multiple servers publish a `read_file` tool, MCP tools are namespaced: `mcp__<serverId>__<toolName>`. The agent sees the full namespaced name in the tool catalog and uses it verbatim when invoking.
+
+## Health checks and reconnect
+
+Long-lived connections (SSE, HTTP) auto-reconnect with exponential backoff (1.5s → 30s) when the transport closes. When the user disables a server, all its tools/prompts/resources are unregistered.

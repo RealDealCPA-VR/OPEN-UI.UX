@@ -30,7 +30,15 @@
       "@opencodex/plugin-sdk": ["../../packages/plugin-sdk/src/index.ts"],
       "@opencodex/plugin-sdk/*": ["../../packages/plugin-sdk/src/*"],
       "@opencodex/mcp-client": ["../../packages/mcp-client/src/index.ts"],
-      "@opencodex/mcp-client/*": ["../../packages/mcp-client/src/*"]
+      "@opencodex/mcp-client/*": ["../../packages/mcp-client/src/*"],
+      "@opencodex/memory-obsidian": ["../../packages/memory-obsidian/src/index.ts"],
+      "@opencodex/memory-obsidian/*": ["../../packages/memory-obsidian/src/*"],
+      "@opencodex/memory-notion": ["../../packages/memory-notion/src/index.ts"],
+      "@opencodex/memory-notion/*": ["../../packages/memory-notion/src/*"],
+      "@opencodex/telemetry": ["../../packages/telemetry/src/index.ts"],
+      "@opencodex/telemetry/*": ["../../packages/telemetry/src/*"],
+      "@opencodex/crash-reporting": ["../../packages/crash-reporting/src/index.ts"],
+      "@opencodex/crash-reporting/*": ["../../packages/crash-reporting/src/*"]
     }
   },
   "include": ["src/**/*", "electron.vite.config.ts"]

@@ -17,7 +17,7 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 - [x] Vitest base config (workspace-aware, runs all packages)
 - [x] Playwright base config for `apps/desktop` E2E
 - [x] GitHub Actions: `ci.yml` running lint + typecheck + test + build on PR
-- [ ] GitHub Actions: `release.yml` for tagged builds (deferred to Phase 6)
+- [x] GitHub Actions: `release.yml` for tagged builds \_(tag-triggered cross-OS build matrix in `.github/workflows/release.yml`; env-driven signing reads `APPLE__`/`CSC\__`/`WIN*CSC*\*`from GitHub Secrets — produces unsigned artifacts if missing; electron-builder`publish: github, releaseType: draft`so the user reviews before publishing. Companion`docs/release-signing.md` walks through Apple Developer + Windows EV cert setup.)\_
 - [x] CODEOWNERS, CODE_OF_CONDUCT.md, SECURITY.md, CONTRIBUTING.md
 - [x] Issue + PR templates
 
@@ -149,7 +149,7 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 - [x] Example plugin: custom provider stub _(`examples/plugins/provider-stub`: streams text deltas from the last user message; `embed()` throws)_
 - [x] Example plugin: UI panel _(`examples/plugins/ui-panel` + panel.html)_
 - [x] Plugin marketplace stub (config-only, point at registry URL — actual marketplace deferred) _(`pluginRegistryUrl` setting + `plugins:fetch-registry` IPC returns parsed JSON entries or error)_
-- [ ] Plugin docs site section with SDK API reference _(depends on docs site — Phase 6 backlog item)_
+- [x] Plugin docs site section with SDK API reference _(Nextra site under `website/`; plugin authoring guide at `website/pages/plugins/authoring.mdx`; SDK API reference at `website/pages/plugins/api.mdx` enumerating every export from `packages/plugin-sdk/src/`.)_
 
 ## Phase 5 — Multi-agent orchestration
 
@@ -169,19 +169,19 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 - [x] Theme system (light / dark / system) with CSS variables _(stored preference at `settings.theme`; `settings:get-theme`/`settings:set-theme` IPC + `settings:theme-changed` event; main passes `--initial-theme` via `additionalArguments` and preload applies `data-theme` before renderer JS runs for zero-flash boot; `ThemeApplier` reacts to IPC changes + `prefers-color-scheme` media query when preference is `system`; Theme section in Settings; ~75 semantic CSS vars on `:root` with GH-light overrides on `:root[data-theme='light']`)_
 - [x] Onboarding wizard (provider setup → first API key → workspace pick → first chat) _(`OnboardingWizard` overlay shows on first run when `onboardingComplete` setting is false; 4 steps: pick provider → enter API key → pick workspace → "Start chatting"; dismissable; `OnboardingBanner` retained as fallback in Settings)_
 - [x] Settings UI (providers, approvals, MCP servers, plugins, theme, indexing) _(theme, workspace, providers, approvals, MCP servers, audit log, indexing all shipped as Settings subsections; indexing is a Phase-3-pending stub; plugins section pending Phase 4)_
-- [ ] `electron-updater` wired with GitHub Releases
-- [ ] macOS code signing + notarization
-- [ ] Windows code signing (Authenticode)
+- [x] `electron-updater` wired with GitHub Releases _(electron-builder.yml has `publish: provider: github, releaseType: draft`; `updater.ts` rewritten with IPC `updates:check|download|quit-and-install|get-status|set-auto-check`, status broadcaster `updates:status-changed`, and `startAutoCheckLoop()` (30s startup delay + 4h interval, gated by `autoCheckForUpdates` setting + `app.isPackaged`). Settings → Updates panel exposes auto-check toggle + "Check now" + status pill.)_
+- [ ] macOS code signing + notarization _(BLOCKED — needs user-owned Apple Developer cert + Apple ID. Scaffold ready: `release.yml` reads `CSC_LINK`/`CSC_KEY_PASSWORD`/`APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID` from GitHub Secrets; full enrollment walkthrough in `docs/release-signing.md`.)_
+- [ ] Windows code signing (Authenticode) _(BLOCKED — needs user-owned EV cert. Scaffold ready: `release.yml` reads `WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD`. EV certs require hardware tokens for live signing — note in `docs/release-signing.md` that this means signing happens on manually-triggered builds, not CI.)_
 - [x] Linux: AppImage + .deb + .rpm builds _(`apps/desktop/electron-builder.yml` — targets AppImage, deb, rpm for x64; also wires mac dmg/zip + windows nsis/portable. Build by running `pnpm --filter @opencodex/desktop dist`. Signing creds are still required for the mac/windows targets — those stay in user hands.)_
-- [ ] Opt-in anonymous telemetry (PostHog or self-hosted Plausible)
-- [ ] Crash reporting (Sentry, opt-in)
-- [ ] Docs site (Docusaurus or Nextra) on GitHub Pages
+- [x] Opt-in anonymous telemetry (PostHog or self-hosted Plausible) _(new `@opencodex/telemetry` package — lazy PostHog SDK load, no-op shim when disabled or unconfigured. Settings → Telemetry toggle + API key/host inputs. Tracked events: `app.launched`, `chat.message_sent` (provider+model anonymized via hash, no content), `agent.subagent_spawned`, `mcp.server_connected`. PII-free.)_
+- [x] Crash reporting (Sentry, opt-in) _(new `@opencodex/crash-reporting` package — `@sentry/electron` lazy-loaded via dynamic `import()` inside `initCrash` so disabled mode is genuinely free. Settings → Crash reporting toggle + DSN + environment select. `beforeSend` scrubs `event.request.url` for file paths + clears `event.user`.)_
+- [x] Docs site (Docusaurus or Nextra) on GitHub Pages _(Nextra v2 scaffold under `website/`; pages mirror existing `docs/` markdown (architecture, security, mcp, plugin/provider authoring) plus SDK API reference. `website/` is excluded from the main pnpm workspace to keep root installs slim — run `pnpm install && pnpm dev` inside `website/` separately. `.github/workflows/docs.yml` builds + deploys to GitHub Pages via `actions/deploy-pages@v4`.)_
 - [x] Architecture deep-dive doc
 - [x] Plugin authoring guide
 - [x] MCP integration guide
 - [x] Provider authoring guide
 - [x] Security model doc (sandboxes, permissions, key storage)
-- [ ] Public v0.1 release announcement
+- [ ] Public v0.1 release announcement _(BLOCKED — user task. `RELEASE_NOTES_TEMPLATE.md` at repo root provides the markdown template to copy into a GitHub Release: What's new / Notable changes / Bug fixes / Migration notes / Known issues / Checksums / Contributors.)_
 
 ---
 
@@ -189,41 +189,41 @@ Phases are roughly sequential but can overlap. Phase 4 (plugins) gates Phase 5 b
 
 ### Long-term memory integrations
 
-- [ ] **Obsidian memory provider** — read/write notes in a user-pointed Obsidian vault as agent-accessible memory. Filesystem-backed (no Obsidian app required). Tools: `memory_search` (BM25 + optional embeddings), `memory_read`, `memory_append`, `memory_create_note`. Config in Settings → Memory (vault folder path). Respects existing approval tiers (read auto, write prompts).
-- [ ] **Notion memory provider** — read/write Notion pages + databases via Notion API. OAuth or integration token in keychain. Tools: `notion_search`, `notion_read_page`, `notion_append_block`, `notion_create_page`. Config in Settings → Memory (token + workspace selection).
-- [ ] Unified Memory section in Settings — backend selector (None / Obsidian / Notion / Both), per-backend status pill (connected / error), test-connection button.
-- [ ] Memory tools surface in the same tool registry as builtins so the agent loop sees them naturally; approval tiers wired so write/append always prompts unless the user opts into auto.
+- [x] **Obsidian memory provider** _(new `@opencodex/memory-obsidian` package — filesystem-backed `.md` walker, in-house BM25 (k1=1.5 b=0.75), path-traversal guards, atomic writes. Tools: `memory_search`/`memory_read`/`memory_append`/`memory_create_note`. Optional `embedFn` for RRF-merged hybrid retrieval — wired in the API, not enabled by default. 21 tests.)_
+- [x] **Notion memory provider** _(new `@opencodex/memory-notion` package — fetch-only Notion API client (no SDK dep), Zod-validated at every response boundary, integration token stored in keychain via existing `secrets.ts` under `memory.notion.token`. Tools: `notion_search`/`notion_read_page`/`notion_append_block`/`notion_create_page`. Block→markdown supports paragraph/h1-3/bullet/todo/quote/code/divider/callout (unknown blocks render as `[unsupported: <type>]`). 10 tests.)_
+- [x] Unified Memory section in Settings _(Settings → Memory section renders `MemoryPanel` — per-backend enable toggle, Obsidian vault path input, Notion token Save/Clear, Test connection button + status pill. Self-loads via `window.opencodex.memory.*` IPC; subscribes to `memory:config-changed`.)_
+- [x] Memory tools surface in the same tool registry as builtins _(`MemoryManager` in `apps/desktop/src/main/memory/manager.ts` registers tools under `memory__obsidian__*` / `memory__notion__*` namespace in the shared `ToolRegistry` on start/reload. `read` tier for *\_search / *\_read (auto by default), `write` tier for *\_append / *\_create_\* (prompts by default) — gated by the existing `ApprovalPolicies` system.)\_
 
 ### Sidebar collapsing
 
-- [ ] Collapsible chat conversation sidebar (toggle button in sidebar header, persists in settings, keyboard shortcut Cmd/Ctrl + \\).
-- [ ] Collapsible main navigation rail (chat / agent / codebase / settings icons) — collapsed shows icons only, expanded shows icon + label.
-- [ ] Animate width transitions; remember collapsed state per-view.
+- [x] Collapsible chat conversation sidebar _(toggle in sidebar header, persists via `useCollapseState` (localStorage), Cmd/Ctrl + `\` keyboard shortcut from anywhere in the chat view.)_
+- [x] Collapsible main navigation rail _(collapsed = SVG mask icons only; expanded = icon + label. Toggle button on the rail; persists via `useCollapseState`. Active-link pill style works in both states.)_
+- [x] Animate width transitions _(`transition: grid-template-columns 180ms ease` on chat sidebar + nav rail; `.sidebar-link-label` opacity+width transition replaces prior `display:none` so labels actually fade. `@media (prefers-reduced-motion: reduce)` zeroes out durations.)_
 
 ### Settings page visual refresh
 
-- [ ] Two-pane Settings layout: left rail of section tabs (Theme / Workspace / Providers / Approvals / Plugins / MCP / Memory / Audit log / Indexing) with active highlight, right pane shows the focused section.
-- [ ] Per-section card styling: title + description + body in elevated card with consistent padding, dividers between groups.
-- [ ] Section search box that filters the rail.
-- [ ] Deep-link support: `/settings/providers`, `/settings/memory`, etc. so `OnboardingBanner` and other in-app links can navigate to a specific section.
-- [ ] Sticky header inside each section with section title + secondary actions.
+- [x] Two-pane Settings layout _(left rail + right pane in rewritten `SettingsView.tsx`; 12 sections: Theme / Workspace / Providers / Approvals / Plugins / MCP / Memory / Updates / Telemetry / Crash reporting / Audit log / Indexing.)_
+- [x] Per-section card styling _(new `SettingsSectionCard.tsx` — title + description + body in elevated card; consistent padding; dividers between groups.)_
+- [x] Section search box _(top of left rail; filters by title + description, case-insensitive; pure helper `filterSettingsSections` covered by tests.)_
+- [x] Deep-link support _(`/settings/<slug>` routes added in `App.tsx`; slugs: theme, workspace, providers, approvals, plugins, mcp, memory, updates, telemetry, crash-reporting, audit-log, indexing. `/settings` redirects to `/settings/theme`. `OnboardingBanner` now uses `useNavigate('/settings/providers')` instead of in-page scroll-to-anchor.)_
+- [x] Sticky header inside each section _(`SettingsSectionCard` header pins to top of right pane on scroll; supports an `actions` prop for per-section secondary buttons — used by Memory (Reload) and Updates (Check now).)_
 
 ### Agent + Codebase view usability
 
-- [ ] **AgentView**: convert from "run history viewer" to "active control surface" — at top, show currently-running run with live token meter, current tool, abort button. History below.
-- [ ] AgentView: launchable from this view (not only as a tool call from chat) — "Spawn task" button → modal with task description, model selector, workspace, optional worktree toggle.
-- [ ] AgentView: per-run detail drawer with full transcript, file changes preview, merge-review CTA.
-- [ ] **CodebaseView**: file preview pane on the right when a file is selected (Monaco read-only). Already imports Monaco for diffs — reuse.
-- [ ] CodebaseView: search box (filename + content) backed by ripgrep over the active workspace.
-- [ ] CodebaseView: pills on files that have pending agent edits (linked to the AgentView merge-review state).
-- [ ] CodebaseView: right-click context menu (Open, Reveal in OS, Copy path, Ask agent about this file).
+- [x] **AgentView** rewritten as active control surface _(top: active-runs grid with `ActiveRunCard` per running run — live token meter, current tool from unmatched `tool_start`, iteration/budget counter, Abort button → `agent:abort-run`. History list below filters `r.status !== 'running'`. URL-driven drawer state via new `/agent/:runId` sub-route.)_
+- [x] AgentView: launchable from this view _("Spawn task" button → `AgentSpawnModal` (task textarea + provider/model picker reusing `ModelPicker` + workspace picker + Use-git-worktree toggle gated by `git:is-repo`); submit → `agent:spawn-from-ui` → closes modal + focuses new run.)_
+- [x] AgentView: per-run detail drawer _(side panel `AgentRunDrawer.tsx`; full transcript from `run.timeline`; file changes preview via `agent:get-merge-bundle`; Merge-review CTA opens existing `MergeReviewModal`.)_
+- [x] **CodebaseView**: file preview pane _(`CodebasePreviewPane.tsx` — lazy-loaded Monaco read-only `<Editor>` keyed on selected file path; language inferred via `languageFromExtension` (tested); jumps to specified line on search-result click.)_
+- [x] CodebaseView: search box _(`CodebaseSearchBox.tsx` — 300ms debounced input + mode pills (filename / content / both) → `codebase:search` IPC backed by ripgrep with JS fallback. Pinned-paths from cross-view transfer pre-filter results.)_
+- [x] CodebaseView: pending-edit pills _(`useAgentPendingEdits` hook + fingerprint-debounced re-fetch; aggregates all pending worktree runs in a single `codebase:get-pending-edits` IPC; passed to `FileTree` via existing `annotations` prop.)_
+- [x] CodebaseView: right-click context menu _(`FileTreeContextMenu.tsx` — Open in preview, Reveal in OS (`shell:show-item-in-folder` IPC wraps Electron's `shell.showItemInFolder`), Copy path, Ask agent about this file (pushes `codebase-to-chat` transfer context).)_
 
 ### Cross-view chat transfer
 
-- [ ] "Send to Agent" button on a chat → packages the conversation + last user message + selected workspace as a new autonomous run, hands it to the AgentView spawn flow, opens AgentView focused on the new run.
-- [ ] "Send to Codebase" action on a chat → switches to CodebaseView with the workspace already in focus, pre-fills any file paths mentioned in the chat as a result filter.
-- [ ] Shared "transfer context" type in `shared/` so chat/agent/codebase all consume the same payload.
-- [ ] Reverse direction: "Continue in chat" button on a completed AgentRun and on a CodebaseView selection — creates a new conversation with the result as initial context.
+- [x] "Send to Agent" button on a chat _(in chat header; pushes `chat-to-agent` transfer context → navigates to `/agent` + pre-opens spawn modal with last user message pre-filled.)_
+- [x] "Send to Codebase" action on a chat _(in chat header; scans last few assistant messages for `path:line` citations via existing `tokenizeCitations`; pushes `chat-to-codebase` transfer context with `filePaths[]` → switches to `/codebase` + applies as search filter.)_
+- [x] Shared "transfer context" type _(`apps/desktop/src/shared/transfer-context.ts` — Zod discriminated union over `chat-to-agent` / `chat-to-codebase` / `agent-to-chat` / `codebase-to-chat`. Consumed by chat/agent/codebase views.)_
+- [x] "Continue in chat" reverse direction _(on `AgentRunRow` for finished runs + on right-click "Ask agent about this file" in CodebaseView. Creates a new conversation seeded with the run summary or file reference as initial context. Routed through `useTransfer()` singleton in `apps/desktop/src/renderer/state/transfer.ts` (useSyncExternalStore-backed).)_
 
 ---
 

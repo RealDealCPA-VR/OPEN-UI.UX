@@ -5,6 +5,23 @@
 
 import type { AgentRun, AgentRunsChangedEvent } from './agent-runs';
 import type {
+  AgentAbortRunRequest,
+  AgentAbortRunResponse,
+  AgentSpawnFromUiRequest,
+  AgentSpawnFromUiResponse,
+  GitIsRepoRequest,
+  GitIsRepoResponse,
+  ShellShowItemRequest,
+  ShellShowItemResponse,
+} from './agent-spawn';
+import type {
+  CodebasePendingEditsResponse,
+  CodebaseReadFileRequest,
+  CodebaseReadFileResponse,
+  CodebaseSearchRequest,
+  CodebaseSearchResponse,
+} from './codebase-search';
+import type {
   ApprovalPolicies,
   ApprovalRequest,
   ApprovalResponse,
@@ -57,6 +74,14 @@ import type {
   SetMcpServerEnabledRequest,
 } from './mcp';
 import type {
+  MemoryConfigChangedEvent,
+  MemoryStatus,
+  SetMemoryConfigRequest,
+  SetNotionTokenRequest,
+  TestConnectionResult,
+  TestMemoryConnectionRequest,
+} from './memory';
+import type {
   EnablePluginRequest,
   GrantPluginPermissionsRequest,
   InstallPluginRequest,
@@ -71,6 +96,17 @@ import type {
   WorkspaceChangedEvent,
   WorkspaceState,
 } from './workspace';
+import type {
+  TelemetryConfig,
+  TelemetryConfigChangedEvent,
+  TelemetrySetConfigRequest,
+} from './telemetry';
+import type {
+  CrashReportingConfig,
+  CrashReportingConfigChangedEvent,
+  CrashReportingSetConfigRequest,
+} from './crash-reporting';
+import type { UpdateStatus, UpdatesCheckResult } from './updates';
 
 export interface IpcInvokeChannels {
   'app:version': {
@@ -322,6 +358,34 @@ export interface IpcInvokeChannels {
     request: { runId: string };
     response: { ok: boolean; error?: string };
   };
+  'agent:spawn-from-ui': {
+    request: AgentSpawnFromUiRequest;
+    response: AgentSpawnFromUiResponse;
+  };
+  'agent:abort-run': {
+    request: AgentAbortRunRequest;
+    response: AgentAbortRunResponse;
+  };
+  'codebase:search': {
+    request: CodebaseSearchRequest;
+    response: CodebaseSearchResponse;
+  };
+  'codebase:read-file': {
+    request: CodebaseReadFileRequest;
+    response: CodebaseReadFileResponse;
+  };
+  'codebase:get-pending-edits': {
+    request: void;
+    response: CodebasePendingEditsResponse;
+  };
+  'git:is-repo': {
+    request: GitIsRepoRequest;
+    response: GitIsRepoResponse;
+  };
+  'shell:show-item-in-folder': {
+    request: ShellShowItemRequest;
+    response: ShellShowItemResponse;
+  };
   'file-tree:list': {
     request: { path?: string };
     response: {
@@ -333,6 +397,66 @@ export interface IpcInvokeChannels {
       }>;
       workspaceRoot: string | null;
     };
+  };
+  'telemetry:get-config': {
+    request: void;
+    response: TelemetryConfig;
+  };
+  'telemetry:set-config': {
+    request: TelemetrySetConfigRequest;
+    response: TelemetryConfig;
+  };
+  'crash-reporting:get-config': {
+    request: void;
+    response: CrashReportingConfig;
+  };
+  'crash-reporting:set-config': {
+    request: CrashReportingSetConfigRequest;
+    response: CrashReportingConfig;
+  };
+  'updates:check': {
+    request: void;
+    response: UpdatesCheckResult;
+  };
+  'updates:download': {
+    request: void;
+    response: void;
+  };
+  'updates:quit-and-install': {
+    request: void;
+    response: void;
+  };
+  'updates:get-status': {
+    request: void;
+    response: UpdateStatus;
+  };
+  'updates:set-auto-check': {
+    request: { enabled: boolean };
+    response: { enabled: boolean };
+  };
+  'memory:get-status': {
+    request: void;
+    response: MemoryStatus;
+  };
+  'memory:set-config': {
+    request: SetMemoryConfigRequest;
+    response: MemoryStatus;
+  };
+  'memory:test-connection': {
+    request: TestMemoryConnectionRequest;
+    response: TestConnectionResult;
+  };
+  'memory:set-notion-token': {
+    request: SetNotionTokenRequest;
+    response: MemoryStatus;
+  };
+  'memory:clear-notion-token': {
+    request: void;
+    response: MemoryStatus;
+  };
+  'memory:reload': {
+    request: void;
+    response: MemoryStatus;
   };
 }
 
@@ -347,6 +471,10 @@ export interface IpcEventChannels {
   'chat:read-only-changed': { readOnly: boolean };
   'agent:runs-changed': AgentRunsChangedEvent;
   'shell:output': ShellOutputEvent;
+  'telemetry:config-changed': TelemetryConfigChangedEvent;
+  'crash-reporting:config-changed': CrashReportingConfigChangedEvent;
+  'updates:status-changed': UpdateStatus;
+  'memory:config-changed': MemoryConfigChangedEvent;
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;
