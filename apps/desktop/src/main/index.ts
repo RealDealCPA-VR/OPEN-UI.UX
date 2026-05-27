@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { logger } from './logger';
 import { registerAgentHandlers } from './agent/handlers';
+import { runnerRegistry } from './agent/runner-registry-instance';
+import { internalRunner } from './agent/subagent';
 import { registerApprovalHandlers } from './chat/approval-handlers';
 import { registerChatHandlers } from './chat/handlers';
 import { registerReadOnlyChatHandlers } from './chat/read-only-handlers';
@@ -153,6 +155,12 @@ app.whenReady().then(() => {
     }
   } catch (err) {
     logger.warn({ err }, 'audit log retention purge failed');
+  }
+
+  try {
+    runnerRegistry.register(internalRunner);
+  } catch (err) {
+    logger.warn({ err }, 'internalRunner registration failed');
   }
 
   registerIpcHandlers();

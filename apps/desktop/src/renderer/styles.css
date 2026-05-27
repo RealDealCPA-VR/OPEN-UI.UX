@@ -5327,3 +5327,221 @@ body {
   flex: 1;
   min-width: 0;
 }
+
+/* ===== Phase 10: Unified left column (nav rail + context pane) ===== */
+
+.app-shell.app-shell-unified {
+  display: grid;
+  grid-template-columns: 56px 260px 1fr;
+  height: 100%;
+  transition: grid-template-columns 180ms ease;
+}
+
+.app-shell.app-shell-unified.context-collapsed,
+.app-shell.app-shell-unified.context-hidden {
+  grid-template-columns: 56px 0 1fr;
+}
+
+.app-shell.app-shell-unified .nav-rail {
+  padding: 10px 6px 12px;
+  align-items: stretch;
+}
+
+.app-shell.app-shell-unified .nav-rail .sidebar-head {
+  justify-content: center;
+  padding: 6px 0;
+}
+
+.app-shell.app-shell-unified .nav-rail .sidebar-brand {
+  padding: 0;
+  width: 28px;
+  height: 28px;
+}
+
+.app-shell.app-shell-unified .nav-rail .sidebar-link {
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.app-shell.app-shell-unified .nav-rail .sidebar-link-label {
+  display: none;
+}
+
+.app-shell.app-shell-unified .nav-rail .sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+.app-shell.app-shell-unified .nav-rail .sidebar-version {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.left-context-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel-deep);
+  overflow: hidden;
+}
+
+.app-shell.app-shell-unified.context-collapsed .left-context-pane,
+.app-shell.app-shell-unified.context-hidden .left-context-pane {
+  border-right: 0;
+}
+
+.lcc-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 10px 12px 14px;
+  gap: 8px;
+}
+
+.lcc-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.lcc-pane-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.lcc-pane-toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.lcc-pane-search {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: var(--bg-input, var(--bg-elevated));
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.lcc-pane-new {
+  flex-shrink: 0;
+}
+
+.lcc-pane-empty,
+.lcc-pane-error {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 2px;
+}
+
+.lcc-pane-error {
+  color: var(--accent-warn, var(--text-muted));
+}
+
+.lcc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.lcc-list-row.dimmed {
+  opacity: 0.55;
+}
+
+.lcc-list-btn {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lcc-list-btn:hover {
+  background: var(--bg-row-hover);
+  color: var(--text-primary);
+}
+
+.lcc-list-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.lcc-list-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.pane-loading {
+  flex: 1;
+  min-height: 0;
+}
+
+.trigger-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.automations-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.automations-view .agent-view-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.app-shell-unified {
+    transition-duration: 0ms !important;
+  }
+}

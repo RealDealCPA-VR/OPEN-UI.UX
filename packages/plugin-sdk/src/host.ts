@@ -1,4 +1,4 @@
-import type { ProviderFactory, Tool } from '@opencodex/core';
+import type { ProviderFactory, SubagentRunner, Tool } from '@opencodex/core';
 
 export interface PluginLogger {
   info(msg: string, meta?: unknown): void;
@@ -12,6 +12,7 @@ export interface PluginHost {
 
   registerTool(tool: Tool): void;
   registerProvider(provider: ProviderFactory): void;
+  registerRunner(runner: SubagentRunner): void;
   registerSlashCommand(name: string, handler: (args: string) => Promise<void>): void;
 
   getSetting<T = unknown>(key: string): Promise<T | undefined>;

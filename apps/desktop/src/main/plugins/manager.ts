@@ -9,8 +9,9 @@ import {
   type PluginLogger,
   type PluginManifest,
 } from '@opencodex/plugin-sdk';
-import type { ProviderFactory, Tool } from '@opencodex/core';
+import type { ProviderFactory, SubagentRunner, Tool } from '@opencodex/core';
 import type { PluginListItem, PluginPanelDescriptor, PluginStatus } from '../../shared/plugins';
+import { runnerRegistry } from '../agent/runner-registry-instance';
 import { logger } from '../logger';
 import { getStoredPlugins, setStoredPlugins } from '../storage/settings';
 import { getToolRegistry } from '../tools/registry';
@@ -26,6 +27,7 @@ interface RuntimeState {
   registeredTools: string[];
   registeredProviders: string[];
   registeredCommands: string[];
+  registeredRunners: string[];
 }
 
 type StateListener = (plugins: PluginListItem[]) => void;
@@ -52,6 +54,7 @@ function snapshot(): PluginListItem[] {
       status: r.status,
       grantedPermissions: r.grantedPermissions,
       registeredTools: r.registeredTools,
+      registeredRunners: r.registeredRunners,
       ...(r.lastError ? { lastError: r.lastError } : {}),
     });
   }
@@ -125,6 +128,24 @@ function buildHost(id: string): PluginHost {
         'plugin provider registered (tracked)',
       );
     },
+    registerRunner(runner: SubagentRunner) {
+      const r = runtime.get(id);
+      if (!r) return;
+      checkPermission(id, 'agent.runner');
+      const name = `plugin__${id}__${runner.id}`;
+      if (runnerRegistry.has(name)) {
+        logger.warn({ pluginId: id, runnerName: name }, 'plugin runner name collision');
+        return;
+      }
+      const wrapper: SubagentRunner = {
+        ...runner,
+        id: name,
+        run: runner.run.bind(runner),
+        ...(runner.checkInstalled ? { checkInstalled: runner.checkInstalled.bind(runner) } : {}),
+      };
+      runnerRegistry.register(wrapper);
+      r.registeredRunners.push(name);
+    },
     registerSlashCommand(name) {
       const r = runtime.get(id);
       if (!r) return;
@@ -172,9 +193,11 @@ function deactivatePlugin(id: string): void {
   if (!r) return;
   const registry = getToolRegistry();
   for (const toolName of r.registeredTools) registry.unregister(toolName);
+  for (const runnerName of r.registeredRunners) runnerRegistry.unregister(runnerName);
   r.registeredTools = [];
   r.registeredProviders = [];
   r.registeredCommands = [];
+  r.registeredRunners = [];
   try {
     void r.plugin?.deactivate?.();
   } catch (err) {
@@ -197,6 +220,7 @@ export async function loadStoredPlugins(): Promise<void> {
         registeredTools: [],
         registeredProviders: [],
         registeredCommands: [],
+        registeredRunners: [],
       });
       if (entry.enabled) await activatePlugin(entry.id);
     } catch (err) {
@@ -218,6 +242,7 @@ export async function installPluginFromPath(installPath: string): Promise<Plugin
     registeredTools: [],
     registeredProviders: [],
     registeredCommands: [],
+    registeredRunners: [],
   });
   persist();
   if (manifest.permissions.length === 0) await activatePlugin(id);

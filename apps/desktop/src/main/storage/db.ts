@@ -140,6 +140,12 @@ const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_scheduled_tasks_linked_skill ON scheduled_tasks(linked_skill_id);
     `,
   },
+  {
+    version: 9,
+    sql: `
+      ALTER TABLE scheduled_tasks ADD COLUMN runner_id TEXT;
+    `,
+  },
 ];
 
 let db: Database.Database | null = null;

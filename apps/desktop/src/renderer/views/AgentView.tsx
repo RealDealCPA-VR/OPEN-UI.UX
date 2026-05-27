@@ -4,6 +4,7 @@ import { ActiveRunCard } from '../components/ActiveRunCard';
 import { AgentRunDrawer } from '../components/AgentRunDrawer';
 import { AgentRunRow } from '../components/AgentRunRow';
 import { AgentSpawnModal } from '../components/AgentSpawnModal';
+import { HoverHint } from '../components/HoverHint';
 import { MergeReviewModal } from '../components/MergeReviewModal';
 import { consumeTransfer, onTransferPushed } from '../state/transfer';
 import { partitionRunsByActivity } from './agent-runs-derive';
@@ -122,17 +123,19 @@ export function AgentView(): JSX.Element {
             <code>spawn_subagent</code> tool from chat.
           </p>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => {
-            setSpawnInitialTask('');
-            setSpawnInitialWorkspace(undefined);
-            setSpawnOpen(true);
-          }}
-        >
-          + Spawn task
-        </button>
+        <HoverHint hint="Spawn new task">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setSpawnInitialTask('');
+              setSpawnInitialWorkspace(undefined);
+              setSpawnOpen(true);
+            }}
+          >
+            + Spawn task
+          </button>
+        </HoverHint>
       </header>
 
       {loadError && <p className="approvals-save-error">Failed to load runs: {loadError}</p>}

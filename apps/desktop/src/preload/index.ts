@@ -126,6 +126,13 @@ import type {
   SkillsChangedEvent,
   SkillsListResponse,
 } from '../shared/skills';
+import type {
+  HoverHintsChangedEvent,
+  PluginPreset,
+  RunnerInfo,
+  RunnerInstallCheck,
+  RunnersChangedEvent,
+} from '../shared/ipc-types';
 
 type DeepLinkListener = (url: string) => void;
 type ChatEventListener = (payload: ChatStreamEvent) => void;
@@ -270,6 +277,24 @@ const theme = {
   },
 };
 
+type HoverHintsChangedListener = (enabled: boolean) => void;
+
+const settings = {
+  getHoverHintsEnabled: (): Promise<boolean> => ipcRenderer.invoke('settings:get-hover-hints'),
+  setHoverHintsEnabled: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('settings:set-hover-hints', { enabled }),
+  onHoverHintsChanged: (listener: HoverHintsChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: HoverHintsChangedEvent): void =>
+      listener(payload.enabled);
+    ipcRenderer.on('settings:hover-hints-changed', wrapped);
+    return () => ipcRenderer.off('settings:hover-hints-changed', wrapped);
+  },
+  getRunnerCliPath: (runnerId: string): Promise<string | null> =>
+    ipcRenderer.invoke('settings:get-runner-cli-path', { runnerId }),
+  setRunnerCliPath: (runnerId: string, cliPath: string | null): Promise<void> =>
+    ipcRenderer.invoke('settings:set-runner-cli-path', { runnerId, cliPath }),
+};
+
 const workspace = {
   get: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:get'),
   setActive: (req: SetActiveWorkspaceRequest): Promise<WorkspaceState> =>
@@ -331,6 +356,7 @@ const plugins = {
     ipcRenderer.invoke('plugins:fetch-registry'),
   listPanels: (): Promise<{ panels: PluginPanelDescriptor[] }> =>
     ipcRenderer.invoke('plugins:list-panels'),
+  listPresets: (): Promise<PluginPreset[]> => ipcRenderer.invoke('plugins:list-presets'),
   onChanged: (listener: PluginsChangedListener): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: PluginsChangedEvent): void =>
       listener(payload);
@@ -340,6 +366,7 @@ const plugins = {
 };
 
 type AgentRunsChangedListener = (payload: AgentRunsChangedEvent) => void;
+type RunnersChangedListener = (payload: RunnersChangedEvent) => void;
 
 const agent = {
   listRuns: (): Promise<AgentRun[]> => ipcRenderer.invoke('agent:list-runs'),
@@ -362,6 +389,15 @@ const agent = {
     ipcRenderer.invoke('agent:spawn-from-ui', req),
   abortRun: (runId: string): Promise<AgentAbortRunResponse> =>
     ipcRenderer.invoke('agent:abort-run', { runId }),
+  listRunners: (): Promise<RunnerInfo[]> => ipcRenderer.invoke('agent:list-runners'),
+  checkRunnerInstalled: (runnerId: string): Promise<RunnerInstallCheck> =>
+    ipcRenderer.invoke('agent:check-runner-installed', { runnerId }),
+  onRunnersChanged: (listener: RunnersChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: RunnersChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('agent:runners-changed', wrapped);
+    return () => ipcRenderer.off('agent:runners-changed', wrapped);
+  },
 };
 
 const codebase = {
@@ -533,6 +569,7 @@ const api = {
   tools,
   toolAudit,
   theme,
+  settings,
   workspace,
   mcp,
   onboarding,

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { ScheduledTask } from '../../shared/scheduled-tasks';
 import type { Skill } from '../../shared/skills';
-import { describeTrigger } from '../../shared/triggers';
+import { ScheduledTaskCard } from '../components/ScheduledTaskCard';
 import { ScheduledTaskEditorModal } from '../components/ScheduledTaskEditorModal';
 import { ScheduledTaskRunsDrawer } from '../components/ScheduledTaskRunsDrawer';
 
@@ -178,116 +178,18 @@ export function ScheduledTasksPanel(): JSX.Element {
       ) : (
         <ul className="audit-list">
           {tasks.map((task) => (
-            <li key={task.id} className="audit-row scheduled-task-row">
-              <div className="scheduled-task-row-head">
-                <div className="scheduled-task-row-info">
-                  <div className="scheduled-task-name">
-                    {task.name}
-                    {!task.enabled && <span className="pill pill-warn">disabled</span>}
-                    {task.lastStatus && (
-                      <span
-                        className={
-                          task.lastStatus === 'completed'
-                            ? 'pill pill-ok'
-                            : task.lastStatus === 'failed'
-                              ? 'pill pill-warn'
-                              : 'pill'
-                        }
-                      >
-                        last: {task.lastStatus}
-                      </span>
-                    )}
-                  </div>
-                  <div className="scheduled-task-meta">
-                    <span title={describeTrigger(task.trigger)}>
-                      <code>{describeTrigger(task.trigger)}</code>
-                    </span>
-                    {task.nextRunAt && <span>Next: {task.nextRunAt}</span>}
-                    {task.lastRunAt && <span>Last: {task.lastRunAt}</span>}
-                    <span>
-                      {task.providerId} · {task.model}
-                    </span>
-                    {task.useWorktree && <span className="pill">worktree</span>}
-                    {task.allowedTools.length > 0 && (
-                      <span title={task.allowedTools.join(', ')}>
-                        tools: {task.allowedTools.length}
-                      </span>
-                    )}
-                    {task.linkedSkillId && (
-                      <span className="pill" title={`managed by skill: ${task.linkedSkillId}`}>
-                        skill
-                      </span>
-                    )}
-                  </div>
-                  {task.description && (
-                    <p className="scheduled-task-description">{task.description}</p>
-                  )}
-                </div>
-                <div className="scheduled-task-actions">
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => void runNow(task)}
-                    disabled={busyId === task.id}
-                  >
-                    {busyId === task.id ? '…' : 'Run now'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => setRunsDrawerTaskId(task.id)}
-                  >
-                    History
-                  </button>
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => setEditing(task)}
-                    disabled={busyId === task.id}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => void toggleEnabled(task)}
-                    disabled={busyId === task.id}
-                  >
-                    {task.enabled ? 'Disable' : 'Enable'}
-                  </button>
-                  {task.trigger.type === 'git-hook' && (
-                    <>
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => void reinstallHook(task)}
-                        disabled={busyId === task.id}
-                        title="Re-install the wrapper script into .git/hooks/"
-                      >
-                        Reinstall hook
-                      </button>
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => void uninstallHook(task)}
-                        disabled={busyId === task.id}
-                        title="Remove the wrapper script from .git/hooks/"
-                      >
-                        Uninstall hook
-                      </button>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => void deleteTask(task)}
-                    disabled={busyId === task.id}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            </li>
+            <ScheduledTaskCard
+              key={task.id}
+              task={task}
+              busy={busyId === task.id}
+              onRunNow={(t) => void runNow(t)}
+              onOpenHistory={(id) => setRunsDrawerTaskId(id)}
+              onEdit={(t) => setEditing(t)}
+              onToggleEnabled={(t) => void toggleEnabled(t)}
+              onReinstallHook={(t) => void reinstallHook(t)}
+              onUninstallHook={(t) => void uninstallHook(t)}
+              onDelete={(t) => void deleteTask(t)}
+            />
           ))}
         </ul>
       )}

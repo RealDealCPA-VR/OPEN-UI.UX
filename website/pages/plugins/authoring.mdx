@@ -98,4 +98,126 @@ Plugins run in the main-process host but the manifest-declared `permissions[]` g
 
 UI panels render in sandboxed iframes (`sandbox="allow-scripts"`); `postMessage` is the only bridge. No Node access in panel JS.
 
+## Building a runner adapter
+
+A runner adapter lets your plugin contribute a new entry to the agent-runner
+dropdown — sitting alongside the built-in `internal` runner and the
+first-party `claude-code` / `opencode` / `aider` adapters. See the
+[Agent runners guide](../guides/runners/) for the user-facing perspective.
+
+### Permission
+
+Register a runner only with the `agent.runner` permission declared in your
+manifest:
+
+```json
+{
+  "permissions": ["agent.runner"]
+}
+```
+
+Without it, `host.registerRunner(...)` throws at activation time.
+
+### The `SubagentRunner` contract
+
+```ts
+interface SubagentRunner {
+  readonly id: string;                 // unique across all runners
+  readonly displayName: string;        // shown in the picker
+  readonly streaming: boolean;         // false → UI shows a spinner only
+  checkInstalled(): Promise<{
+    installed: boolean;
+    version?: string;
+    detail?: string;                   // shown when installed=false
+  }>;
+  run(options: SubagentRunOptions): AsyncIterable<ChatEvent>;
+}
+```
+
+The full type — including `SubagentRunOptions`, `ChatEvent`, and the
+`RunnerRegistry` host wrapper — is in the
+[SDK API reference](./api/#hostregisterrunner-runner).
+
+### Event translation
+
+Whatever your CLI streams (NDJSON lines, SSE frames, plain stdout chunks),
+the agent loop only understands `ChatEvent`. Map them like this:
+
+| CLI signal | Emit as | Notes |
+|---|---|---|
+| Token / text chunk | `{ type: 'text_delta', delta: '...' }` | Yield as soon as bytes arrive; the renderer reflects partial deltas live. |
+| Tool invocation start | `{ type: 'tool_call', id, name, input }` | `id` must be unique within the run; reuse it on the corresponding `tool_result`. |
+| Tool result / observation | `{ type: 'tool_result', id, output, isError }` | Mirror the CLI's success/failure flag into `isError`. |
+| Run finished cleanly | `{ type: 'done', stopReason: 'stop' \| 'tool_use' \| 'max_tokens' \| 'cancelled' \| 'runner_error' \| 'runner_not_installed' }` | Always emit exactly one terminal event. |
+| Token usage report | `{ type: 'usage', inputTokens, outputTokens, cachedInputTokens? }` | Optional but recommended — feeds the cost meter. |
+| CLI crash / parse failure | `{ type: 'done', stopReason: 'runner_error', error: '<message>' }` | Don't throw out of the iterator; the loop translates a throw into an unhelpful generic error. |
+
+If your CLI doesn't surface tool calls separately (Aider, for example,
+just writes diffs to disk), skip `tool_call` / `tool_result` entirely and
+emit one final `text_delta` with a human-readable summary plus `done`.
+
+### Child-process lifecycle
+
+Use the shared `treeKill` helper exported from `@opencodex/core` to clean
+up child processes when the run is cancelled or the host quits:
+
+```ts
+import { treeKill } from '@opencodex/core';
+
+async function* run(options: SubagentRunOptions) {
+  const child = spawn(this.cliPath, ['--prompt', options.prompt], {
+    cwd: options.cwd,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  const cleanup = () => treeKill(child.pid).catch(() => {});
+  options.signal.addEventListener('abort', cleanup, { once: true });
+
+  try {
+    for await (const event of parseStream(child.stdout)) {
+      yield event;
+    }
+  } finally {
+    cleanup();
+  }
+}
+```
+
+`treeKill` SIGTERMs the whole process tree (Aider, for instance, spawns its
+own `git` children). Don't reinvent it — the host expects this cleanup path
+on shutdown.
+
+### `checkInstalled` shape
+
+Called by Settings → Runners to drive the status pill, and at the top of
+every run to short-circuit with `stopReason: 'runner_not_installed'` if the
+CLI vanished since last check:
+
+```ts
+async checkInstalled() {
+  try {
+    const { stdout } = await execFile(this.cliPath, ['--version'], {
+      timeout: 3000,
+    });
+    return { installed: true, version: stdout.trim() };
+  } catch (err) {
+    return {
+      installed: false,
+      detail: `Not found on PATH. Override at Settings → Runners → ${this.id} → cliPath.`,
+    };
+  }
+}
+```
+
+Keep the probe under a few seconds. The Settings panel calls it
+synchronously when the user opens the page.
+
+### When to set `streaming: false`
+
+Set `streaming: false` if your CLI only reports state on exit (Aider is the
+canonical example — it edits files in place and prints a summary when
+done). The OpenCodex UI then shows an indeterminate spinner instead of a
+streaming text bubble for the duration of the run, and your iterator is
+expected to yield exactly one `text_delta` + one `done` near the end.
+
 For the full TypeScript shape, see [SDK API reference](./api/).

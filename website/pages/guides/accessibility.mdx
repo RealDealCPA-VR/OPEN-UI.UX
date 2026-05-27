@@ -1,0 +1,46 @@
+import { Callout } from 'nextra/components';
+
+# Accessibility
+
+OpenCodex aims to be usable from the keyboard alone, with screen readers,
+and with reduced visual chrome. Settings → Accessibility collects the
+toggles that affect the renderer's appearance and assistive behavior.
+
+## Hover hints
+
+Hover hints are short tooltips that appear when you mouse over (or focus
+via keyboard) icon-only controls in the chrome — the nav rail,
+context-pane action buttons, runner pill, etc. They're driven by the
+`<HoverHint>` component and surface the affordance's name plus, where
+useful, its keyboard shortcut.
+
+Toggle them at Settings → Accessibility → **Show hover hints** (on by
+default). Turning them off hides every `<HoverHint>` instance app-wide
+without affecting the underlying `aria-label`s — screen readers still
+announce the control. Use this if you find tooltips visually noisy.
+
+Hint authors keep each hint **five words or fewer** — the constraint is
+enforced in dev (the component throws when the text exceeds five words)
+so the chrome stays scannable. If your control needs more explanation,
+write a help-page entry and link to it from the panel that owns the
+control, not from a hover.
+
+## Keyboard navigation
+
+- `Tab` / `Shift+Tab` cycles every interactive control in the visible
+  region; focus rings are always rendered, never suppressed by
+  `:focus { outline: none }`.
+- The nav rail accepts arrow-key navigation when focused; `Enter`
+  activates the highlighted destination.
+- Modal dialogs trap focus and restore it to the trigger control on
+  close.
+- The chat composer's slash menu and the runner picker are both
+  keyboard-only navigable via arrow keys + `Enter`.
+
+<Callout type="info">
+  Filing an accessibility issue? Include your platform, your assistive
+  technology version (if applicable), and the path you took through the
+  UI. The issue template at
+  [github.com/TODO-org/TODO-repo/issues/new?template=accessibility.yml](https://github.com/TODO-org/TODO-repo/issues/new)
+  walks through the questions.
+</Callout>

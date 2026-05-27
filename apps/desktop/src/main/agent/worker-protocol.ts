@@ -15,6 +15,7 @@ export const workerStartMessageSchema = z.object({
   allowedToolNames: z.array(z.string()).optional(),
   budget: subagentBudgetSchema.optional(),
   systemPrompt: z.string().optional(),
+  runnerId: z.string().min(1).default('internal'),
 });
 
 const stopReasonSchema = z.enum([
@@ -24,6 +25,8 @@ const stopReasonSchema = z.enum([
   'budget_exceeded',
   'error',
   'unauthorized_tool',
+  'runner_error',
+  'runner_not_installed',
 ]);
 
 const toolEventSchema = z.object({
@@ -43,6 +46,7 @@ export const workerResultMessageSchema = z.object({
   stopReason: stopReasonSchema,
   error: z.string().optional(),
   iterations: z.number(),
+  runnerId: z.string().optional(),
 });
 
 export const workerEventMessageSchema = z.object({

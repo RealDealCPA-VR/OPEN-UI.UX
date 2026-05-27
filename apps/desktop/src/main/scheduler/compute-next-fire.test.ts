@@ -20,6 +20,7 @@ function plainTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
     lastStatus: null,
     lastRunId: null,
     linkedSkillId: null,
+    runnerId: null,
     createdAt: '',
     updatedAt: '',
     ...overrides,

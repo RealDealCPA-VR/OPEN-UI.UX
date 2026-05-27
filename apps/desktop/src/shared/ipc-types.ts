@@ -3,6 +3,7 @@
  * Both sides import from here so the wire format stays in sync.
  */
 
+import { z } from 'zod';
 import type { AgentRun, AgentRunsChangedEvent } from './agent-runs';
 import type {
   AgentAbortRunRequest,
@@ -131,6 +132,70 @@ import type {
   SkillsListResponse,
 } from './skills';
 
+export const runnerInstallCheckSchema = z.object({
+  ok: z.boolean(),
+  version: z.string().optional(),
+  hint: z.string().optional(),
+});
+
+export const runnerInfoSchema = z.object({
+  id: z.string(),
+  displayName: z.string(),
+  source: z.enum(['builtin', 'plugin']),
+  pluginId: z.string().optional(),
+  streaming: z.boolean(),
+  installed: runnerInstallCheckSchema.optional(),
+});
+
+export type RunnerInstallCheck = z.infer<typeof runnerInstallCheckSchema>;
+export type RunnerInfo = z.infer<typeof runnerInfoSchema>;
+
+export const checkRunnerInstalledRequestSchema = z.object({
+  runnerId: z.string().min(1),
+});
+
+export type CheckRunnerInstalledRequest = z.infer<typeof checkRunnerInstalledRequestSchema>;
+
+export const runnersChangedEventSchema = z.object({
+  runners: z.array(runnerInfoSchema),
+});
+
+export type RunnersChangedEvent = z.infer<typeof runnersChangedEventSchema>;
+
+export const setHoverHintsRequestSchema = z.object({
+  enabled: z.boolean(),
+});
+
+export type SetHoverHintsRequest = z.infer<typeof setHoverHintsRequestSchema>;
+
+export const getRunnerCliPathRequestSchema = z.object({
+  runnerId: z.string().min(1),
+});
+
+export type GetRunnerCliPathRequest = z.infer<typeof getRunnerCliPathRequestSchema>;
+
+export const setRunnerCliPathRequestSchema = z.object({
+  runnerId: z.string().min(1),
+  cliPath: z.string().nullable(),
+});
+
+export type SetRunnerCliPathRequest = z.infer<typeof setRunnerCliPathRequestSchema>;
+
+export const hoverHintsChangedEventSchema = z.object({
+  enabled: z.boolean(),
+});
+
+export type HoverHintsChangedEvent = z.infer<typeof hoverHintsChangedEventSchema>;
+
+export const pluginPresetSchema = z.object({
+  id: z.string(),
+  displayName: z.string(),
+  description: z.string(),
+  source: z.string(),
+});
+
+export type PluginPreset = z.infer<typeof pluginPresetSchema>;
+
 export interface IpcInvokeChannels {
   'app:version': {
     request: void;
@@ -248,6 +313,22 @@ export interface IpcInvokeChannels {
     request: SetThemeRequest;
     response: ThemePreference;
   };
+  'settings:get-hover-hints': {
+    request: void;
+    response: boolean;
+  };
+  'settings:set-hover-hints': {
+    request: SetHoverHintsRequest;
+    response: void;
+  };
+  'settings:get-runner-cli-path': {
+    request: GetRunnerCliPathRequest;
+    response: string | null;
+  };
+  'settings:set-runner-cli-path': {
+    request: SetRunnerCliPathRequest;
+    response: void;
+  };
   'workspace:get': {
     request: void;
     response: WorkspaceState;
@@ -348,6 +429,10 @@ export interface IpcInvokeChannels {
     request: void;
     response: { panels: PluginPanelDescriptor[] };
   };
+  'plugins:list-presets': {
+    request: void;
+    response: PluginPreset[];
+  };
   'chat:get-read-only-mode': {
     request: void;
     response: { readOnly: boolean };
@@ -388,6 +473,14 @@ export interface IpcInvokeChannels {
   'agent:abort-run': {
     request: AgentAbortRunRequest;
     response: AgentAbortRunResponse;
+  };
+  'agent:list-runners': {
+    request: void;
+    response: RunnerInfo[];
+  };
+  'agent:check-runner-installed': {
+    request: CheckRunnerInstalledRequest;
+    response: RunnerInstallCheck;
   };
   'codebase:search': {
     request: CodebaseSearchRequest;
@@ -577,6 +670,8 @@ export interface IpcEventChannels {
   'plugins:changed': PluginsChangedEvent;
   'chat:read-only-changed': { readOnly: boolean };
   'agent:runs-changed': AgentRunsChangedEvent;
+  'agent:runners-changed': RunnersChangedEvent;
+  'settings:hover-hints-changed': HoverHintsChangedEvent;
   'shell:output': ShellOutputEvent;
   'telemetry:config-changed': TelemetryConfigChangedEvent;
   'crash-reporting:config-changed': CrashReportingConfigChangedEvent;

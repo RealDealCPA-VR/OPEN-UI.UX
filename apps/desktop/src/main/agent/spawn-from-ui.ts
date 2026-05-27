@@ -1,7 +1,8 @@
 import { logger } from '../logger';
 import { recordComplete, recordError, recordStart } from './run-registry';
-import { runSubagent, type SubagentResult } from './subagent';
-import { isUtilityProcessAvailable, runSubagentInWorker } from './worker-host';
+import { runnerRegistry } from './runner-registry-instance';
+import { type SubagentResult } from './subagent';
+import { isUtilityProcessAvailable, runSubagentInline, runSubagentInWorker } from './worker-host';
 import { createWorktree, isGitRepo } from './worktrees';
 
 export interface SpawnFromUiOptions {
@@ -10,6 +11,7 @@ export interface SpawnFromUiOptions {
   modelId: string;
   workspaceRoot: string;
   useWorktree: boolean;
+  runnerId?: string;
 }
 
 interface ActiveSpawn {
@@ -26,12 +28,18 @@ export function abortSpawnedRun(runId: string): boolean {
 }
 
 export async function spawnFromUiAsync(opts: SpawnFromUiOptions): Promise<{ runId: string }> {
+  const runnerId = opts.runnerId ?? 'internal';
+  if (!runnerRegistry.has(runnerId)) {
+    throw new Error(`Unknown runner: ${runnerId}`);
+  }
+
   const controller = new AbortController();
   const ctx = await bootstrapWorktreeOrSkip(opts);
   const runId = recordStart({
     task: opts.task,
     providerId: opts.providerId,
     modelId: opts.modelId,
+    runnerId,
     ...(ctx.worktreePath ? { worktreePath: ctx.worktreePath } : {}),
     ...(ctx.worktreeBranch ? { worktreeBranch: ctx.worktreeBranch } : {}),
     ...(ctx.repoRoot ? { worktreeRepoRoot: ctx.repoRoot } : {}),
@@ -51,16 +59,31 @@ export async function spawnFromUiAsync(opts: SpawnFromUiOptions): Promise<{ runI
             modelId: opts.modelId,
             workspaceRoot: workRoot,
             signal: controller.signal,
+            runnerId,
           });
         } catch (err) {
           logger.error(
             { err: err instanceof Error ? err.message : String(err) },
             'spawn-from-ui worker failed; falling back to inline',
           );
-          result = await runInline(opts, workRoot, controller.signal);
+          result = await runSubagentInline({
+            task: opts.task,
+            providerId: opts.providerId,
+            modelId: opts.modelId,
+            workspaceRoot: workRoot,
+            signal: controller.signal,
+            runnerId,
+          });
         }
       } else {
-        result = await runInline(opts, workRoot, controller.signal);
+        result = await runSubagentInline({
+          task: opts.task,
+          providerId: opts.providerId,
+          modelId: opts.modelId,
+          workspaceRoot: workRoot,
+          signal: controller.signal,
+          runnerId,
+        });
       }
       recordComplete(runId, result);
     } catch (err) {
@@ -80,8 +103,15 @@ interface WorktreeCtx {
 }
 
 async function bootstrapWorktreeOrSkip(opts: SpawnFromUiOptions): Promise<WorktreeCtx> {
+  const runnerId = opts.runnerId ?? 'internal';
+  const workspaceIsGit = await isGitRepo(opts.workspaceRoot);
+  if (runnerId !== 'internal' && !workspaceIsGit) {
+    throw new Error(
+      'External runners require a git workspace so changes can be reviewed before merge',
+    );
+  }
   if (!opts.useWorktree) return {};
-  if (!(await isGitRepo(opts.workspaceRoot))) {
+  if (!workspaceIsGit) {
     logger.info(
       { workspaceRoot: opts.workspaceRoot },
       'spawn-from-ui: useWorktree requested but workspace is not a git repo; falling back to direct execution',
@@ -102,24 +132,4 @@ async function bootstrapWorktreeOrSkip(opts: SpawnFromUiOptions): Promise<Worktr
     );
     return {};
   }
-}
-
-async function runInline(
-  opts: SpawnFromUiOptions,
-  workRoot: string,
-  signal: AbortSignal,
-): Promise<SubagentResult> {
-  const [{ buildProviderForId }, { getToolRegistry }] = await Promise.all([
-    import('../chat/provider-builder'),
-    import('../tools/registry'),
-  ]);
-  const provider = await buildProviderForId(opts.providerId);
-  return runSubagent({
-    task: opts.task,
-    provider,
-    modelId: opts.modelId,
-    toolRegistry: getToolRegistry(),
-    workspaceRoot: workRoot,
-    signal,
-  });
 }

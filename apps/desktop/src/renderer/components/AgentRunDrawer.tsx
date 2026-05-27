@@ -130,6 +130,25 @@ export function AgentRunDrawer({
         )}
       </div>
 
+      {run.stopReason === 'runner_not_installed' && (
+        <div className="agent-run-drawer-section agent-run-drawer-callout">
+          <h3>Runner not installed</h3>
+          <p>
+            The runner <code>{run.runnerId}</code> is not installed on this machine. Configure its
+            CLI path in Settings.
+          </p>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              window.location.hash = '#/settings/runners';
+            }}
+          >
+            Open Runners settings
+          </button>
+        </div>
+      )}
+
       {run.error && (
         <div className="agent-run-drawer-section">
           <h3>Error</h3>

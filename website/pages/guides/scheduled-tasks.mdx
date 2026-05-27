@@ -1,3 +1,5 @@
+import { Callout } from 'nextra/components';
+
 # Scheduled tasks
 
 Scheduled tasks let you register agent runs that fire automatically on a cron
@@ -6,7 +8,8 @@ merge-review flow as manual agent spawns — the only differences are how the
 run is triggered (a cron timer, not a button click) and the defaults for
 unattended execution (worktree by default, optional tool whitelist).
 
-Find them in `Settings → Scheduled tasks`.
+Find them in `Automations` (top-level nav, left rail). Deep links to the
+old `Settings → Scheduled Tasks` route 301 to the new location.
 
 ## When to use a scheduled task
 
@@ -74,6 +77,44 @@ Tick the tools the task is permitted to use. If you leave the list empty,
 A scheduled run that tries to call a tool outside its whitelist short-circuits
 with `stopReason: 'unauthorized_tool'` and lands in the failed-runs list.
 The tool is never executed.
+
+<Callout type="warning">
+  When a scheduled task uses an **external runner** (Claude Code, OpenCode,
+  Aider, plugin), this whitelist is **advisory** — enforcement is the
+  runner's responsibility, not OpenCodex's. See "Picking a runner" below.
+</Callout>
+
+## Picking a runner
+
+Every scheduled task carries a `runnerId`. By default it's `internal` —
+the same in-process runner the chat composer uses, with full per-call
+approval and `ChatEvent` streaming. The editor lets you swap to any
+registered runner: the three first-party adapters (`claude-code`,
+`opencode`, `aider`) plus any plugin-registered runner gated by the
+`agent.runner` permission. See the [Agent runners guide](./runners/) for
+how to install and configure them.
+
+When to pick which:
+
+| Runner | Best for | Trade-off |
+|---|---|---|
+| `internal` | Tight host integration; per-call approval; full audit log; rich `ChatEvent` streaming. | Limited to the providers + tools OpenCodex itself supports. |
+| `claude-code` | Long-horizon tasks that benefit from Claude Code's planning loop and its built-in tool surface. | Tool calls are out-of-process; OpenCodex approval modals don't fire — Claude Code's own approval system is authoritative. |
+| `opencode` | Multi-model orchestration; tasks where you want OpenCode's own agent shape rather than OpenCodex's. | Same out-of-process caveat as `claude-code`. |
+| `aider` | Pair-programming-style refactors; tasks that are mostly edit-loops with `git`. | Non-streaming — the UI shows a spinner until the run completes; tool calls aren't itemized. |
+
+**External-runner tasks always run inside a worktree.** This is enforced —
+OpenCodex creates a fresh worktree under
+`<workspace>/.opencodex/worktrees/<id>` on branch
+`opencodex/subagent/<id>` before spawning the CLI, and queues the
+resulting diff for merge-review. The "Use git worktree" checkbox is
+checked and disabled when `runnerId !== 'internal'`. If the workspace
+isn't a git repo, external-runner tasks refuse to start and land in the
+failed-runs list with `stopReason: 'runner_error'`.
+
+The same `unauthorized_tool` short-circuit that protects internal runs
+does **not** protect external runs — the host doesn't see the runner's
+per-call decisions. Trust the runner's own approval system there.
 
 ## Catch-up policy
 

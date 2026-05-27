@@ -226,3 +226,186 @@ class PluginLoadError extends Error {
 ```
 
 Thrown by both loader helpers when manifest validation, JSON parsing, or module import fails. `pluginPath` is the disk path so the host can surface it in the install UI.
+
+---
+
+## Runner SDK
+
+The runner SDK lets a plugin contribute a new entry to the agent-runner
+picker. See the [Agent runners guide](../guides/runners/) for the
+user-facing perspective and [Building a runner adapter](./authoring/#building-a-runner-adapter)
+for end-to-end author docs.
+
+### Imports
+
+```ts
+import {
+  type SubagentRunner,
+  type SubagentRunOptions,
+  type ChatEvent,
+  type RunnerInstallStatus,
+  RunnerRegistry,
+  RunnerAlreadyRegisteredError,
+} from '@opencodex/core';
+```
+
+All runner types live in `@opencodex/core` — not `@opencodex/plugin-sdk` —
+because the host's agent loop also depends on them. The plugin SDK
+re-exports the `host.registerRunner(...)` method below.
+
+---
+
+### `host.registerRunner(runner)`
+
+```ts
+registerRunner(runner: SubagentRunner): void
+```
+
+Adds a runner to the shared `RunnerRegistry`. Requires the `agent.runner`
+permission in the manifest. Throws `RunnerAlreadyRegisteredError` if a
+runner with the same `id` is already registered (built-in or by another
+plugin).
+
+Auto-unregistered on `deactivate()` or uninstall.
+
+```ts
+host.registerRunner({
+  id: 'my-runner',
+  displayName: 'My Runner',
+  streaming: true,
+  async checkInstalled() { /* ... */ },
+  async *run(options) { /* yield ChatEvents */ },
+});
+```
+
+---
+
+### `SubagentRunner`
+
+```ts
+interface SubagentRunner {
+  readonly id: string;
+  readonly displayName: string;
+  readonly streaming: boolean;
+  checkInstalled(): Promise<RunnerInstallStatus>;
+  run(options: SubagentRunOptions): AsyncIterable<ChatEvent>;
+}
+```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | `string` | Unique across all runners. Used as the dropdown value and persisted in scheduled tasks. Convention: lowercase + hyphens (e.g. `claude-code`). |
+| `displayName` | `string` | Shown in the runner picker and Settings → Runners list. |
+| `streaming` | `boolean` | `false` makes the UI show a spinner instead of a live text bubble. Set `false` for runners that only report on exit (Aider). |
+| `checkInstalled()` | `Promise<RunnerInstallStatus>` | Probed by Settings and at the start of every run. Keep under ~3 seconds. |
+| `run(options)` | `AsyncIterable<ChatEvent>` | Must yield exactly one terminal `done` event. Honor `options.signal`. |
+
+---
+
+### `SubagentRunOptions`
+
+```ts
+interface SubagentRunOptions {
+  runId: string;
+  prompt: string;
+  cwd: string;
+  model?: string;
+  allowedTools?: readonly string[];
+  signal: AbortSignal;
+  logger: PluginLogger;
+  cliPath?: string;
+}
+```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `runId` | `string` | Stable id for this run. Use as the prefix in your log filename. |
+| `prompt` | `string` | The user's prompt (or, for scheduled tasks, the cron task's prompt body). |
+| `cwd` | `string` | Always a git worktree path for external runners; the workspace root for the `internal` runner. |
+| `model` | `string?` | Provider model id when the runner cares (Claude Code, OpenCode). `undefined` for runners that use their own selector. |
+| `allowedTools` | `readonly string[]?` | Tool-name whitelist from the scheduled task or chat session. Pass through to your CLI if it accepts one; otherwise advisory. |
+| `signal` | `AbortSignal` | Aborts on cancel + on host shutdown. Wire to `treeKill(child.pid)`. |
+| `logger` | `PluginLogger` | Scoped to this run. Output lands in `runner-<id>-<runId>.log`. |
+| `cliPath` | `string?` | The user's override from Settings → Runners. Fall back to your default (typically `id`) when unset. |
+
+---
+
+### `ChatEvent`
+
+```ts
+type ChatEvent =
+  | { type: 'text_delta'; delta: string }
+  | { type: 'tool_call'; id: string; name: string; input: unknown }
+  | { type: 'tool_result'; id: string; output: unknown; isError?: boolean }
+  | { type: 'usage'; inputTokens: number; outputTokens: number; cachedInputTokens?: number }
+  | { type: 'done'; stopReason: StopReason; error?: string }
+  | { type: 'error'; message: string };
+
+type StopReason =
+  | 'stop'
+  | 'tool_use'
+  | 'max_tokens'
+  | 'cancelled'
+  | 'runner_error'
+  | 'runner_not_installed';
+```
+
+Identical to the `ChatEvent` provider adapters emit — runners and providers
+share the canonical streaming format. See the [event translation table](./authoring/#event-translation)
+in the authoring guide for the CLI-signal → event mapping.
+
+---
+
+### `RunnerInstallStatus`
+
+```ts
+interface RunnerInstallStatus {
+  installed: boolean;
+  version?: string;
+  detail?: string;
+}
+```
+
+`detail` is shown verbatim in the Settings status pill tooltip when
+`installed` is false. Use it to point the user at the fix (install
+command, path override location).
+
+---
+
+### `RunnerRegistry`
+
+Host-side registry. Plugin authors don't construct one — the host owns the
+singleton, and `host.registerRunner(...)` is the supported path. Listed
+here for completeness and for in-tree contributors:
+
+```ts
+class RunnerRegistry {
+  register(runner: SubagentRunner): void;
+  unregister(id: string): boolean;
+  get(id: string): SubagentRunner | undefined;
+  list(): readonly SubagentRunner[];
+  has(id: string): boolean;
+}
+```
+
+| Method | Description |
+| --- | --- |
+| `register(runner)` | Adds the runner. Throws `RunnerAlreadyRegisteredError` if `runner.id` collides. |
+| `unregister(id)` | Removes a runner by id. Returns `true` if something was removed. |
+| `get(id)` | Look up a single runner. |
+| `list()` | All currently registered runners, in insertion order. |
+| `has(id)` | Cheap existence check used by the scheduled-task validator. |
+
+---
+
+### `RunnerAlreadyRegisteredError`
+
+```ts
+class RunnerAlreadyRegisteredError extends Error {
+  readonly runnerId: string;
+}
+```
+
+Thrown by `RunnerRegistry.register()` and bubbled up by
+`host.registerRunner()` when two runners try to claim the same `id`.
+`runnerId` is the conflicting id.

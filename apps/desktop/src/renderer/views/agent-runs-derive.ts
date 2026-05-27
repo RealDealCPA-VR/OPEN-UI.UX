@@ -51,6 +51,8 @@ const STOP_REASON_LABEL: Record<AgentRunStopReason, string> = {
   budget_exceeded: 'budget_exceeded',
   error: 'error',
   unauthorized_tool: 'unauthorized_tool',
+  runner_error: 'Runner crashed',
+  runner_not_installed: 'Runner not installed',
 };
 
 export function stopReasonLabel(reason: AgentRunStopReason | null): string {

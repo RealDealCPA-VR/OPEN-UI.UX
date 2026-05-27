@@ -87,6 +87,18 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description:
       'Reusable markdown prompt templates with frontmatter. Surface in chat as /skill:<name>. Skills can declare an allowed-tools whitelist and an optional cron schedule that auto-registers a scheduled task.',
   },
+  {
+    slug: 'runners',
+    title: 'Runners',
+    description:
+      'Manage agent runners and CLI paths. Built-in runs in-process; plugin runners shell out to external harnesses with their own provider, tools, and approvals.',
+  },
+  {
+    slug: 'accessibility',
+    title: 'Accessibility',
+    description:
+      'Tune the UI for comfort. Toggle hover hints globally so contextual helper bubbles stay out of your way.',
+  },
 ] as const;
 
 export function slugify(input: string): string {

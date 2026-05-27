@@ -1,5 +1,7 @@
+import { collectSubagentResult, type SubagentRunOptions } from '@opencodex/core';
 import { workerStartMessageSchema, type WorkerOutboundMessage } from './worker-protocol';
-import { runSubagent } from './subagent';
+import { runnerRegistry } from './runner-registry-instance';
+import { internalRunner } from './subagent';
 
 interface ParentPortLike {
   on(event: 'message', listener: (msg: { data: unknown }) => void): void;
@@ -20,6 +22,16 @@ function post(msg: WorkerOutboundMessage): void {
   getParentPort().postMessage(msg);
 }
 
+// The worker is short-lived per subagent run; ensure the built-in runner is
+// available in the utility process before we look up a runnerId.
+if (!runnerRegistry.has(internalRunner.id)) {
+  try {
+    runnerRegistry.register(internalRunner);
+  } catch {
+    // already registered concurrently — fine
+  }
+}
+
 async function handleStart(rawMessage: unknown): Promise<void> {
   const parsed = workerStartMessageSchema.safeParse(rawMessage);
   if (!parsed.success) {
@@ -29,21 +41,35 @@ async function handleStart(rawMessage: unknown): Promise<void> {
   const start = parsed.data;
 
   try {
-    const [{ buildProviderForId }, { getToolRegistry }] = await Promise.all([
-      import('../chat/provider-builder'),
-      import('../tools/registry'),
-    ]);
-    const provider = await buildProviderForId(start.providerId);
-    const result = await runSubagent({
+    const runner = runnerRegistry.get(start.runnerId);
+    if (!runner) {
+      post({
+        kind: 'result',
+        text: '',
+        toolEvents: [],
+        inputTokens: 0,
+        outputTokens: 0,
+        stopReason: 'runner_not_installed',
+        error: `Unknown runner: ${start.runnerId}`,
+        iterations: 0,
+        runnerId: start.runnerId,
+      });
+      return;
+    }
+
+    const runOpts: SubagentRunOptions = {
       task: start.task,
-      provider,
+      providerId: start.providerId,
       modelId: start.modelId,
-      toolRegistry: getToolRegistry(),
-      ...(start.allowedToolNames ? { allowedToolNames: start.allowedToolNames } : {}),
       workspaceRoot: start.workspaceRoot,
-      ...(start.systemPrompt ? { systemPrompt: start.systemPrompt } : {}),
+      ...(start.allowedToolNames ? { allowedToolNames: start.allowedToolNames } : {}),
       ...(start.budget ? { budget: start.budget } : {}),
-    });
+      ...(start.systemPrompt ? { systemPrompt: start.systemPrompt } : {}),
+    };
+
+    const iter = runner.run(runOpts);
+    const result = await collectSubagentResult(iter);
+
     post({
       kind: 'result',
       text: result.text,
@@ -53,6 +79,7 @@ async function handleStart(rawMessage: unknown): Promise<void> {
       stopReason: result.stopReason,
       ...(result.error ? { error: result.error } : {}),
       iterations: result.iterations,
+      runnerId: start.runnerId,
     });
   } catch (err) {
     post({ kind: 'error', message: err instanceof Error ? err.message : String(err) });

@@ -58,6 +58,11 @@ export function ActiveRunCard({ run, now, onSelect }: ActiveRunCardProps): JSX.E
             scheduled
           </span>
         )}
+        {run.runnerId !== 'internal' && (
+          <span className="pill pill-runner" title={`Runner: ${run.runnerId}`}>
+            {run.runnerId}
+          </span>
+        )}
         <h3 className="active-run-card-title">{truncate(run.task, 140)}</h3>
       </header>
       <div className="active-run-card-meta">

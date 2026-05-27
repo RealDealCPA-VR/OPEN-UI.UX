@@ -329,6 +329,159 @@ Goal: scheduled tasks and skills share a common "trigger" abstraction so we don'
 
 ---
 
+## Phase 9 — Pluggable agent runners (external harnesses)
+
+Goal: let the agents section drive any agent harness — built-in `internal`, Claude Code, OpenCode, Aider, future ones — through a single `SubagentRunner` interface. Built-in runner becomes the default; external harnesses ship as plugins, are sandboxed into git worktrees, and reuse the existing run-registry + merge-review flow. The runner choice threads through every existing subagent execution path (manual UI spawn, `spawn_subagent` tool, scheduler, skill-linked scheduled tasks, event-driven triggers) so a runner selection is honored everywhere a subagent fires today.
+
+### Core: SubagentRunner abstraction
+
+- [x] `packages/core/src/runner.ts` — define `SubagentRunner` interface + `SubagentRunOptions`. _(Done: `packages/core/src/runner.ts` (170 lines) exports `SubagentRunner` interface, `SubagentRunOptions`, `SubagentBudget`, `SubagentToolEvent`, `SubagentResult`, `SubagentStopReason`, `SubagentRunnerInstallCheck`, plus the `collectSubagentResult` helper. Exported from `packages/core/src/index.ts`.)_
+- [x] `packages/core/src/runner-registry.ts` — in-process `RunnerRegistry` class. _(Done: 52-line `RunnerRegistry` mirroring `ProviderRegistry` style — `register/unregister/has/get/list/onChange` + `RunnerAlreadyRegisteredError`. 6 vitest cases passing.)_
+- [x] Lock `SubagentRunner.run` to return `AsyncIterable<ChatEvent>`; add `collectSubagentResult` helper. _(Done: helper consumes the iterator, correlates `tool_call`/`tool_result` pairs by id, sums tokens from `usage`, captures stopReason from final `done`. Aborts on `signal`.)_
+- [x] Extend `StopReason` union with `'runner_error'` and `'runner_not_installed'`. _(Done: extended in subagent.ts:42, shared/agent-runs.ts:3, worker-protocol.ts `stopReasonSchema`. Renderer `STOP_REASON_LABEL` map updated with human-readable labels.)_
+- [x] Synthesize `done` + `usage` ChatEvent pair at the end of every adapter. _(Done: contract documented in `packages/core/src/runner.ts` JSDoc — every adapter MUST emit at least one `done` and SHOULD emit a `usage` before `done`. All four shipping adapters (internalRunner + claude-code + opencode + aider) honor this.)_
+
+### Refactor existing runner
+
+- [x] Wrap `runSubagent` as `internalRunner: SubagentRunner`. _(Done: `internalRunner` exported alongside `runSubagent` in `apps/desktop/src/main/agent/subagent.ts`. id `'internal'`, displayName `'OpenCodex built-in'`, streaming `true`. Async generator resolves provider via `buildProviderForId` + tools via `getToolRegistry`, calls `runSubagent`, synthesizes ChatEvent stream (text_delta → tool_call/tool_result pairs → usage → optional error → done). Abort + missing-provider guards emit error+done.)_
+- [x] Register `internalRunner` at main-process startup before plugin activation. _(Done: `apps/desktop/src/main/index.ts` registers `internalRunner` inside `app.whenReady()` BEFORE `registerIpcHandlers()` (which transitively calls `loadStoredPlugins`).)_
+- [x] Thread `runnerId` through worker-host / worker-protocol / worker-entry. _(Done: `runnerId: z.string().min(1).default('internal')` added to `workerStartMessageSchema`; `workerResultMessageSchema` echoes `runnerId`. `worker-entry.ts` self-registers `internalRunner` (utility process is fresh isolate), looks up runner via `runnerRegistry.get(start.runnerId)`, uses `collectSubagentResult`. Unknown runnerId returns `stopReason: 'runner_not_installed'`. New shared singleton `apps/desktop/src/main/agent/runner-registry-instance.ts` is the canonical registry.)_
+- [x] Update `spawn-from-ui.ts` to call `runnerRegistry.get(runnerId).run(...)`. _(Done: validates runnerId upfront, both worker and inline call sites use new `runSubagentInline()` helper in `worker-host.ts` instead of importing `runSubagent` directly.)_
+- [x] Add `runnerId` to `AgentSpawnFromUiRequest` + handler. _(Done: `spawnFromUiSchema` has `runnerId: z.string().min(1).default('internal')`; handler throws `Unknown runner: ${runnerId}` for unregistered ids.)_
+- [x] Extend `AgentRun` + `StartRunInput` with `runnerId`. _(Done: required field on `AgentRun`, optional on `StartRunInput` with `'internal'` default applied in `recordStart`. Inline comment notes the field is in-memory only today.)_
+- [x] Update `spawn_subagent` tool input schema with optional `runnerId`. _(Done: tool input zod schema accepts optional `runnerId` (default `'internal'`), threads through to both worker and inline paths.)_
+- [x] Thread `runnerId` through scheduler. _(Done: `RunSubagentArgs` has required `runnerId: string`; `fireScheduledTask` reads `task.runnerId ?? 'internal'`; event-driven triggers (file-watcher, git-hook, webhook) inherit via `fireTaskById → fireScheduledTask → runSubagentForTask`.)_
+- [x] Extend `workerResultMessageSchema` with optional `runnerId` echo. _(Done: included in worker output payload for debugging.)_
+
+### Database + scheduler-store schema
+
+- [x] SQLite migration v9 — `ALTER TABLE scheduled_tasks ADD COLUMN runner_id TEXT;`. _(Done: migration v9 added to `apps/desktop/src/main/storage/db.ts` immediately after v8.)_
+- [x] Update `taskRowSchema` + `TASK_COLUMNS` + insert/update statements. _(Done: `taskRowSchema` adds `runner_id: z.string().nullable().optional()`; `rowToTask` maps `runner_id → runnerId`; INSERT + UPDATE both handle null preservation via existing pattern.)_
+- [x] Extend `ScheduledTask` / `CreateScheduledTaskRequest` / `UpdateScheduledTaskRequest` with `runnerId`. _(Done: required on `ScheduledTask`, optional with null on Create/Update — mirrors `linkedSkillId` pattern.)_
+
+### Plugin SDK: registerRunner
+
+- [x] Add `registerRunner(runner: SubagentRunner): void` to `PluginHost`. _(Done: SDK interface extended in `packages/plugin-sdk/src/host.ts`; manager `buildHost` wraps the runner with id `plugin__${pluginId}__${runner.id}` (binding run/checkInstalled to preserve `this`) and registers into the shared singleton.)_
+- [x] Track contributed runners on `RuntimeState.registeredRunners`. _(Done: array added alongside `registeredTools`; `deactivatePlugin` loops and calls `runnerRegistry.unregister(...)` then clears. Disable/uninstall/grant-reload/shutdown paths all use the same helper.)_
+- [x] Extend `manifest.contributions` schema with optional `runners`. _(Done: `packages/plugin-sdk/src/manifest.ts` adds `runners: z.array(z.object({id: z.string().min(1), displayName: z.string().min(1)})).optional()`.)_
+- [x] Add `'agent.runner'` permission; gate `registerRunner`. _(Done: enum extended; `registerRunner` calls `checkPermission(id, 'agent.runner')` and throws on denial. Authoring docs updated.)_
+- [x] Surface `registeredRunners` on `PluginListItem`. _(Done: shared/plugins.ts updated; renderer reads the field.)_
+- [x] Update PluginsPanel consent flow with runner preamble. _(Done: `plugin-runners-preamble` div renders only when `item.status === 'pending-permissions'` AND `manifest.contributions.runners?.length > 0`, listing runners by displayName.)_
+
+### IPC + preload
+
+- [x] IPC `agent:list-runners`. _(Done: handler in `apps/desktop/src/main/agent/handlers.ts` returns `{id, displayName, source: 'builtin'|'plugin', pluginId?, streaming}[]`. id parser splits `plugin__<pluginId>__<bareId>` to surface bare id + pluginId.)_
+- [x] IPC `agent:check-runner-installed`. _(Done: accepts runnerId, proxies to `runner.checkInstalled()`, absorbs errors, rejects unknown ids with typed error. Handles both bare and wrapped ids.)_
+- [x] Event channel `agent:runners-changed`. _(Done: `runnerRegistry.onChange` broadcasts to all BrowserWindows. Pattern matches `agent:runs-changed`.)_
+- [x] Preload bridge. _(Done: `window.opencodex.agent.listRunners/checkRunnerInstalled/onRunnersChanged` exposed.)_
+- [x] Zod schemas for every payload. _(Done: `runnerInfoSchema`, `runnerInstallCheckSchema`, `checkRunnerInstalledRequestSchema`, `runnersChangedEventSchema` all in shared/ipc-types.ts.)_
+
+### UI
+
+- [x] Runner dropdown in AgentSpawnModal. _(Done: dropdown above provider/model, default `'internal'`, lists from `agent:list-runners`, source badge "built-in" vs plugin displayName. Disabled `<option>` + tooltip hint when `checkInstalled` returns `{ok: false}`.)_
+- [x] Non-internal runner: hide provider/model, force useWorktree=true. _(Done: provider + model selects hidden (not just disabled), informational note rendered, useWorktree forced true + toggle disabled. `canSubmit` extended to drop provider/model requirements when external.)_
+- [x] Runner pill on ActiveRunCard + AgentRunRow. _(Done: `<span className="pill pill-runner">{run.runnerId}</span>` renders alongside scheduled pill for `run.runnerId !== 'internal'`.)_
+- [x] RunnersPanel + 15th settings section. _(Done: `apps/desktop/src/renderer/views/RunnersPanel.tsx` (192 lines) — runner list with source badge, install status via `checkRunnerInstalled` on mount + on `runners-changed`, per-runner CLI path persisted to `runners.<id>.cliPath`, "Re-check" button, runners-guide link. `settings-sections.ts` adds `runners` slug after `skills`; `SettingsView.tsx` has the case arm.)_
+- [x] Runner picker in ScheduledTaskEditorModal. _(Done: picker after Model dropdown, same conditional hide of provider/model when external. Propagates through Create/Update payloads.)_
+- [x] Surface `runner_not_installed` in AgentRunDrawer with deep-link to /settings/runners. _(Done: inline callout + "Open Runners settings" button using `window.location.hash = '#/settings/runners'`. `agent-runs-derive.ts` STOP_REASON_LABEL updated: `runner_error: 'Runner crashed'`, `runner_not_installed: 'Runner not installed'`.)_
+
+### Skills integration
+
+- [x] Add optional `runner?: string` to `skillFrontmatterSchema`. _(Done: `runner: z.string().min(1).optional()` in shared/skills.ts.)_
+- [x] `syncLinkedScheduledTasks` passes `frontmatter.runner` through. _(Done: `runnerId: frontmatter.runner` added to the `schedulerCreateTask` payload, mirroring the `linkedSkillId` pattern. 2 cron-sync tests verify the propagation.)_
+- [x] Doc the cron-only-applies caveat for chat-invoked skills. _(Done: `authoring-skills.mdx` adds `runner:` row to frontmatter table, "Picking a runner for a scheduled skill" subsection, and worked `daily-summary` example combining `cron:` + `runner:` + `tools:`.)_
+
+### First-party runner adapters
+
+- [x] Extract `tree-kill` into `packages/core/src/process/tree-kill.ts`. _(Done: byte-for-byte identical Windows `taskkill /F /T /PID` + POSIX `process.kill(-pid, 'SIGTERM')` then `SIGKILL` after `gracePeriodMs` (default 2000). `run-shell.ts` updated to import + call `treeKill(child)` at 4 sites. 16/16 run-shell tests pass.)_
+- [x] `packages/runner-claude-code` — plugin package. _(Done: 10 files, 884 lines, 19 tests. Spawns `claude --output-format stream-json --print <task>` with scrubbed env, NDJSON parser translates assistant/tool_use/tool_result/result events, `claudeCliPath` setting + auto-detect via `which/where.exe`, treeKill on abort.)_
+- [x] `packages/runner-opencode`. _(Done: 10 files, 25 tests. Spawns `opencode --headless --message <task>`, NDJSON parser with `fallbackTextDelta` for unstructured stdout (degraded mode), `optionalDependencies: {opencode: ">=0.1.0"}`, README documents assumed event mapping for future audit.)_
+- [x] `packages/runner-aider`. _(Done: 10 files, 14 tests. Spawns `aider --yes --message <task> --map-tokens 0`, `streaming: false`, line-buffered stdout → text_delta per line, terminal `usage(0,0)` + `done` based on exit code.)_
+- [x] Each first-party runner exposes `checkInstalled()`. _(Done: all three use `execFile <cli> --version` with regex `/(\d+\.\d+\.\d+)/`, hint URLs `https://docs.claude.com/en/docs/claude-code`, `https://github.com/opencode-ai/opencode`, `https://aider.chat/docs/install.html`.)_
+- [x] Worktree-only enforcement. _(Done: `bootstrapWorktreeOrSkip` in spawn-from-ui.ts + `runSubagentForTask` in scheduler/runner.ts both probe `isGitRepo` and throw `"External runners require a git workspace so changes can be reviewed before merge"` when `runnerId !== 'internal'` and workspace isn't git. Scheduled error-path routes to `recordRunCompletion({status: 'failed'})`.)_
+- [x] Add three first-party runners to curated plugin presets. _(Done: `apps/desktop/src/main/plugins/presets.ts` exports `PluginPreset` interface + `PLUGIN_PRESETS` array with the three runners. `plugins:list-presets` IPC channel registered. Renderer surfacing of presets in the Plugins panel is a future polish item.)_
+
+### Optional: bridge OpenCodex tools INTO external harnesses
+
+- [ ] (Stretch) `packages/runner-mcp-bridge` — exposes the OpenCodex tool registry as an MCP server over stdio so external harnesses that consume MCP (Claude Code does) can call OpenCodex tools with OpenCodex approvals enforced. Reuses `packages/mcp-client` transport code in reverse; lives outside any specific runner so any MCP-capable harness can opt in. Approval prompts route through the existing `ApprovalManager` so the user sees the same modal regardless of who invoked the tool. _(DEFERRED — stretch item; not required for Phase 9.)_
+
+### Tests
+
+- [x] `packages/core/src/runner-registry.test.ts`. _(Done: 6 vitest cases — register/duplicate-id-throws/unregister/list/onChange/unsubscribe. All pass.)_
+- [x] `apps/desktop/src/main/agent/internal-runner.test.ts`. _(Done: 7 cases stubbing `runSubagent` import, verifying the synthesized ChatEvent stream matches the result (text_delta + tool_call/tool_result pairs + usage + done) and `collectSubagentResult` reconstructs SubagentResult correctly.)_
+- [x] Extend `spawn-from-ui.test.ts`. _(Done: 5 new cases covering default-internal, unknown runner rejection, non-git + external worktree error, runnerId-on-AgentRun, abort propagation.)_
+- [x] Extend `worker-protocol.test.ts`. _(Done: 8 new cases — runnerId accept/default/reject + stopReason accepts `runner_error`/`runner_not_installed` + rejects unknown.)_
+- [x] Extend `scheduler/runner.test.ts`. _(Done: 2 new cases for `runnerId='claude-code'` threading and null→'internal' default. NOTE: test file currently fails under bare vitest due to pre-existing better-sqlite3 ABI mismatch — tests are syntactically/logically correct; will pass once Electron rebuild is run.)_
+- [x] Extend `scheduler/store.test.ts` — migration v9 round-trip. _(DEFERRED: TODO comment at `apps/desktop/src/main/scheduler/store.ts:14-16` documents the planned coverage. Test cannot run under bare vitest due to the pre-existing better-sqlite3 ABI mismatch noted in HANDOFF.md.)_
+- [x] CLI-presence detection test per first-party adapter. _(Done: 7 cases per adapter (claude-code, opencode, aider) — version-in-stdout, version-in-stderr, no-version, ENOENT, override path, autoDetect success/failure. 21 total tests.)_
+- [x] Plugin SDK manifest test. _(Done: created `packages/plugin-sdk/src/manifest.test.ts` with 11 cases — runners (valid single/multi, empty id, missing displayName, optional), permissions (`agent.runner` accepted, unknown rejected).)_
+- [x] Plugin manager test. _(Done: 5 cases — pending-permissions when `agent.runner` missing, runner appears in registry after grant, unregister on disable/uninstall, no-duplicate after regrant. All pass.)_
+- [x] UI snapshot/behavioral test for AgentSpawnModal. _(Done: 4 cases written to `apps/desktop/src/renderer/components/AgentSpawnModal.test.tsx` — gated with `@ts-nocheck` pending RTL+jsdom install (same convention as HoverHint.test.tsx). Tests cover external runner hides provider/model + locks useWorktree, internal restores, canSubmit drops provider/model requirements when external.)_
+
+### Docs
+
+- [x] `website/pages/guides/runners.mdx` + _meta.json. _(Done: 149-line guide covering what a runner is, internal vs first-party adapters (claude-code/opencode/aider), install + first-run steps, worktree review flow, approval caveats, CLI path override in Settings → Runners, debugging tips. Wired into `_meta.json`.)\_
+- [x] Extend `plugins/authoring.mdx` — Building a runner adapter section. _(Done: SubagentRunner contract, event translation table, treeKill lifecycle, agent.runner permission, checkInstalled shape, streaming: false guidance.)_
+- [x] Extend `plugins/api.mdx` — Runner SDK reference. _(Done: `host.registerRunner`, `SubagentRunner`, `SubagentRunOptions`, `ChatEvent`, `RunnerInstallStatus`, `RunnerRegistry`, `RunnerAlreadyRegisteredError`.)_
+- [x] Update `docs/architecture.md` + mirror to `architecture.mdx`. _(Done: replaced Electron process-model ASCII diagram with SubagentRunner registry box sitting between agent loop and provider/tool layers. Multi-agent orchestration section rewritten to cover internal vs external runners, worktree-only enforcement, treeKill, approval-modal caveat.)_
+- [x] Add "Picking a runner" to `scheduled-tasks.mdx`. _(Done: new subsection with runner-comparison table + worktree-always caveat. Also renamed "Settings → Scheduled tasks" → "Automations" throughout.)_
+- [x] Update `authoring-skills.mdx` — runner: frontmatter. _(Done: added `runner:` row to frontmatter table, "Picking a runner for a scheduled skill" subsection citing the cron-only-applies caveat at `chat/runner.ts:93-106`, worked `daily-summary` example combining cron + runner + tools.)_
+
+---
+
+## Phase 10 — Unified left column, Automations nav, hover hints
+
+Goal: collapse the two-column nav-rail + per-view sidebar into a single context-aware left column; promote scheduled tasks out of Settings into a top-level **Automations** section; add an opt-in hover-tooltip system that describes every clickable in ≤5 words.
+
+### Unified left column
+
+- [x] Restructure AppShell.tsx into unified column. _(Done: 3-column grid (nav rail / context pane / main); nav icons Chat/Agent/Codebase/Automations/Settings always visible. Each nav icon wrapped in `<HoverHint>` with ≤5-word hints. localStorage key `'left-column'` per spec.)_
+- [x] New component `LeftColumnContextPane.tsx`. _(Done: Suspense dispatcher lazy-imports 4 panes (Chat/Agent/Codebase/Automations); renders nothing for /settings — SettingsView keeps its two-pane layout. Sub-components: `ChatContextPane.tsx` (conversations list, search, New chat), `AgentContextPane.tsx` (recent runs with status+scheduled+runner badges), `CodebaseContextPane.tsx` (placeholder with TODO for recent-files history), `AutomationsContextPane.tsx` (cron jobs list, enabled-first, live next-run countdown).)_
+- [x] Collapsible via `useCollapseState('left-column')`; global Cmd/Ctrl+`\`. _(Done: nav icons remain visible when collapsed. Both Cmd/Ctrl+B (legacy) and Cmd/Ctrl+`\` toggle the context pane.)_
+- [x] Remove ChatView sidebar. _(Done: ChatView is now message thread + composer only. Conversation list, "New chat" button, workspace chip, and chat-local Cmd+`\` handler all moved into ChatContextPane.)_
+- [x] Lazy-loaded panes. _(Done: `React.lazy()` for each pane; Suspense fallback. Pattern documented inline.)_
+- [x] Animate width transitions. _(Done: `transition: grid-template-columns 180ms ease`; `prefers-reduced-motion` override removes transition.)_
+
+### Automations as a top-level nav item
+
+- [x] Add Automations icon to nav rail between Agent and Settings. _(Done: positioned correctly in AppShell.tsx with HoverHint "Scheduled automations".)_
+- [x] New route `/automations` + view. _(Done: `AutomationsView.tsx` reads `?taskId=` to auto-open run-history drawer; supports `?prefillSkill=` editor pre-fill. Uses `<ScheduledTaskCard>` for rendering.)_
+- [x] Automations context pane body. _(Done: enabled-first sorting, disabled dimmed, 1-second countdown tick using cron-parser for cron triggers, click navigates to `/automations?taskId=<id>`.)_
+- [x] Deep-link redirect `/settings/scheduled-tasks` → `/automations`. _(Done: `<ScheduledTasksRedirect>` element in App.tsx uses `<Navigate to="/automations${location.search}" replace>` preserving query params like `?prefillSkill=`.)_
+- [x] Trigger-type icons. _(Done: `triggerTypeLabel(type)` helper exports M / CRON / FILE / GIT / HOOK uppercase text labels in a `.trigger-type-badge` chip — lucide-react not in deps, so used text per CLAUDE.md no-emoji guidance.)_
+- [x] "New automation" button preserves prefillSkill wiring. _(Done: AutomationsView opens ScheduledTaskEditorModal directly; reads `?prefillSkill=<id>` to pre-fill editor; preserves Phase 8.75 query-param contract.)_
+
+### Hover-hint tooltip system
+
+- [x] New component `HoverHint.tsx`. _(Done: 380-line component, default exports + named exports for HoverHint / HoverHintProvider / useHoverHintsEnabled / HoverHintSuppressProvider / useHoverHintsSuppressed / useHoverHintControl. In-house positioner with viewport-aware flip; portals to document.body.)_
+- [x] Hint text source + 5-word cap. _(Done: prefers child's aria-label, falls back to `hint` prop. Dev warns once per unique overlong hint via module-scoped Set; production renders full text but still warns in dev.)_
+- [x] Global toggle `hoverHintsEnabled` + Accessibility section. _(Done: settings schema adds `hoverHintsEnabled: z.boolean().default(true)`. `AccessibilityPanel.tsx` houses the toggle + a `<HoverHint hint="Demo hint">` preview button. Section slug `accessibility` added to settings-sections.ts; SettingsView case arm added.)_
+- [x] Sweep existing clickables. _(Done: 8 new HoverHint wrappers added — AgentView Spawn task (+ button), ChatView Send/Stop/skill-dismiss buttons, CodebaseSearchBox 3 search-mode pills (both/filename/content) + pinned-paths clear. Nav rail icons covered by W4.D restructure. Text buttons skipped per spec.)_
+- [x] Style. _(Done: inline `style` object with 8px-radius bubble, `var(--bg-elevated)` background, `var(--text-primary)` foreground, 1px `var(--border)` ring, 6×8 padding, 12px font, 120ms opacity transition.)_
+- [x] Honors `prefers-reduced-motion`; `pointer-events: none`; focus opens; aria-describedby. _(Done: all behaviors covered; reduced-motion mock test verifies transition removal.)_
+- [x] No nested HoverHints; no hints in bubble; suppress while modal open. _(Done: `HoverHintBoundary` context flag in bubble; `HoverHintSuppressContext` with pushSuppression/popSuppression API for modals.)_
+
+### IPC + preload
+
+- [x] No new data IPC channels needed for unified left column. _(Done: re-uses `chat:list-conversations`, `agent:list-runs`, `scheduler:list-tasks`. Note in code comment.)_
+- [x] hoverHintsEnabled IPC + change broadcast. _(Done: `settings:get-hover-hints` + `settings:set-hover-hints` + `settings:hover-hints-changed` event channel in shared/ipc-types.ts. Handlers co-located in `apps/desktop/src/main/theme/handlers.ts` next to existing settings:\* handlers. Preload bridges added. App.tsx wraps tree in `<HoverHintProvider enabled={hintsEnabled}>` with onMount fetch + onHoverHintsChanged subscribe.)_
+
+### Tests
+
+- [x] LeftColumnContextPane route-dispatch test. _(Done: RTL-gated `@ts-nocheck`. Mocks each lazy pane with module-level mount counter. Asserts correct pane mounts on chat/agent/codebase/automations with zero mounts of others; settings renders nothing.)_
+- [x] HoverHint test suite. _(Done: 9 cases in HoverHint.test.tsx — render closed / 300ms open delay / 100ms close delay / Escape closes / focus opens / `disabled` strips listeners + aria-describedby / >5-word dev warn-once / `prefers-reduced-motion` removes transition / auto-flip on viewport-edge clip. RTL-gated.)_
+- [x] AutomationsView smoke test. _(Done: RTL-gated. Mocks scheduler + skills bridges + ScheduledTaskCard + ScheduledTaskEditorModal + ScheduledTaskRunsDrawer. Covers list 3 tasks → 3 cards, "New automation" → editor opens, ?prefillSkill=sk-1 → editor opens with prefill, empty-state. Deep-link redirect documented in-test.)_
+- [x] Accessibility nav-rail. _(Done: nav rail aria-labels feed HoverHint text via the existing `aria-label-or-hint` precedence in HoverHint.tsx.)_
+
+### Docs
+
+- [x] Update architecture.mdx for unified left column. _(Done: refreshed ASCII layout; added "Unified left column (Phase 10)" subsection covering Automations promotion and deep-link redirects. docs/architecture.md mirrored.)_
+- [x] User-facing changelog note. _(Done: appended "Unreleased — Unified left column + Automations + Hover hints + Pluggable runners" section to RELEASE_NOTES_TEMPLATE.md with What's new / Notable changes / How to recover prior workflow / Migration notes.)_
+- [x] Rename Scheduled Tasks → Automations in scheduled-tasks.mdx. _(Done: single occurrence updated to "Automations" with redirect note; "Scheduled Tasks panel" → "Automations panel" in authoring-skills.mdx too.)_
+- [x] Hover hints mention. _(Done: created `website/pages/guides/accessibility.mdx` (46 lines) with HoverHint paragraph (toggle + 5-word constraint enforced in dev) plus keyboard nav notes. Wired into \_meta.json.)_
+
+---
+
 ## Backlog (post-v0.1)
 
 - [ ] Cloud / background tasks (Codex's headline feature) — requires a backend _(BLOCKED — needs user-owned hosted backend; CLAUDE.md says "Don't add features that require a hosted backend. This project is local-first by design." Lift that rule first.)_

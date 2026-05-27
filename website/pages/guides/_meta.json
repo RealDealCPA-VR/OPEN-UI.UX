@@ -3,5 +3,7 @@
   "security": "Security model",
   "mcp": "MCP integration",
   "scheduled-tasks": "Scheduled tasks",
-  "authoring-skills": "Authoring skills"
+  "authoring-skills": "Authoring skills",
+  "runners": "Agent runners",
+  "accessibility": "Accessibility"
 }

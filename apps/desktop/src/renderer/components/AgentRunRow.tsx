@@ -68,6 +68,11 @@ export function AgentRunRow({
               scheduled
             </span>
           )}
+          {run.runnerId !== 'internal' && (
+            <span className="pill pill-runner" title={`Runner: ${run.runnerId}`}>
+              {run.runnerId}
+            </span>
+          )}
           <span className={statusPillClass(run.status)}>{statusLabel(run.status)}</span>
           <span className="audit-row-duration">
             {formatTokens(run.inputTokens)} in · {formatTokens(run.outputTokens)} out

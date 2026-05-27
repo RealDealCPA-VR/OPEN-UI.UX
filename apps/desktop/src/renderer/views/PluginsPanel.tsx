@@ -125,6 +125,16 @@ export function PluginsPanel(): JSX.Element {
                 </div>
               )}
               {item.lastError && <div className="plugin-error">{item.lastError}</div>}
+              {item.status === 'pending-permissions' &&
+                item.manifest.contributions.runners &&
+                item.manifest.contributions.runners.length > 0 && (
+                  <div className="plugin-runners-preamble">
+                    This plugin will register {item.manifest.contributions.runners.length} agent
+                    runner
+                    {item.manifest.contributions.runners.length === 1 ? '' : 's'}:{' '}
+                    {item.manifest.contributions.runners.map((r) => r.displayName).join(', ')}
+                  </div>
+                )}
               <div className="plugin-actions">
                 {item.status === 'pending-permissions' && (
                   <button

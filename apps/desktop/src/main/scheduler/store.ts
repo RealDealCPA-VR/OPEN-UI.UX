@@ -11,6 +11,10 @@ import type {
 import { getDb } from '../storage/db';
 import { parseTriggerJson, serializeTrigger, triggerSchema } from '../triggers/types';
 
+// TODO(phase9): add migration v9 round-trip test for `runner_id` (create with
+// runnerId: 'claude-code', read back, update to null, read back). Deferred: bare
+// vitest still hits the known better-sqlite3 ABI mismatch noted in HANDOFF.md.
+
 const statusSchema = z.enum(['idle', 'running', 'completed', 'failed']);
 
 const taskRowSchema = z.object({
@@ -30,6 +34,7 @@ const taskRowSchema = z.object({
   last_status: z.string().nullable(),
   last_run_id: z.string().nullable(),
   linked_skill_id: z.string().nullable().optional(),
+  runner_id: z.string().nullable().optional(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -76,6 +81,7 @@ function rowToTask(row: TaskRow): ScheduledTask {
     lastStatus: row.last_status === null ? null : (row.last_status as ScheduledTaskStatus),
     lastRunId: row.last_run_id,
     linkedSkillId: row.linked_skill_id ?? null,
+    runnerId: row.runner_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -95,7 +101,7 @@ function rowToRun(row: RunRow): ScheduledTaskRun {
 }
 
 const TASK_COLUMNS =
-  'id, name, description, trigger_json, prompt, provider_id, model, workspace_path, allowed_tools_json, use_worktree, enabled, last_run_at, next_run_at, last_status, last_run_id, linked_skill_id, created_at, updated_at';
+  'id, name, description, trigger_json, prompt, provider_id, model, workspace_path, allowed_tools_json, use_worktree, enabled, last_run_at, next_run_at, last_status, last_run_id, linked_skill_id, runner_id, created_at, updated_at';
 const RUN_COLUMNS =
   'id, task_id, started_at, completed_at, status, agent_run_id, error_message, was_catchup';
 
@@ -124,8 +130,8 @@ export function createTask(
   db.prepare(
     `INSERT INTO scheduled_tasks
        (id, name, description, trigger_json, prompt, provider_id, model, workspace_path,
-        allowed_tools_json, use_worktree, enabled, linked_skill_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        allowed_tools_json, use_worktree, enabled, linked_skill_id, runner_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     req.name,
@@ -139,6 +145,7 @@ export function createTask(
     req.useWorktree === false ? 0 : 1,
     req.enabled === false ? 0 : 1,
     req.linkedSkillId ?? null,
+    req.runnerId ?? null,
   );
   const created = getTask(id, db);
   if (!created) throw new Error(`createTask: row missing after insert: ${id}`);
@@ -164,12 +171,13 @@ export function updateTask(
     useWorktree: req.useWorktree ?? existing.useWorktree,
     enabled: req.enabled ?? existing.enabled,
     linkedSkillId: req.linkedSkillId === undefined ? existing.linkedSkillId : req.linkedSkillId,
+    runnerId: req.runnerId === undefined ? existing.runnerId : req.runnerId,
   };
   db.prepare(
     `UPDATE scheduled_tasks SET
        name = ?, description = ?, trigger_json = ?, prompt = ?, provider_id = ?, model = ?,
        workspace_path = ?, allowed_tools_json = ?, use_worktree = ?, enabled = ?,
-       linked_skill_id = ?, updated_at = CURRENT_TIMESTAMP
+       linked_skill_id = ?, runner_id = ?, updated_at = CURRENT_TIMESTAMP
      WHERE id = ?`,
   ).run(
     next.name,
@@ -183,6 +191,7 @@ export function updateTask(
     next.useWorktree ? 1 : 0,
     next.enabled ? 1 : 0,
     next.linkedSkillId ?? null,
+    next.runnerId ?? null,
     req.id,
   );
   const refreshed = getTask(req.id, db);

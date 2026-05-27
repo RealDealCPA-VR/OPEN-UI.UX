@@ -1,0 +1,149 @@
+import { Callout } from 'nextra/components';
+
+# Agent runners
+
+OpenCodex can delegate a focused task to any agent harness — the built-in
+in-process runner, a CLI like Claude Code, OpenCode, or Aider, or any
+third-party runner shipped through a plugin. The selector lives next to the
+provider/model picker in the chat composer and inside the Scheduled Tasks
+editor.
+
+## What is a runner?
+
+A `SubagentRunner` is an interface in `@opencodex/core` that lets the agent
+loop hand a unit of work off to something other than the in-process provider.
+The runner owns its own context window, its own tool surface, and its own
+approval model. OpenCodex translates whatever streaming format the runner
+produces back into the host's canonical `ChatEvent` series so the chat UI,
+audit log, and merge-review flow are identical regardless of which runner
+ran.
+
+The contract is intentionally small:
+
+- A unique `id` (e.g. `internal`, `claude-code`, `opencode`, `aider`).
+- A `checkInstalled()` probe that reports whether the underlying CLI exists.
+- A `run(options)` method that yields `ChatEvent`s and respects the
+  `AbortSignal`.
+
+See the [SDK API reference](../plugins/api/#hostregisterrunner-runner) for
+the full TypeScript shape.
+
+## Built-in runner (`internal`)
+
+The default. Runs in the same Electron main process the chat lives in,
+through the same `LLMProvider` you have configured in Settings → Providers.
+This is the runner the chat composer uses unless you pick a different one,
+and the one Scheduled Tasks default to.
+
+Pick `internal` when you want:
+
+- Full `ChatEvent` streaming (text deltas, every tool call, every result).
+- OpenCodex's approval modals to fire on every write/execute tool call.
+- Tight integration with the host UI — diff inspection, hover hints,
+  per-call audit rows.
+
+## First-party adapters
+
+| Runner | Package | CLI it spawns | Streaming |
+|---|---|---|---|
+| Claude Code | `@opencodex/runner-claude-code` | `claude` | yes |
+| OpenCode | `@opencodex/runner-opencode` | `opencode` | yes |
+| Aider | `@opencodex/runner-aider` | `aider` | no (spinner only) |
+
+Each adapter is a thin wrapper that spawns the CLI as a child process,
+parses its stdout, and yields normalized `ChatEvent`s. None of them ship a
+copy of the CLI itself — you install the CLI separately. The adapter
+checks for it on activation.
+
+## Install + first-run steps
+
+1. **Enable the adapter.** Open Plugins, find the runner package, click
+   Enable. OpenCodex prompts for the `agent.runner` permission — the only
+   permission a runner adapter needs.
+2. **Install the underlying CLI** on your machine if you haven't already:
+   - Claude Code: `npm i -g @anthropic-ai/claude-code` (then run
+     `claude login`).
+   - OpenCode: see the OpenCode README for the platform-specific installer.
+   - Aider: `pipx install aider-chat` (or `pip install aider-chat`).
+3. **Verify the install.** Settings → Runners shows a row per registered
+   runner with a green/red status pill driven by `checkInstalled()`. A red
+   pill means the CLI isn't on `PATH` or your override is wrong.
+4. **(Optional) Override the CLI path.** Settings → Runners → per-runner
+   `cliPath` field. Use this when you have multiple installs and want to
+   point at a specific one (e.g. a project-local venv for Aider).
+5. **Run something.** Open chat (or open Automations to create a scheduled
+   task), pick the runner from the dropdown, send a prompt.
+
+## Worktree review flow
+
+External runners always run inside a git worktree. OpenCodex creates a fresh
+worktree under `<workspace>/.opencodex/worktrees/<id>` on branch
+`opencodex/subagent/<id>` before invoking the CLI, sets that as the CLI's
+cwd, and queues the resulting diff for review when the run finishes.
+
+To review: Agent → History → Review changes. You see the same diff viewer
+you get for built-in subagents, with **Accept** (merges via
+`git merge --no-ff` into the workspace branch) and **Reject** (discards the
+worktree and branch) buttons.
+
+If the workspace is not a git repo, external runners refuse to start —
+unlike the internal runner, there is no fallback to writing directly into
+the workspace. The runner emits a `done` event with
+`stopReason: 'runner_error'` and an explanatory error.
+
+## Approval-model caveats
+
+External-runner tool calls happen out-of-process, inside the CLI's own
+sandbox. **OpenCodex's approval modals do not fire** for those calls — the
+CLI is in charge of its own approvals, and OpenCodex sees the post-hoc
+diff, not the per-call decisions.
+
+Consequences:
+
+- The OpenCodex per-tool approval policy (`always ask` / `auto-approve
+  reads` / etc.) has no effect on external runs.
+- The `Allowed tools` whitelist on a scheduled task is not enforced
+  per-call when an external runner runs the task. It still gates which
+  tools the runner *receives in its prompt context*, but enforcement is
+  the CLI's responsibility.
+- The audit log records the run start, the run end, and the resulting
+  diff — not the individual tool calls the CLI made internally.
+
+If you need strict per-call approval, use the `internal` runner.
+
+## CLI path override
+
+Each runner adapter exposes a `cliPath` setting in
+Settings → Runners. Leave blank to let the adapter use `PATH`. Set to an
+absolute path when:
+
+- You have multiple versions installed and want to pin one.
+- The CLI lives inside a project-local virtualenv (`./venv/bin/aider`).
+- You're testing a development build.
+
+OpenCodex re-runs `checkInstalled()` whenever the override changes and
+updates the Settings status pill in place.
+
+## Debugging tips
+
+- **Logs.** Every runner gets a scoped logger; output goes to the
+  OpenCodex log file (Help → Open log folder) under
+  `runner-<id>-<run-id>.log`. Stderr from the spawned CLI is captured
+  verbatim.
+- **`runner_not_installed` stop reason.** `checkInstalled()` returned
+  false at run start. Install the CLI or fix the path override.
+- **`runner_error` stop reason.** The CLI crashed, exited non-zero, or
+  produced output the adapter couldn't parse. Check the log file — the
+  last 200 lines of stderr are appended.
+- **Hung run.** Cancel from the chat header. OpenCodex sends `SIGTERM`
+  to the spawned process tree via the shared `treeKill` helper from
+  `@opencodex/core` — child processes (e.g. a `git` invocation Aider
+  started) get cleaned up too.
+- **Streaming feels jerky.** Some CLIs flush stdout in large chunks.
+  That's the CLI's behavior, not the adapter's — OpenCodex yields events
+  as fast as they arrive.
+
+<Callout type="info">
+  Want to ship your own runner? See [Building a runner adapter](../plugins/authoring/#building-a-runner-adapter)
+  in the plugin authoring guide.
+</Callout>

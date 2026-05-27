@@ -13,6 +13,7 @@ export interface StartRunInput {
   task: string;
   providerId: string;
   modelId: string;
+  runnerId?: string;
   worktreePath?: string;
   worktreeBranch?: string;
   worktreeRepoRoot?: string;
@@ -52,11 +53,13 @@ export function recordStart(input: StartRunInput): string {
     input.worktreePath !== undefined &&
     input.worktreeBranch !== undefined &&
     input.worktreeRepoRoot !== undefined;
+  // runnerId is in-memory only today; revisit if/when agent_runs lands in SQLite
   const run: AgentRun = {
     id,
     task: input.task,
     providerId: input.providerId,
     modelId: input.modelId,
+    runnerId: input.runnerId ?? 'internal',
     status: 'running',
     startedAt: Date.now(),
     completedAt: null,

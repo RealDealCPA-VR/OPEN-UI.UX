@@ -1,7 +1,7 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { z } from 'zod';
-import { defineTool } from '@opencodex/core';
+import { defineTool, treeKill } from '@opencodex/core';
 import { resolveWithinWorkspace } from './path-guard';
 
 const input = z.object({
@@ -36,7 +36,6 @@ export interface RunShellResult {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_BYTES = 1024 * 1024;
-const SIGKILL_GRACE_MS = 2000;
 
 const DEFAULT_ENV_KEEP: readonly string[] = [
   'PATH',
@@ -107,7 +106,7 @@ export const runShellTool = defineTool({
             stderrBytes = maxBytes;
             truncatedStderr = true;
           }
-          tryKill(child);
+          treeKill(child);
         } else {
           chunks.push(chunk);
           if (which === 'stdout') stdoutBytes += chunk.length;
@@ -120,12 +119,12 @@ export const runShellTool = defineTool({
 
       const timeoutTimer = setTimeout(() => {
         timedOut = true;
-        tryKill(child);
+        treeKill(child);
       }, timeoutMs);
 
-      const onAbort = () => tryKill(child);
+      const onAbort = () => treeKill(child);
       if (ctx.signal.aborted) {
-        tryKill(child);
+        treeKill(child);
       } else {
         ctx.signal.addEventListener('abort', onAbort, { once: true });
       }
@@ -162,43 +161,6 @@ export const runShellTool = defineTool({
     });
   },
 });
-
-function tryKill(child: ChildProcess): void {
-  if (child.killed || child.exitCode !== null || !child.pid) return;
-  const isWindows = process.platform === 'win32';
-  if (isWindows) {
-    try {
-      spawn('taskkill', ['/F', '/T', '/PID', String(child.pid)], {
-        windowsHide: true,
-        stdio: 'ignore',
-      }).on('error', () => {});
-    } catch {
-      // ignore
-    }
-    return;
-  }
-  try {
-    process.kill(-child.pid, 'SIGTERM');
-  } catch {
-    try {
-      child.kill('SIGTERM');
-    } catch {
-      // ignore
-    }
-  }
-  setTimeout(() => {
-    if (child.exitCode !== null || child.killed || !child.pid) return;
-    try {
-      process.kill(-child.pid, 'SIGKILL');
-    } catch {
-      try {
-        child.kill('SIGKILL');
-      } catch {
-        // ignore
-      }
-    }
-  }, SIGKILL_GRACE_MS).unref();
-}
 
 export function scrubEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const extra = (env.OPENCODEX_SHELL_ENV_KEEP ?? '')

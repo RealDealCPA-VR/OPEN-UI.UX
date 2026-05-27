@@ -1,0 +1,12 @@
+{
+  "name": "runner-opencode",
+  "version": "0.0.0",
+  "displayName": "OpenCode Runner",
+  "description": "Run OpenCodex subagents via the OpenCode CLI in headless mode.",
+  "entry": "./dist/index.js",
+  "engines": { "opencodex": ">=0.1.0" },
+  "permissions": ["agent.runner"],
+  "contributions": {
+    "runners": [{ "id": "opencode", "displayName": "OpenCode" }]
+  }
+}

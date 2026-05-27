@@ -142,6 +142,58 @@ describe('fireScheduledTask', () => {
   });
 });
 
+describe('fireScheduledTask + runnerId', () => {
+  it("threads runner_id='claude-code' from the task into the runner args", async () => {
+    const task = createTask({
+      name: 'pinned-runner',
+      trigger: { type: 'manual' },
+      prompt: 'p',
+      providerId: 'openai',
+      model: 'm',
+      workspacePath: '/tmp/scheduler-test-non-git',
+      useWorktree: false,
+      runnerId: 'claude-code',
+    });
+    let received: { runnerId: string } | null = null;
+    const res = await fireScheduledTask(task, {
+      runOverride: async (args) => {
+        received = { runnerId: args.runnerId };
+        return fakeResult();
+      },
+    });
+    expect(res.status).toBe('completed');
+    expect(received).not.toBeNull();
+    expect(received!.runnerId).toBe('claude-code');
+    const agentRuns = listAgentRuns();
+    expect(agentRuns[0]!.runnerId).toBe('claude-code');
+    expect(agentRuns[0]!.triggerSource).toBe('scheduled');
+  });
+
+  it("defaults runnerId to 'internal' when the task row has runner_id=null", async () => {
+    const task = createTask({
+      name: 'default-runner',
+      trigger: { type: 'manual' },
+      prompt: 'p',
+      providerId: 'openai',
+      model: 'm',
+      workspacePath: '/tmp/scheduler-test-non-git',
+      useWorktree: false,
+    });
+    expect(task.runnerId).toBeNull();
+    let received: string | null = null;
+    await fireScheduledTask(task, {
+      runOverride: async (args) => {
+        received = args.runnerId;
+        return fakeResult();
+      },
+    });
+    expect(received).toBe('internal');
+    const agentRuns = listAgentRuns();
+    expect(agentRuns[0]!.runnerId).toBe('internal');
+    expect(agentRuns[0]!.triggerSource).toBe('scheduled');
+  });
+});
+
 describe('fireScheduledTask + worktree fallback', () => {
   it('runs directly when workspace is not a git repo even with useWorktree=true', async () => {
     const task = createTask({

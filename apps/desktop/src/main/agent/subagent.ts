@@ -3,6 +3,8 @@ import type {
   ContentBlock,
   LLMProvider,
   Message,
+  SubagentRunner,
+  SubagentRunOptions as CoreSubagentRunOptions,
   Tool,
   ToolRegistry,
 } from '@opencodex/core';
@@ -45,7 +47,9 @@ export interface SubagentResult {
     | 'max_tokens'
     | 'budget_exceeded'
     | 'error'
-    | 'unauthorized_tool';
+    | 'unauthorized_tool'
+    | 'runner_error'
+    | 'runner_not_installed';
   error?: string;
   iterations: number;
 }
@@ -220,3 +224,112 @@ export async function runSubagent(opts: SubagentRunOptions): Promise<SubagentRes
     };
   }
 }
+
+// TODO(phase9+): true streaming requires refactoring runSubagent to expose its
+// internal loop events. For now we synthesize ChatEvents from the final result.
+function mapStopReasonToChatStop(
+  r: SubagentResult['stopReason'],
+): 'end_turn' | 'tool_use' | 'max_tokens' | 'error' {
+  if (r === 'tool_use') return 'tool_use';
+  if (r === 'max_tokens') return 'max_tokens';
+  if (r === 'end_turn') return 'end_turn';
+  return 'error';
+}
+
+async function* internalRunnerRun(opts: CoreSubagentRunOptions): AsyncGenerator<ChatEvent> {
+  if (!opts.providerId || !opts.modelId) {
+    yield {
+      type: 'error',
+      message: 'internalRunner requires providerId and modelId',
+      retryable: false,
+    };
+    yield { type: 'done', stopReason: 'error' };
+    return;
+  }
+
+  let provider: LLMProvider;
+  let toolRegistry: ToolRegistry;
+  try {
+    const [{ buildProviderForId }, { getToolRegistry }] = await Promise.all([
+      import('../chat/provider-builder'),
+      import('../tools/registry'),
+    ]);
+    provider = await buildProviderForId(opts.providerId);
+    toolRegistry = getToolRegistry();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    yield { type: 'error', message, retryable: false };
+    yield { type: 'done', stopReason: 'error' };
+    return;
+  }
+
+  if (opts.signal?.aborted) {
+    yield { type: 'error', message: 'aborted', retryable: false };
+    yield { type: 'done', stopReason: 'error' };
+    return;
+  }
+
+  let result: SubagentResult;
+  try {
+    result = await runSubagent({
+      task: opts.task,
+      provider,
+      modelId: opts.modelId,
+      toolRegistry,
+      ...(opts.allowedToolNames ? { allowedToolNames: opts.allowedToolNames } : {}),
+      workspaceRoot: opts.workspaceRoot,
+      ...(opts.budget ? { budget: opts.budget } : {}),
+      ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    yield { type: 'error', message, retryable: false };
+    yield { type: 'done', stopReason: 'error' };
+    return;
+  }
+
+  if (opts.signal?.aborted) {
+    yield { type: 'error', message: 'aborted', retryable: false };
+    yield { type: 'done', stopReason: 'error' };
+    return;
+  }
+
+  if (result.text) {
+    yield { type: 'text_delta', delta: result.text };
+  }
+
+  for (let i = 0; i < result.toolEvents.length; i++) {
+    const ev = result.toolEvents[i];
+    if (!ev) continue;
+    const id = `internal-${i}`;
+    yield { type: 'tool_call', id, name: ev.name, arguments: ev.input };
+    yield {
+      type: 'tool_result',
+      id,
+      output: ev.output,
+      ...(ev.isError ? { isError: true } : {}),
+    };
+  }
+
+  yield {
+    type: 'usage',
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+  };
+
+  if (result.error) {
+    yield { type: 'error', message: result.error, retryable: false };
+  }
+
+  yield { type: 'done', stopReason: mapStopReasonToChatStop(result.stopReason) };
+}
+
+export const internalRunner: SubagentRunner = {
+  id: 'internal',
+  displayName: 'OpenCodex built-in',
+  streaming: true,
+  run(opts) {
+    return internalRunnerRun(opts);
+  },
+};

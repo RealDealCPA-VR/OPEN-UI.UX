@@ -80,6 +80,14 @@ const SettingsSchema = z.object({
   schedulerEnabledInDev: z.boolean().default(false),
   schedulerListenerPort: z.number().int().min(1).max(65535).nullable().default(null),
   skillRegistryUrl: z.string().url().nullable().default(null),
+  hoverHintsEnabled: z.boolean().default(true),
+  runners: z
+    .record(
+      z.object({
+        cliPath: z.string().optional(),
+      }),
+    )
+    .default({}),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -338,4 +346,30 @@ export function getSkillRegistryUrl(): string | null {
 export function setSkillRegistryUrl(url: string | null): string | null {
   const next = updateSettings({ skillRegistryUrl: url });
   return next.skillRegistryUrl;
+}
+
+export function getHoverHintsEnabled(): boolean {
+  return getSettings().hoverHintsEnabled;
+}
+
+export function setHoverHintsEnabled(value: boolean): boolean {
+  const next = updateSettings({ hoverHintsEnabled: value });
+  return next.hoverHintsEnabled;
+}
+
+export function getRunnerCliPath(runnerId: string): string | null {
+  const entry = getSettings().runners[runnerId];
+  return entry?.cliPath ?? null;
+}
+
+export function setRunnerCliPath(runnerId: string, cliPath: string | null): void {
+  const current = getSettings().runners;
+  const next = { ...current };
+  if (cliPath === null || cliPath.trim().length === 0) {
+    if (!(runnerId in next)) return;
+    delete next[runnerId];
+  } else {
+    next[runnerId] = { cliPath };
+  }
+  updateSettings({ runners: next });
 }

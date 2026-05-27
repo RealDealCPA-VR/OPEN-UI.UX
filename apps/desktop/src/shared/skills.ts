@@ -29,6 +29,7 @@ export const skillFrontmatterSchema = z.object({
   triggers: z.array(z.string().min(1)).optional(),
   tools: z.array(z.string().min(1)).optional(),
   cron: z.string().min(1).optional(),
+  runner: z.string().min(1).optional(),
   arguments: z.array(skillArgumentSchema).optional(),
 });
 export type SkillFrontmatter = z.infer<typeof skillFrontmatterSchema>;

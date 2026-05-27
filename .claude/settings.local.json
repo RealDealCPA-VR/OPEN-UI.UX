@@ -113,7 +113,9 @@
       "PowerShell(\"done\")",
       "PowerShell(\"stopped\")",
       "Bash(grep -E '\\\\.\\(ts|tsx|js|jsx|mjs|cjs\\)$')",
-      "Bash(xargs -0 -I{} echo \"{}\")"
+      "Bash(xargs -0 -I{} echo \"{}\")",
+      "Bash(pnpm lint-staged *)",
+      "Bash(pnpm --filter @opencodex/desktop exec eslint --max-warnings 0 src/renderer/components/HoverHint.tsx)"
     ],
     "additionalDirectories": ["c:\\c\\Users\\VR\\Projects\\OPEN UI.UX\\apps\\desktop"]
   }

@@ -8,6 +8,7 @@ export const PermissionSchema = z.enum([
   'settings.read',
   'settings.write',
   'ui.panel',
+  'agent.runner',
 ]);
 
 export type Permission = z.infer<typeof PermissionSchema>;
@@ -17,6 +18,14 @@ export const ContributionSchema = z.object({
   providers: z.array(z.string()).optional(),
   panels: z.array(z.object({ id: z.string(), title: z.string(), entry: z.string() })).optional(),
   slashCommands: z.array(z.object({ name: z.string(), entry: z.string() })).optional(),
+  runners: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        displayName: z.string().min(1),
+      }),
+    )
+    .optional(),
 });
 
 export const ManifestSchema = z.object({

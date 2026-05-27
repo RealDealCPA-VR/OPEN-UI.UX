@@ -6,3 +6,6 @@ export * from './tool-registry';
 export * from './json-schema';
 export * from './message';
 export * from './capabilities';
+export * from './runner';
+export * from './runner-registry';
+export * from './process/tree-kill';

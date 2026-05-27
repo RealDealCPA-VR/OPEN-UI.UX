@@ -70,7 +70,7 @@ afterEach(() => {
 
 function makeSkill(
   name: string,
-  opts: { cron?: string; disabled?: boolean; tools?: string[] } = {},
+  opts: { cron?: string; disabled?: boolean; tools?: string[]; runner?: string } = {},
 ): Skill {
   return {
     id: `user:${name}`,
@@ -82,6 +82,7 @@ function makeSkill(
       description: `${name} desc`,
       ...(opts.cron ? { cron: opts.cron } : {}),
       ...(opts.tools ? { tools: opts.tools } : {}),
+      ...(opts.runner ? { runner: opts.runner } : {}),
     },
     body: 'body',
     sourcePath: `/tmp/${name}/SKILL.md`,
@@ -132,6 +133,20 @@ describe('syncLinkedScheduledTasks', () => {
     const { syncLinkedScheduledTasks } = await import('./manager');
     syncLinkedScheduledTasks([makeSkill('foo', { cron: '0 9 * * *', disabled: true })]);
     expect(deleted).toEqual(['task-foo']);
+  });
+
+  it('threads frontmatter.runner into the created task as runnerId', async () => {
+    const { syncLinkedScheduledTasks } = await import('./manager');
+    syncLinkedScheduledTasks([makeSkill('pinned', { cron: '0 3 * * *', runner: 'claude-code' })]);
+    expect(created).toHaveLength(1);
+    expect((created[0] as Record<string, unknown>).runnerId).toBe('claude-code');
+  });
+
+  it('omits runnerId when the skill has no runner field', async () => {
+    const { syncLinkedScheduledTasks } = await import('./manager');
+    syncLinkedScheduledTasks([makeSkill('plain', { cron: '0 3 * * *' })]);
+    expect(created).toHaveLength(1);
+    expect((created[0] as Record<string, unknown>).runnerId).toBeUndefined();
   });
 
   it('skips skills with invalid cron expressions without crashing', async () => {

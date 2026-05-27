@@ -5,6 +5,7 @@ import {
   extractFilePathsFromMessages,
   lastUserMessageText,
 } from '../components/extract-file-paths';
+import { HoverHint } from '../components/HoverHint';
 import { Markdown } from '../components/Markdown';
 import { SlashCommands } from '../components/SlashCommands';
 import {
@@ -19,12 +20,10 @@ import {
 import { ToolCallCard } from '../components/ToolCallCard';
 import { groupContentBlocks } from '../components/tool-block-grouping';
 import { useChat, type AssistantDraft } from '../state/chat-context';
-import { useCollapseState } from '../state/use-collapse-state';
 import { useSelectedModel } from '../state/selected-model-context';
 import { consumeTransfer, pushTransfer, useTransferPending } from '../state/transfer';
 import type { ChatAttachment } from '../../shared/attachments';
 import type {
-  Conversation,
   ConversationExportFormat,
   ConversationUsage,
   StoredMessage,
@@ -86,7 +85,6 @@ export function ChatView(): JSX.Element {
 
   return (
     <section className="chat-layout">
-      <ConversationSidebar />
       <div className="chat-main">
         {modelLoading ? (
           <p className="chat-empty">Loading…</p>
@@ -121,197 +119,6 @@ export function ChatView(): JSX.Element {
         )}
       </div>
     </section>
-  );
-}
-
-function ConversationSidebar(): JSX.Element {
-  const { conversations, activeId, selectConversation, createConversation, deleteConversation } =
-    useChat();
-  const { selected } = useSelectedModel();
-  const [collapsed, toggleCollapsed] = useCollapseState('opencodex.chatSidebar.collapsed', false);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const mod = e.ctrlKey || e.metaKey;
-      if (!mod || e.shiftKey || e.altKey) return;
-      if (e.key === '\\') {
-        e.preventDefault();
-        toggleCollapsed();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [toggleCollapsed]);
-
-  if (collapsed) {
-    return (
-      <aside className="chat-sidebar collapsed" aria-label="Conversations">
-        <button
-          type="button"
-          className="chat-sidebar-collapse-btn"
-          onClick={toggleCollapsed}
-          title="Expand conversations (Ctrl/⌘+\\)"
-          aria-label="Expand conversations"
-        >
-          ›
-        </button>
-        <button
-          type="button"
-          className="chat-sidebar-new-icon"
-          onClick={() =>
-            void createConversation(selected?.providerId ?? null, selected?.modelId ?? null)
-          }
-          title="New chat"
-          aria-label="New chat"
-        >
-          +
-        </button>
-      </aside>
-    );
-  }
-
-  return (
-    <aside className="chat-sidebar">
-      <div className="chat-sidebar-head">
-        <span className="chat-sidebar-title">Conversations</span>
-        <button
-          type="button"
-          className="chat-sidebar-collapse-btn"
-          onClick={toggleCollapsed}
-          title="Collapse (Ctrl/⌘+\\)"
-          aria-label="Collapse conversations"
-        >
-          ‹
-        </button>
-      </div>
-      <WorkspaceChip />
-      <button
-        type="button"
-        className="btn btn-primary chat-new"
-        onClick={() => {
-          void createConversation(selected?.providerId ?? null, selected?.modelId ?? null);
-        }}
-      >
-        + New chat
-      </button>
-      <ul className="chat-conversation-list">
-        {conversations.length === 0 ? (
-          <li className="chat-conversation-empty">No conversations yet</li>
-        ) : (
-          conversations.map((c) => (
-            <ConversationRow
-              key={c.id}
-              conversation={c}
-              active={c.id === activeId}
-              onSelect={() => selectConversation(c.id)}
-              onDelete={() => {
-                if (window.confirm(`Delete "${c.title}"?`)) {
-                  void deleteConversation(c.id);
-                }
-              }}
-            />
-          ))
-        )}
-      </ul>
-    </aside>
-  );
-}
-
-function WorkspaceChip(): JSX.Element {
-  const [activePath, setActivePath] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    void window.opencodex.workspace
-      .get()
-      .then((s) => {
-        if (!cancelled) setActivePath(s.active);
-      })
-      .catch(() => {
-        /* ignore */
-      });
-    const off = window.opencodex.workspace.onChanged((payload) => {
-      if (!cancelled) setActivePath(payload.state.active);
-    });
-    return () => {
-      cancelled = true;
-      off();
-    };
-  }, []);
-
-  const handleClick = async (): Promise<void> => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const next = await window.opencodex.workspace.browse();
-      setActivePath(next.active);
-    } catch {
-      /* dialog cancelled or failed */
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const label = activePath ? folderName(activePath) : 'Pick workspace…';
-  const title = activePath ?? 'No workspace selected — agent will use a default folder';
-
-  return (
-    <button
-      type="button"
-      className={activePath ? 'workspace-chip' : 'workspace-chip workspace-chip-empty'}
-      onClick={() => void handleClick()}
-      title={title}
-      disabled={busy}
-    >
-      <span className="workspace-chip-icon" aria-hidden="true">
-        📁
-      </span>
-      <span className="workspace-chip-label">{label}</span>
-      <span className="workspace-chip-caret" aria-hidden="true">
-        ▾
-      </span>
-    </button>
-  );
-}
-
-function folderName(path: string): string {
-  const cleaned = path.replace(/[\\/]$/, '');
-  const parts = cleaned.split(/[\\/]/);
-  return parts[parts.length - 1] ?? path;
-}
-
-function ConversationRow({
-  conversation,
-  active,
-  onSelect,
-  onDelete,
-}: {
-  conversation: Conversation;
-  active: boolean;
-  onSelect: () => void;
-  onDelete: () => void;
-}): JSX.Element {
-  return (
-    <li className={`chat-conversation-row${active ? ' active' : ''}`}>
-      <button type="button" className="chat-conversation-btn" onClick={onSelect}>
-        <span className="chat-conversation-title">{conversation.title}</span>
-        <span className="chat-conversation-meta">
-          {new Date(conversation.updatedAt).toLocaleDateString()}
-        </span>
-      </button>
-      <button
-        type="button"
-        className="chat-conversation-del"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-        aria-label={`Delete ${conversation.title}`}
-      >
-        ×
-      </button>
-    </li>
   );
 }
 
@@ -848,14 +655,16 @@ function ChatPane({
               </button>{' '}
               for this
             </span>
-            <button
-              type="button"
-              className="chat-skill-hint-dismiss"
-              onClick={dismissTriggerHint}
-              aria-label="Dismiss skill suggestion"
-            >
-              ×
-            </button>
+            <HoverHint hint="Dismiss suggestion">
+              <button
+                type="button"
+                className="chat-skill-hint-dismiss"
+                onClick={dismissTriggerHint}
+                aria-label="Dismiss skill suggestion"
+              >
+                ×
+              </button>
+            </HoverHint>
           </div>
         ) : null}
         <div className="chat-composer-actions">
@@ -870,19 +679,27 @@ function ChatPane({
             </label>
           ) : null}
           {chat.streaming ? (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                void chat.cancel();
-              }}
-            >
-              Stop
-            </button>
+            <HoverHint hint="Stop streaming">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  void chat.cancel();
+                }}
+              >
+                Stop
+              </button>
+            </HoverHint>
           ) : (
-            <button type="submit" className="btn btn-primary" disabled={input.trim().length === 0}>
-              Send
-            </button>
+            <HoverHint hint="Send message">
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={input.trim().length === 0}
+              >
+                Send
+              </button>
+            </HoverHint>
           )}
         </div>
       </form>

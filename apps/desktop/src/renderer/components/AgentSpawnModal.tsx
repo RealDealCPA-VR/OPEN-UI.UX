@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { RunnerInfo, RunnerInstallCheck } from '../../shared/ipc-types';
 import { useSelectedModel } from '../state/selected-model-context';
 
 export interface AgentSpawnModalProps {
@@ -6,6 +7,10 @@ export interface AgentSpawnModalProps {
   initialWorkspaceRoot?: string;
   onClose: () => void;
   onSpawned: (runId: string) => void;
+}
+
+interface InstallStateMap {
+  [runnerId: string]: RunnerInstallCheck | undefined;
 }
 
 export function AgentSpawnModal({
@@ -30,6 +35,9 @@ export function AgentSpawnModal({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [runnerId, setRunnerId] = useState<string>('internal');
+  const [runners, setRunners] = useState<RunnerInfo[]>([]);
+  const [installState, setInstallState] = useState<InstallStateMap>({});
 
   if (initialWorkspaceRoot !== lastInitialWorkspaceRoot) {
     setLastInitialWorkspaceRoot(initialWorkspaceRoot);
@@ -68,6 +76,37 @@ export function AgentSpawnModal({
     };
   }, [workspaceRoot]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const fetchAndCheck = async (): Promise<void> => {
+      try {
+        const list = await window.opencodex.agent.listRunners();
+        if (cancelled) return;
+        setRunners(list);
+        for (const r of list) {
+          if (r.source === 'builtin') continue;
+          void window.opencodex.agent
+            .checkRunnerInstalled(r.id)
+            .then((status) => {
+              if (cancelled) return;
+              setInstallState((prev) => ({ ...prev, [r.id]: status }));
+            })
+            .catch(() => undefined);
+        }
+      } catch {
+        // leave runners empty; selector will fall back to internal
+      }
+    };
+    void fetchAndCheck();
+    const off = window.opencodex.agent.onRunnersChanged(() => {
+      void fetchAndCheck();
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, []);
+
   const isRepo: boolean | null =
     isRepoState && isRepoState.root === workspaceRoot ? isRepoState.isRepo : null;
 
@@ -89,6 +128,9 @@ export function AgentSpawnModal({
   const effectiveModelId =
     modelId && modelOptions.some((m) => m.id === modelId) ? modelId : (modelOptions[0]?.id ?? '');
 
+  const isExternalRunner = runnerId !== 'internal';
+  const effectiveUseWorktree = isExternalRunner ? true : useWorktree && isRepo === true;
+
   const handleBrowse = useCallback(async () => {
     try {
       const next = await window.opencodex.workspace.browse();
@@ -100,7 +142,8 @@ export function AgentSpawnModal({
 
   const submit = useCallback(async () => {
     setError(null);
-    if (!task.trim() || !providerId || !effectiveModelId || !workspaceRoot) return;
+    if (!task.trim() || !workspaceRoot) return;
+    if (!isExternalRunner && (!providerId || !effectiveModelId)) return;
     setBusy(true);
     try {
       const res = await window.opencodex.agent.spawnFromUi({
@@ -108,7 +151,8 @@ export function AgentSpawnModal({
         providerId,
         modelId: effectiveModelId,
         workspaceRoot,
-        useWorktree: useWorktree && isRepo === true,
+        useWorktree: effectiveUseWorktree,
+        runnerId,
       });
       onSpawned(res.runId);
     } catch (err) {
@@ -116,14 +160,22 @@ export function AgentSpawnModal({
     } finally {
       setBusy(false);
     }
-  }, [task, providerId, effectiveModelId, workspaceRoot, useWorktree, isRepo, onSpawned]);
+  }, [
+    task,
+    providerId,
+    effectiveModelId,
+    workspaceRoot,
+    effectiveUseWorktree,
+    isExternalRunner,
+    runnerId,
+    onSpawned,
+  ]);
 
   const canSubmit =
     !busy &&
     task.trim().length > 0 &&
-    providerId !== '' &&
-    effectiveModelId !== '' &&
-    workspaceRoot !== '';
+    workspaceRoot !== '' &&
+    (isExternalRunner || (providerId !== '' && effectiveModelId !== ''));
 
   return (
     <div className="approval-modal-backdrop" role="dialog" aria-modal="true">
@@ -143,41 +195,71 @@ export function AgentSpawnModal({
           />
         </label>
 
-        <div className="agent-spawn-row">
-          <label className="agent-spawn-field">
-            <span>Provider</span>
-            <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
-              {providerOptions.length === 0 ? (
-                <option value="">No configured providers</option>
-              ) : (
-                providerOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.displayName}
+        <label className="agent-spawn-field">
+          <span>Runner</span>
+          <select value={runnerId} onChange={(e) => setRunnerId(e.target.value)}>
+            {runners.length === 0 ? (
+              <option value="internal">Built-in (internal)</option>
+            ) : (
+              runners.map((r) => {
+                const sourceBadge = r.source === 'builtin' ? 'built-in' : (r.pluginId ?? 'plugin');
+                const status = installState[r.id];
+                const disabled = r.source !== 'builtin' && status !== undefined && !status.ok;
+                const hint = disabled ? (status?.hint ?? 'Not installed') : undefined;
+                return (
+                  <option key={r.id} value={r.id} disabled={disabled} title={hint}>
+                    {r.displayName} ({sourceBadge}){disabled ? ' — not installed' : ''}
                   </option>
-                ))
-              )}
-            </select>
-          </label>
+                );
+              })
+            )}
+          </select>
+        </label>
 
-          <label className="agent-spawn-field">
-            <span>Model</span>
-            <select
-              value={effectiveModelId}
-              onChange={(e) => setModelId(e.target.value)}
-              disabled={modelOptions.length === 0}
-            >
-              {modelOptions.length === 0 ? (
-                <option value="">No models available</option>
-              ) : (
-                modelOptions.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.displayName}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-        </div>
+        {isExternalRunner && (
+          <div className="agent-spawn-runner-note settings-section-desc">
+            This runner uses its own provider and tools — OpenCodex approvals do not apply inside
+            the harness.
+          </div>
+        )}
+
+        {!isExternalRunner && (
+          <div className="agent-spawn-row">
+            <label className="agent-spawn-field">
+              <span>Provider</span>
+              <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+                {providerOptions.length === 0 ? (
+                  <option value="">No configured providers</option>
+                ) : (
+                  providerOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.displayName}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+
+            <label className="agent-spawn-field">
+              <span>Model</span>
+              <select
+                value={effectiveModelId}
+                onChange={(e) => setModelId(e.target.value)}
+                disabled={modelOptions.length === 0}
+              >
+                {modelOptions.length === 0 ? (
+                  <option value="">No models available</option>
+                ) : (
+                  modelOptions.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.displayName}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+          </div>
+        )}
 
         <label className="agent-spawn-field">
           <span>Workspace</span>
@@ -192,14 +274,15 @@ export function AgentSpawnModal({
         <label className="agent-spawn-toggle">
           <input
             type="checkbox"
-            checked={useWorktree && isRepo === true}
-            disabled={isRepo !== true}
+            checked={effectiveUseWorktree}
+            disabled={isExternalRunner || isRepo !== true}
             onChange={(e) => setUseWorktree(e.target.checked)}
           />
           <span>
             Use git worktree
-            {isRepo === false ? ' (workspace is not a git repo)' : ''}
-            {isRepo === null ? ' (checking…)' : ''}
+            {isExternalRunner ? ' (forced on for external runners)' : ''}
+            {!isExternalRunner && isRepo === false ? ' (workspace is not a git repo)' : ''}
+            {!isExternalRunner && isRepo === null ? ' (checking…)' : ''}
           </span>
         </label>
 

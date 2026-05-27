@@ -3,8 +3,8 @@ import { defineTool } from '@opencodex/core';
 import { anonymizeId } from '@opencodex/telemetry';
 import { logger } from '../logger';
 import { recordComplete, recordError, recordStart } from './run-registry';
-import { runSubagent, type SubagentResult } from './subagent';
-import { isUtilityProcessAvailable, runSubagentInWorker } from './worker-host';
+import { type SubagentResult } from './subagent';
+import { isUtilityProcessAvailable, runSubagentInline, runSubagentInWorker } from './worker-host';
 
 // Lazy: avoid loading telemetry/manager (and through it, electron-store) at module-load time
 // so unit tests that import this tool transitively don't crash in node env.
@@ -33,6 +33,11 @@ const inputSchema = z.object({
   maxToolIterations: z.number().int().min(1).max(20).optional().default(6),
   maxTokens: z.number().int().min(1).optional(),
   maxWallTimeMs: z.number().int().min(1).optional(),
+  runnerId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Subagent runner id; defaults to "internal" (OpenCodex built-in).'),
 });
 
 export const spawnSubagentTool = defineTool({
@@ -52,10 +57,13 @@ export const spawnSubagentTool = defineTool({
       ...(input.maxWallTimeMs !== undefined ? { maxWallTimeMs: input.maxWallTimeMs } : {}),
     };
 
+    const runnerId = input.runnerId ?? 'internal';
+
     const runId = recordStart({
       task: input.task,
       providerId: input.providerId,
       modelId: input.modelId,
+      runnerId,
     });
 
     void trackEvent('agent.subagent_spawned', {
@@ -77,6 +85,7 @@ export const spawnSubagentTool = defineTool({
             ...(input.allowedTools ? { allowedToolNames: input.allowedTools } : {}),
             budget,
             ...(ctx.signal ? { signal: ctx.signal } : {}),
+            runnerId,
           });
         } catch (err) {
           logger.error(
@@ -105,20 +114,15 @@ export const spawnSubagentTool = defineTool({
     };
 
     async function runInline(): Promise<SubagentResult> {
-      const [{ buildProviderForId }, { getToolRegistry }] = await Promise.all([
-        import('../chat/provider-builder'),
-        import('../tools/registry'),
-      ]);
-      const provider = await buildProviderForId(input.providerId);
-      return runSubagent({
+      return runSubagentInline({
         task: input.task,
-        provider,
+        providerId: input.providerId,
         modelId: input.modelId,
-        toolRegistry: getToolRegistry(),
-        ...(input.allowedTools ? { allowedToolNames: input.allowedTools } : {}),
         workspaceRoot: ctx.workspaceRoot,
-        signal: ctx.signal,
+        ...(input.allowedTools ? { allowedToolNames: input.allowedTools } : {}),
+        ...(ctx.signal ? { signal: ctx.signal } : {}),
         budget,
+        runnerId,
       });
     }
   },

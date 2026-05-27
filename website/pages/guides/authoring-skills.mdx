@@ -47,6 +47,7 @@ Run `git log --since={{since}}` and group the work into shipped/in-progress/bloc
 | `tools` | string[] | Optional. Allowlist of tool names. When set, the chat run for this skill is scoped to those tools only — every other tool is unavailable for that turn. |
 | `arguments` | array | Optional. Each item has `{name, description, required}`. The composer pre-fills `arg=<placeholder>` slots when you pick the skill. |
 | `cron` | string | Optional. When set, OpenCodex auto-registers a scheduled task pointing at this skill (see "Scheduling a skill" below). |
+| `runner` | string | Optional. `runnerId` for the auto-registered scheduled task — `internal` (default), `claude-code`, `opencode`, `aider`, or any plugin-registered runner id. **Applies only when `cron` is set** — chat-invoked skills always use the chat provider path. See the [Agent runners guide](./runners/). |
 
 ## Argument substitution
 
@@ -81,9 +82,56 @@ Two ways to put a skill on a schedule:
    schedule that lives outside the SKILL.md.
 
 Tasks created by the first mechanism have a `linkedSkillId` set; the
-Scheduled Tasks panel shows a "skill" badge on those rows and disables the
+Automations panel shows a "skill" badge on those rows and disables the
 prompt textbox to prevent drift between the SKILL.md and the task. Edits
 should happen in the SKILL.md — they propagate on the next reload.
+
+### Picking a runner for a scheduled skill
+
+When the skill is auto-registered as a scheduled task, the optional
+`runner:` frontmatter field becomes the task's `runnerId`. Default is
+`internal` (in-process, full per-call approval). Other valid values are
+`claude-code`, `opencode`, `aider`, and any plugin-registered runner id.
+See the [Agent runners guide](./runners/) for trade-offs and the
+[Picking a runner](./scheduled-tasks/#picking-a-runner) subsection of
+the Scheduled Tasks guide for the per-runner consequences.
+
+**Chat-invoked skills always use the chat provider path** — the
+`runner:` field has no effect when the skill is invoked from the slash
+menu. This is intentional: the chat composer's own runner picker is the
+source of truth for interactive runs. (Implementation: `chat/runner.ts:93-106`.)
+
+### Worked example — daily summary on Claude Code
+
+```yaml
+---
+name: daily-summary
+description: Generate daily summary of changes
+cron: "0 9 * * *"
+runner: claude-code
+tools:
+  - read_file
+  - glob
+---
+
+You are producing a one-page daily summary for `{{workspace}}` on {{date}}.
+
+Walk the repo with `glob` + `read_file`, pick the three most interesting
+changes since yesterday, and write a short paragraph each. Stop after
+those three — don't enumerate everything.
+```
+
+What happens:
+
+- A scheduled task named `skill:daily-summary` is auto-registered with
+  cron `0 9 * * *`, `runnerId: 'claude-code'`, and
+  `allowedTools: ['read_file', 'glob']`.
+- At 9 AM UTC, OpenCodex creates a fresh worktree, spawns the Claude
+  Code CLI inside it with this skill body as the prompt, and queues the
+  resulting diff for review.
+- If you invoke `/skill:daily-summary` from chat, the **chat runner**
+  runs it (not Claude Code) — the `runner:` field is ignored for that
+  invocation.
 
 ## Disabling without deleting
 

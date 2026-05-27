@@ -164,6 +164,7 @@ export function syncLinkedScheduledTasks(skills: ReadonlyArray<Skill>): void {
           useWorktree: true,
           enabled: true,
           linkedSkillId: skill.id,
+          ...(skill.frontmatter.runner ? { runnerId: skill.frontmatter.runner } : {}),
         });
       } catch (err) {
         logger.warn({ err, skillId: skill.id }, 'skills: failed to create linked scheduled task');

@@ -68,6 +68,86 @@ describe('worker-protocol', () => {
       });
       expect(parsed.success).toBe(false);
     });
+
+    it('accepts an explicit runnerId', () => {
+      const parsed = workerStartMessageSchema.safeParse({
+        kind: 'start',
+        task: 'do',
+        providerId: 'openai',
+        modelId: 'gpt-4o',
+        workspaceRoot: '/ws',
+        runnerId: 'claude-code',
+      });
+      expect(parsed.success).toBe(true);
+      if (parsed.success) expect(parsed.data.runnerId).toBe('claude-code');
+    });
+
+    it("defaults runnerId to 'internal' when omitted", () => {
+      const parsed = workerStartMessageSchema.safeParse({
+        kind: 'start',
+        task: 'do',
+        providerId: 'openai',
+        modelId: 'gpt-4o',
+        workspaceRoot: '/ws',
+      });
+      expect(parsed.success).toBe(true);
+      if (parsed.success) expect(parsed.data.runnerId).toBe('internal');
+    });
+
+    it('rejects non-string runnerId', () => {
+      const parsed = workerStartMessageSchema.safeParse({
+        kind: 'start',
+        task: 'do',
+        providerId: 'openai',
+        modelId: 'gpt-4o',
+        workspaceRoot: '/ws',
+        runnerId: 123,
+      });
+      expect(parsed.success).toBe(false);
+    });
+
+    it('rejects empty-string runnerId', () => {
+      const parsed = workerStartMessageSchema.safeParse({
+        kind: 'start',
+        task: 'do',
+        providerId: 'openai',
+        modelId: 'gpt-4o',
+        workspaceRoot: '/ws',
+        runnerId: '',
+      });
+      expect(parsed.success).toBe(false);
+    });
+  });
+
+  describe('stopReason vocabulary (via workerResultMessageSchema.stopReason)', () => {
+    function parseStop(stopReason: string) {
+      return workerResultMessageSchema.safeParse({
+        kind: 'result',
+        text: '',
+        toolEvents: [],
+        inputTokens: 0,
+        outputTokens: 0,
+        stopReason,
+        iterations: 0,
+      });
+    }
+
+    it("accepts 'runner_error'", () => {
+      const parsed = parseStop('runner_error');
+      expect(parsed.success).toBe(true);
+      if (parsed.success) expect(parsed.data.stopReason).toBe('runner_error');
+    });
+
+    it("accepts 'runner_not_installed'", () => {
+      const parsed = parseStop('runner_not_installed');
+      expect(parsed.success).toBe(true);
+      if (parsed.success) expect(parsed.data.stopReason).toBe('runner_not_installed');
+    });
+
+    it("rejects an unknown stop reason like 'cancelled'", () => {
+      const parsed = parseStop('cancelled');
+      expect(parsed.success).toBe(false);
+    });
   });
 
   describe('workerResultMessageSchema', () => {

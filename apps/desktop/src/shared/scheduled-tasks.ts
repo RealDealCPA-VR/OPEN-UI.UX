@@ -19,6 +19,7 @@ export interface ScheduledTask {
   lastStatus: ScheduledTaskStatus | null;
   lastRunId: string | null;
   linkedSkillId: string | null;
+  runnerId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -46,6 +47,7 @@ export interface CreateScheduledTaskRequest {
   useWorktree?: boolean;
   enabled?: boolean;
   linkedSkillId?: string | null;
+  runnerId?: string | null;
 }
 
 export interface UpdateScheduledTaskRequest {
@@ -61,6 +63,7 @@ export interface UpdateScheduledTaskRequest {
   useWorktree?: boolean;
   enabled?: boolean;
   linkedSkillId?: string | null;
+  runnerId?: string | null;
 }
 
 export interface DeleteScheduledTaskRequest {

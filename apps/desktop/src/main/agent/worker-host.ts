@@ -1,6 +1,8 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { collectSubagentResult, type SubagentRunOptions } from '@opencodex/core';
 import { logger } from '../logger';
+import { runnerRegistry } from './runner-registry-instance';
 import type { SubagentResult, SubagentToolEvent } from './subagent';
 import {
   workerOutboundMessageSchema,
@@ -22,6 +24,7 @@ export interface RunSubagentInWorkerOptions {
   };
   systemPrompt?: string;
   signal?: AbortSignal;
+  runnerId?: string;
 }
 
 interface UtilityProcessLike {
@@ -140,6 +143,7 @@ export async function runSubagentInWorker(
               : {}),
             ...(opts.budget ? { budget: opts.budget } : {}),
             ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+            runnerId: opts.runnerId ?? 'internal',
           };
           child.postMessage(start);
           break;
@@ -183,4 +187,39 @@ export async function runSubagentInWorker(
       reject(new Error(`subagent worker exited unexpectedly (code=${code})`));
     });
   });
+}
+
+/**
+ * Inline-fallback path used when utilityProcess is unavailable (tests, dev,
+ * platforms where forking is disabled). Looks up the runner from the shared
+ * registry and collapses its ChatEvent stream into the legacy SubagentResult
+ * shape via `collectSubagentResult`.
+ */
+export async function runSubagentInline(opts: RunSubagentInWorkerOptions): Promise<SubagentResult> {
+  const runnerId = opts.runnerId ?? 'internal';
+  const runner = runnerRegistry.get(runnerId);
+  if (!runner) {
+    return {
+      text: '',
+      toolEvents: [],
+      inputTokens: 0,
+      outputTokens: 0,
+      stopReason: 'runner_not_installed',
+      error: `Unknown runner: ${runnerId}`,
+      iterations: 0,
+    };
+  }
+
+  const runOpts: SubagentRunOptions = {
+    task: opts.task,
+    providerId: opts.providerId,
+    modelId: opts.modelId,
+    workspaceRoot: opts.workspaceRoot,
+    ...(opts.allowedToolNames ? { allowedToolNames: opts.allowedToolNames } : {}),
+    ...(opts.budget ? { budget: opts.budget } : {}),
+    ...(opts.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+    ...(opts.signal ? { signal: opts.signal } : {}),
+  };
+
+  return collectSubagentResult(runner.run(runOpts), opts.signal);
 }

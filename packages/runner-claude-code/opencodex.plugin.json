@@ -1,0 +1,12 @@
+{
+  "name": "runner-claude-code",
+  "version": "0.0.0",
+  "displayName": "Claude Code Runner",
+  "description": "Run OpenCodex subagents via the Claude Code CLI.",
+  "entry": "./dist/index.js",
+  "engines": { "opencodex": ">=0.1.0" },
+  "permissions": ["agent.runner"],
+  "contributions": {
+    "runners": [{ "id": "claude-code", "displayName": "Claude Code" }]
+  }
+}

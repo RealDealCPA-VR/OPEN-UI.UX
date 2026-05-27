@@ -12,32 +12,43 @@ Source of truth for OpenCodex's design. Code can drift; update this file wheneve
 ## Process model (Electron)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Renderer (sandboxed browser context)                        │
-│  React UI: chat, diff viewer, file tree, terminal, settings │
-│        ↑                                                    │
-│        │ contextBridge (window.opencodex.*)                 │
-│        ↓                                                    │
-├─────────────────────────────────────────────────────────────┤
-│ Preload (typed IPC bridge)                                  │
-├─────────────────────────────────────────────────────────────┤
-│ Main process                                                │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │ Agent loop   │←→│ Tool registry│←→│ Approval gateway  │  │
-│  └──────┬───────┘  └──────┬───────┘  └───────────────────┘  │
-│         │                 │                                 │
-│  ┌──────▼───────┐  ┌──────▼───────┐  ┌───────────────────┐  │
-│  │ Provider     │  │ Built-in     │  │ MCP client        │  │
-│  │ registry     │  │ tools        │  │ (stdio/SSE/HTTP)  │  │
-│  └──────────────┘  └──────────────┘  └───────────────────┘  │
-│                                                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │ Plugin host  │  │ RAG indexer  │  │ SQLite + keytar   │  │
-│  └──────────────┘  └──────────────┘  └───────────────────┘  │
-├─────────────────────────────────────────────────────────────┤
-│ Utility processes (one per concurrent subagent)             │
-│  Each has its own context, provider, tool subset, worktree  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│ Renderer (sandboxed browser context)                                │
+│  ┌──────────┬────────────────┬─────────────────────────────────┐    │
+│  │ Nav rail │ Context pane   │ Main: chat / diff / files / ... │    │
+│  └──────────┴────────────────┴─────────────────────────────────┘    │
+│  Unified left column: nav rail + context pane share one surface.    │
+│        ↑                                                            │
+│        │ contextBridge (window.opencodex.*)                         │
+│        ↓                                                            │
+├─────────────────────────────────────────────────────────────────────┤
+│ Preload (typed IPC bridge)                                          │
+├─────────────────────────────────────────────────────────────────────┤
+│ Main process                                                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐          │
+│  │ Agent loop   │←→│ Tool registry│←→│ Approval gateway  │          │
+│  └──────┬───────┘  └──────┬───────┘  └───────────────────┘          │
+│         │                 │                                         │
+│  ┌──────▼───────────────────────────┐                               │
+│  │ SubagentRunner registry          │  Picks an in-process or       │
+│  │  internal | claude-code | ...    │  out-of-process runner per    │
+│  │  opencode | aider | plugin       │  task; emits ChatEvents.      │
+│  └──────┬───────────────────────────┘                               │
+│         │                                                           │
+│  ┌──────▼───────┐  ┌──────────────┐  ┌───────────────────┐          │
+│  │ Provider     │  │ Built-in     │  │ MCP client        │          │
+│  │ registry     │  │ tools        │  │ (stdio/SSE/HTTP)  │          │
+│  └──────────────┘  └──────────────┘  └───────────────────┘          │
+│                                                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐          │
+│  │ Plugin host  │  │ RAG indexer  │  │ SQLite + keytar   │          │
+│  └──────────────┘  └──────────────┘  └───────────────────┘          │
+├─────────────────────────────────────────────────────────────────────┤
+│ Utility processes / child CLIs (one per concurrent subagent)        │
+│  internal runner → Electron utilityProcess; own provider+tools.     │
+│  external runners → spawned CLI (claude / opencode / aider).        │
+│  Both always run inside a per-task git worktree.                    │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 The renderer is created in `apps/desktop/src/main/index.ts:78` with `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`. Every privileged operation crosses the typed IPC bridge defined in `apps/desktop/src/preload/index.ts:208`.
@@ -145,11 +156,11 @@ Status: planned for v0.1.
 
 ## Multi-agent orchestration
 
-Status: planned for v0.1.
-
-- `spawn_subagent` tool lets an orchestrator agent fan out work.
-- Each subagent runs in an Electron `utilityProcess` with its own provider, context, tool subset, and (optionally) git worktree.
-- Subagent diffs come back as a bundle for the orchestrator to merge-review.
+- `spawn_subagent` tool lets an orchestrator agent fan out work. Each spawn picks a `runnerId` from the `SubagentRunner` registry (`packages/core/src/runner.ts`).
+- The **internal** runner runs in an Electron `utilityProcess` with its own provider, context, and tool subset — `ChatEvent`s stream back through the IPC bridge in real time, and the host's approval gateway fires for every write/execute tool call.
+- **External runners** (`@opencodex/runner-claude-code`, `@opencodex/runner-opencode`, `@opencodex/runner-aider`, plus any plugin-registered runner gated by the `agent.runner` permission) spawn the corresponding CLI as a child process. Their tool calls are out-of-process; OpenCodex's per-call approval modals do not fire — the CLI's own approval system is authoritative.
+- Every external run is **worktree-only**: OpenCodex creates a fresh worktree under `<workspace>/.opencodex/worktrees/<id>` on branch `opencodex/subagent/<id>`, sets it as the CLI's cwd, and queues the resulting diff for merge-review. There is no fallback to writing directly into the workspace — non-git workspaces refuse to start an external run.
+- Cancellation goes through the shared `treeKill` helper so spawned grandchildren (e.g. a `git` invocation an external runner started) get cleaned up too.
 - Budget caps prevent runaway spawning.
 
 ## MCP integration

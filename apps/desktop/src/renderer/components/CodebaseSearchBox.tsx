@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CodebaseSearchHit, CodebaseSearchMode } from '../../shared/codebase-search';
+import { HoverHint } from './HoverHint';
+
+const MODE_HINT: Record<CodebaseSearchMode, string> = {
+  both: 'Filenames and content',
+  filename: 'Search by filename',
+  content: 'Search file content',
+};
 
 interface CodebaseSearchBoxProps {
   workspaceRoot: string | null;
@@ -81,16 +88,17 @@ export function CodebaseSearchBox({
         />
         <div className="codebase-search-modes" role="tablist">
           {(['both', 'filename', 'content'] as CodebaseSearchMode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              role="tab"
-              aria-selected={mode === m}
-              className={mode === m ? 'codebase-search-mode active' : 'codebase-search-mode'}
-              onClick={() => setMode(m)}
-            >
-              {m}
-            </button>
+            <HoverHint key={m} hint={MODE_HINT[m]}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                className={mode === m ? 'codebase-search-mode active' : 'codebase-search-mode'}
+                onClick={() => setMode(m)}
+              >
+                {m}
+              </button>
+            </HoverHint>
           ))}
         </div>
         {searching && <span className="codebase-search-status">…</span>}
@@ -110,14 +118,16 @@ export function CodebaseSearchBox({
             </button>
           ))}
           {onClearPinned && (
-            <button
-              type="button"
-              className="codebase-search-pinned-clear"
-              onClick={onClearPinned}
-              aria-label="Clear pinned paths"
-            >
-              ×
-            </button>
+            <HoverHint hint="Clear pinned paths">
+              <button
+                type="button"
+                className="codebase-search-pinned-clear"
+                onClick={onClearPinned}
+                aria-label="Clear pinned paths"
+              >
+                ×
+              </button>
+            </HoverHint>
           )}
         </div>
       )}

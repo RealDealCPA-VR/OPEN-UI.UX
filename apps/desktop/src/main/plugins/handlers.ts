@@ -13,10 +13,12 @@ import {
   uninstallPlugin,
 } from './manager';
 import { getPluginRegistryUrl, setPluginRegistryUrl } from '../storage/settings';
+import { PLUGIN_PRESETS } from './presets';
 
 export function registerPluginHandlers(): void {
   registerInvoke('plugins:list', z.void(), () => ({ plugins: listPlugins() }));
   registerInvoke('plugins:list-panels', z.void(), () => ({ panels: listPanels() }));
+  registerInvoke('plugins:list-presets', z.void(), () => [...PLUGIN_PRESETS]);
   registerInvoke(
     'plugins:install-from-path',
     z.object({ path: z.string().min(1) }),

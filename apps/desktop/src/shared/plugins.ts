@@ -10,6 +10,7 @@ export interface PluginListItem {
   status: PluginStatus;
   grantedPermissions: Permission[];
   registeredTools: string[];
+  registeredRunners: string[];
   lastError?: string;
 }
 

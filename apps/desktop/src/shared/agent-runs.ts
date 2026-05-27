@@ -6,7 +6,9 @@ export type AgentRunStopReason =
   | 'max_tokens'
   | 'budget_exceeded'
   | 'error'
-  | 'unauthorized_tool';
+  | 'unauthorized_tool'
+  | 'runner_error'
+  | 'runner_not_installed';
 
 export type AgentRunTriggerSource = 'user' | 'scheduled';
 
@@ -21,6 +23,7 @@ export interface AgentRun {
   task: string;
   providerId: string;
   modelId: string;
+  runnerId: string;
   status: AgentRunStatus;
   startedAt: number;
   completedAt: number | null;

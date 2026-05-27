@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import cronParser from 'cron-parser';
+import type { RunnerInfo, RunnerInstallCheck } from '../../shared/ipc-types';
 import type {
   CreateScheduledTaskRequest,
   ScheduledTask,
@@ -97,12 +98,48 @@ export function ScheduledTaskEditorModal({
   const [tools, setTools] = useState<ToolListItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [runnerId, setRunnerId] = useState<string>(task?.runnerId ?? 'internal');
+  const [runners, setRunners] = useState<RunnerInfo[]>([]);
+  const [installState, setInstallState] = useState<Record<string, RunnerInstallCheck | undefined>>(
+    {},
+  );
 
   useEffect(() => {
     void window.opencodex.tools
       .list()
       .then((list) => setTools(list))
       .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchAndCheck = async (): Promise<void> => {
+      try {
+        const list = await window.opencodex.agent.listRunners();
+        if (cancelled) return;
+        setRunners(list);
+        for (const r of list) {
+          if (r.source === 'builtin') continue;
+          void window.opencodex.agent
+            .checkRunnerInstalled(r.id)
+            .then((status) => {
+              if (cancelled) return;
+              setInstallState((prev) => ({ ...prev, [r.id]: status }));
+            })
+            .catch(() => undefined);
+        }
+      } catch {
+        // leave runners empty; selector will fall back to internal
+      }
+    };
+    void fetchAndCheck();
+    const off = window.opencodex.agent.onRunnersChanged(() => {
+      void fetchAndCheck();
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
   }, []);
 
   useEffect(() => {
@@ -166,10 +203,17 @@ export function ScheduledTaskEditorModal({
     );
   }, []);
 
+  const isExternalRunner = runnerId !== 'internal';
+  const effectiveUseWorktreeSave = isExternalRunner ? true : useWorktree;
+
   const submit = useCallback(async () => {
     setError(null);
-    if (!name.trim() || !prompt.trim() || !providerId || !effectiveModel || !workspacePath) {
-      setError('Fill in name, prompt, provider, model, and workspace.');
+    if (!name.trim() || !prompt.trim() || !workspacePath) {
+      setError('Fill in name, prompt, and workspace.');
+      return;
+    }
+    if (!isExternalRunner && (!providerId || !effectiveModel)) {
+      setError('Fill in provider and model for the built-in runner.');
       return;
     }
     if (triggerType === 'cron' && !cronValid) {
@@ -217,8 +261,9 @@ export function ScheduledTaskEditorModal({
           model: effectiveModel,
           workspacePath,
           allowedTools,
-          useWorktree,
+          useWorktree: effectiveUseWorktreeSave,
           enabled,
+          runnerId,
         };
         saved = await window.opencodex.scheduler.updateTask(req);
       } else {
@@ -231,8 +276,9 @@ export function ScheduledTaskEditorModal({
           model: effectiveModel,
           workspacePath,
           allowedTools,
-          useWorktree,
+          useWorktree: effectiveUseWorktreeSave,
           enabled,
+          runnerId,
           ...(linkedSkillId ? { linkedSkillId } : {}),
         };
         saved = await window.opencodex.scheduler.createTask(req);
@@ -257,12 +303,14 @@ export function ScheduledTaskEditorModal({
     effectiveModel,
     workspacePath,
     allowedTools,
-    useWorktree,
+    effectiveUseWorktreeSave,
     enabled,
     linkedSkillId,
     isEdit,
     task,
     onSaved,
+    runnerId,
+    isExternalRunner,
   ]);
 
   const generateRandomSecret = useCallback(() => {
@@ -498,41 +546,71 @@ export function ScheduledTaskEditorModal({
           </p>
         )}
 
-        <div className="agent-spawn-row">
-          <label className="agent-spawn-field">
-            <span>Provider</span>
-            <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
-              {providerOptions.length === 0 ? (
-                <option value="">No configured providers</option>
-              ) : (
-                providerOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.displayName}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
+        {!isExternalRunner && (
+          <div className="agent-spawn-row">
+            <label className="agent-spawn-field">
+              <span>Provider</span>
+              <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+                {providerOptions.length === 0 ? (
+                  <option value="">No configured providers</option>
+                ) : (
+                  providerOptions.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.displayName}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
 
-          <label className="agent-spawn-field">
-            <span>Model</span>
-            <select
-              value={effectiveModel}
-              onChange={(e) => setModel(e.target.value)}
-              disabled={modelOptions.length === 0}
-            >
-              {modelOptions.length === 0 ? (
-                <option value="">No models available</option>
-              ) : (
-                modelOptions.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.displayName}
+            <label className="agent-spawn-field">
+              <span>Model</span>
+              <select
+                value={effectiveModel}
+                onChange={(e) => setModel(e.target.value)}
+                disabled={modelOptions.length === 0}
+              >
+                {modelOptions.length === 0 ? (
+                  <option value="">No models available</option>
+                ) : (
+                  modelOptions.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.displayName}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+          </div>
+        )}
+
+        <label className="agent-spawn-field">
+          <span>Runner</span>
+          <select value={runnerId} onChange={(e) => setRunnerId(e.target.value)}>
+            {runners.length === 0 ? (
+              <option value="internal">Built-in (internal)</option>
+            ) : (
+              runners.map((r) => {
+                const sourceBadge = r.source === 'builtin' ? 'built-in' : (r.pluginId ?? 'plugin');
+                const status = installState[r.id];
+                const disabled = r.source !== 'builtin' && status !== undefined && !status.ok;
+                const hint = disabled ? (status?.hint ?? 'Not installed') : undefined;
+                return (
+                  <option key={r.id} value={r.id} disabled={disabled} title={hint}>
+                    {r.displayName} ({sourceBadge}){disabled ? ' — not installed' : ''}
                   </option>
-                ))
-              )}
-            </select>
-          </label>
-        </div>
+                );
+              })
+            )}
+          </select>
+        </label>
+
+        {isExternalRunner && (
+          <div className="agent-spawn-runner-note settings-section-desc">
+            This runner uses its own provider and tools — OpenCodex approvals do not apply inside
+            the harness.
+          </div>
+        )}
 
         <label className="agent-spawn-field">
           <span>Workspace</span>
@@ -547,10 +625,14 @@ export function ScheduledTaskEditorModal({
         <label className="agent-spawn-toggle">
           <input
             type="checkbox"
-            checked={useWorktree}
+            checked={effectiveUseWorktreeSave}
+            disabled={isExternalRunner}
             onChange={(e) => setUseWorktree(e.target.checked)}
           />
-          <span>Use git worktree (recommended — isolates writes for review)</span>
+          <span>
+            Use git worktree (recommended — isolates writes for review)
+            {isExternalRunner ? ' · forced on for external runners' : ''}
+          </span>
         </label>
 
         <label className="agent-spawn-toggle">

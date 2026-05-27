@@ -12,6 +12,7 @@ function makeRun(overrides: Partial<AgentRun> = {}): AgentRun {
     task: 'task',
     providerId: 'p',
     modelId: 'm',
+    runnerId: 'internal',
     status: 'completed',
     startedAt: 1,
     completedAt: 2,

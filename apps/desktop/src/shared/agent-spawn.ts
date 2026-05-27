@@ -4,6 +4,7 @@ export interface AgentSpawnFromUiRequest {
   modelId: string;
   workspaceRoot: string;
   useWorktree: boolean;
+  runnerId?: string;
 }
 
 export interface AgentSpawnFromUiResponse {

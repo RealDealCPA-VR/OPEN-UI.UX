@@ -1,7 +1,11 @@
 import { logger } from '../logger';
 import { recordComplete, recordError, recordStart } from '../agent/run-registry';
-import { runSubagent, type SubagentResult } from '../agent/subagent';
-import { isUtilityProcessAvailable, runSubagentInWorker } from '../agent/worker-host';
+import { type SubagentResult } from '../agent/subagent';
+import {
+  isUtilityProcessAvailable,
+  runSubagentInline,
+  runSubagentInWorker,
+} from '../agent/worker-host';
 import { createWorktree, isGitRepo } from '../agent/worktrees';
 import type { ScheduledTask } from '../../shared/scheduled-tasks';
 import { recordRunCompletion, recordRunStart, setTaskRunBookkeeping } from './store';
@@ -19,6 +23,7 @@ export interface RunSubagentArgs {
   workspaceRoot: string;
   allowedToolNames?: readonly string[];
   signal: AbortSignal;
+  runnerId: string;
 }
 
 export interface FireTaskResult {
@@ -71,10 +76,13 @@ export async function fireScheduledTask(
     }
   }
 
+  const runnerId = task.runnerId ?? 'internal';
+
   const agentRunId = recordStart({
     task: task.prompt,
     providerId: task.providerId,
     modelId: task.model,
+    runnerId,
     ...(worktreeCtx.worktreePath ? { worktreePath: worktreeCtx.worktreePath } : {}),
     ...(worktreeCtx.worktreeBranch ? { worktreeBranch: worktreeCtx.worktreeBranch } : {}),
     ...(worktreeCtx.repoRoot ? { worktreeRepoRoot: worktreeCtx.repoRoot } : {}),
@@ -91,6 +99,7 @@ export async function fireScheduledTask(
       workspaceRoot: workRoot,
       ...(task.allowedTools.length > 0 ? { allowedToolNames: task.allowedTools } : {}),
       signal: controller.signal,
+      runnerId,
     };
     if (opts.runOverride) {
       result = await opts.runOverride(runArgs);
@@ -142,6 +151,11 @@ export async function fireScheduledTask(
 }
 
 async function runSubagentForTask(args: RunSubagentArgs): Promise<SubagentResult> {
+  if (args.runnerId !== 'internal' && !(await isGitRepo(args.workspaceRoot))) {
+    throw new Error(
+      'External runners require a git workspace so changes can be reviewed before merge',
+    );
+  }
   const useWorker = await isUtilityProcessAvailable();
   if (useWorker) {
     try {
@@ -152,6 +166,7 @@ async function runSubagentForTask(args: RunSubagentArgs): Promise<SubagentResult
         workspaceRoot: args.workspaceRoot,
         ...(args.allowedToolNames ? { allowedToolNames: args.allowedToolNames } : {}),
         signal: args.signal,
+        runnerId: args.runnerId,
       });
     } catch (err) {
       logger.error(
@@ -160,18 +175,13 @@ async function runSubagentForTask(args: RunSubagentArgs): Promise<SubagentResult
       );
     }
   }
-  const [{ buildProviderForId }, { getToolRegistry }] = await Promise.all([
-    import('../chat/provider-builder'),
-    import('../tools/registry'),
-  ]);
-  const provider = await buildProviderForId(args.providerId);
-  return runSubagent({
+  return runSubagentInline({
     task: args.task,
-    provider,
+    providerId: args.providerId,
     modelId: args.modelId,
-    toolRegistry: getToolRegistry(),
-    ...(args.allowedToolNames ? { allowedToolNames: args.allowedToolNames } : {}),
     workspaceRoot: args.workspaceRoot,
+    ...(args.allowedToolNames ? { allowedToolNames: args.allowedToolNames } : {}),
     signal: args.signal,
+    runnerId: args.runnerId,
   });
 }

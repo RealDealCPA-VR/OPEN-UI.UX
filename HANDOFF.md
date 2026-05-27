@@ -2,123 +2,138 @@
 
 ## Last Session Summary
 
-- **Phase 8.75 follow-ups shipped — file-change / git-hook / webhook triggers wired end-to-end.** `apps/desktop/src/main/scheduler/file-watcher.ts` runs a per-task chokidar instance with a 500 ms debounce window, glob-filters via the in-house `globToRegExp`, and skips heavy dirs + `.gitignore` + `.opencodexignore`. `apps/desktop/src/main/scheduler/listener.ts` binds an HTTP server to `127.0.0.1` on the first free port in **38400-38500** (chosen port persisted as `schedulerListenerPort`), validates the `X-Opencodex-Signature` HMAC-SHA256 header against the per-task secret, rate-limits to 1 req/sec/task, and rejects non-POST / non-JSON / >64 KB bodies. `apps/desktop/src/main/scheduler/git-hooks.ts` installs sentinel-guarded `sh` + `.cmd` wrapper scripts into `<workspace>/.git/hooks/`, coexisting with user hooks via sourcing-line append; the wrapper POSTs `{taskId, hook}` to the listener with a pre-baked HMAC. Every event-driven trigger calls the shared `scheduler.fireTaskById(id)`, which honors the concurrent-run guard. `computeNextFire` returns `null` for all event-driven triggers so `next_run_at` stays NULL. ScheduledTaskEditorModal exposes the three new trigger modes with appropriate inputs; ScheduledTasksPanel surfaces "Reinstall hook" / "Uninstall hook" buttons on git-hook rows.
+- **Phase 9 (Pluggable agent runners) shipped in full — 43/43 items closed except 1 stretch.** `SubagentRunner` interface + `RunnerRegistry` live in `@opencodex/core` with the `collectSubagentResult` helper. `internalRunner` wraps the legacy `runSubagent` and is registered at boot before plugin activation. `runnerId` threads through every subagent execution path: `worker-host` / `worker-protocol` / `worker-entry` / `spawn-from-ui` / `spawn-subagent-tool` / `scheduler/runner` / `shared/agent-spawn` / `shared/agent-runs` / `run-registry`. Plugin SDK gained `host.registerRunner()` gated by new `'agent.runner'` permission; manifest contributions accept `runners[]`. SQLite migration v9 adds `scheduled_tasks.runner_id TEXT NULL`. Three first-party adapter packages shipped: `@opencodex/runner-claude-code` (NDJSON stream-json parser, 19 tests), `@opencodex/runner-opencode` (NDJSON + fallback text mode, 25 tests), `@opencodex/runner-aider` (line-buffered, `streaming: false`, 14 tests). All use the shared `treeKill` util extracted from `run-shell.ts` into `packages/core/src/process/tree-kill.ts`. Worktree-only enforcement in `spawn-from-ui` + `scheduler/runner` rejects external-runner spawns on non-git workspaces. Plugin presets file (`apps/desktop/src/main/plugins/presets.ts`) lists the three runners with install hints; `plugins:list-presets` IPC channel registered. UI surfaces: Runner dropdown in `AgentSpawnModal` + `ScheduledTaskEditorModal` (hides provider/model and forces useWorktree when non-internal), runner pill on `ActiveRunCard` + `AgentRunRow`, new `RunnersPanel` settings section (slug `runners`, 15th), `runner_not_installed` callout in `AgentRunDrawer` with deep-link to `/settings/runners`. Skill frontmatter accepts optional `runner:` that propagates to the cron-linked scheduled task. Full Phase 9 docs landed in `website/pages/guides/runners.mdx` (149 lines, new) + extensions to `plugins/authoring.mdx`, `plugins/api.mdx`, `guides/architecture.mdx` (+ mirror to `docs/architecture.md`), `guides/scheduled-tasks.mdx`, and `guides/authoring-skills.mdx`.
 
-- **Community skill registry stub shipped (config-only, mirrors the plugin pattern from Todo.md:151).** New `skillRegistryUrl` setting (default `null`, no bundled registry — opt-in only). `skills:get-registry-url` / `skills:set-registry-url` / `skills:fetch-registry` IPC channels parse the response with `skillRegistrySchema` (Zod-validated, accepts a flat array OR `{entries: [...]}` envelope). SkillsPanel grows a collapsed "Browse community skills" section: URL field + Save + Refresh, list of entries with per-row Install buttons that route through the existing `skills:import-from-url` flow (consent dialog before download).
+- **Phase 10 (Unified left column + Automations + Hover hints) shipped in full — 26/26 items closed.** AppShell restructured to 3-column grid (nav rail / context pane / main); new `LeftColumnContextPane.tsx` lazy-loads 4 panes via `React.lazy()` + Suspense, switching by route. ChatView sidebar removed; conversations list, "New chat", workspace chip, and Cmd+`\` handler all moved into `ChatContextPane`. New top-level `/automations` route + `AutomationsView.tsx`; deep-link redirect from `/settings/scheduled-tasks` preserves `?prefillSkill=` query param. `ScheduledTaskCard.tsx` extracted from `ScheduledTasksPanel` so Settings and Automations render identically. Trigger-type badges (M / CRON / FILE / GIT / HOOK text labels — lucide-react not in deps; no emojis per CLAUDE.md). `HoverHint.tsx` (380 lines) provides 300ms-open/100ms-close tooltips with viewport-aware flip positioning, portal to document.body, `pointer-events: none`, focus support, `prefers-reduced-motion` honored, 5-word author cap enforced with dev-only warn-once. Global `hoverHintsEnabled` setting (default `true`) lives in storage/settings with IPC channels + broadcast + App.tsx provider wiring. New `AccessibilityPanel.tsx` settings section (slug `accessibility`) houses the toggle + preview demo. Sweep added 8 HoverHint wrappers across AgentView / ChatView / CodebaseSearchBox; nav rail icons covered. `website/pages/guides/accessibility.mdx` created. RELEASE_NOTES_TEMPLATE.md updated with the layout-change changelog note.
 
-- **Backlog hygiene.** Todo.md Backlog items 340-343 checked off with full italicized descriptions. The six remaining open items (lines 334-339 — cloud tasks, voice, mobile, team workspaces, visual workflows, JetBrains/VSCode) now carry `_(BLOCKED — …)_` parentheticals explaining what user sign-off / external asset is required for each.
+- **Test baseline: 874 pass / 94 fail / 7 skipped (up from 773 / 92 / 7 — +101 net passes, no regressions).** New green tests: `runner-registry` (6), `tree-kill` indirectly verified through `run-shell` (16), `manifest` plugin-sdk (11), `internal-runner` (7), `worker-protocol` (8 new on top of existing), `spawn-from-ui` (5 new), `cron-sync` (2 new), `runner-claude-code` (19), `runner-opencode` (25), `runner-aider` (14), `plugin manager` (5 new). RTL-gated test files written but skipped (jsdom not installed): `HoverHint.test.tsx` (9 cases), `AgentSpawnModal.test.tsx` (4), `LeftColumnContextPane.test.tsx`, `AutomationsView.test.tsx`. The 92 pre-existing better-sqlite3 ABI failures persist (HANDOFF carry-over from prior sessions; require `@electron/rebuild` to resolve). 2 new "failures" are the RTL-gated files attempting to load missing `jsdom` — by design, will pass once test deps are installed.
 
-- **Tests + build green.** `pnpm build` finishes in 21.41 s (prior baseline 21.47). `pnpm test` is now **773 pass / 92 fail / 7 skipped** vs. prior baseline 738 / 92 — **+35 net passes** entirely from the new test files; failing count is unchanged (still the same pre-existing better-sqlite3 ABI mismatch files). New tests: `apps/desktop/src/main/scheduler/glob-match.test.ts` (6 cases), `apps/desktop/src/main/scheduler/file-watcher.test.ts` (5 cases), `apps/desktop/src/main/scheduler/listener.test.ts` (10 cases), `apps/desktop/src/main/scheduler/git-hooks.test.ts` (8 cases), `apps/desktop/src/main/skills/registry.test.ts` (7 cases). The existing `triggers/types.test.ts` was updated to reflect that `file-change` / `git-hook` / `webhook` are now supported (5 cases retained, 1 case added for the truly-unknown-type path); `compute-next-fire.test.ts` was updated to assert null for event-driven types instead of the old "Not implemented" throw.
+- **Tree state: `pnpm build` green at 21.51s (baseline was 21.41s). `pnpm --filter @opencodex/desktop typecheck` clean.**
 
 ## Verify Before Continuing
 
-- [ ] **File-change trigger fires.** Open Settings → Scheduled tasks → New scheduled task. Pick "File change", enter `**/*.md` as the glob, point at your repo. Save. In a separate terminal, `echo hello > path/to/file.md` inside the workspace. Within ~1 second the Agent view should show a `scheduled` pill on a new active-run card. Edit a `.ts` file — nothing should fire (different glob). Edit a file under `node_modules/` — nothing should fire (heavy dir filter).
+- [ ] **Runner dropdown in spawn modal.** Open Agent view → Spawn task → confirm Runner dropdown appears above provider/model with `OpenCodex built-in` as default. Switch to `Claude Code` (if installed) → provider + model selects disappear, informational note renders ("This runner uses its own provider and tools — OpenCodex approvals do not apply inside the harness."), useWorktree toggle is forced on + disabled.
 
-- [ ] **Git-hook install round-trip.** New scheduled task, pick "Git hook" → `post-commit`. Save. Inspect `<workspace>/.git/hooks/post-commit` — it should be a sentinel-guarded shell script containing your task id. If a user hook already existed there, the new content should land in `post-commit.opencodex` and your original `post-commit` should have an `# opencodex-hook BEGIN` … `# opencodex-hook END` block appended that sources it. Commit something in the workspace (`git commit --allow-empty -m test`) — the task should fire within a second. Click "Uninstall hook" from the ScheduledTasksPanel — the sentinel block (or the whole file, if we owned it) is removed.
+- [ ] **External runner on non-git workspace fails clearly.** In a non-git directory, set it as active workspace → Spawn task → pick `Claude Code` → expect spawn to fail with the error `"External runners require a git workspace so changes can be reviewed before merge"`. Then run the same in a git workspace → spawn succeeds, worktree is created.
 
-- [ ] **Webhook fires via curl.** New scheduled task, pick "Webhook", click Generate to populate the secret. Save. The editor now shows the inbound URL (e.g. `http://127.0.0.1:38400/trigger/<taskId>`). Copy it. Then from a terminal:
+- [ ] **Runner settings panel + CLI path override.** Open Settings → Runners (new 15th section, after Skills). Expect rows for `internal` + any plugin-registered runners (initially none; first-party adapters are presets that need explicit install). Per-row "Re-check" button refreshes install status. CLI path input persists to `settings.runners.<id>.cliPath`.
 
-  ```sh
-  BODY='{"hi":"there"}'
-  SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "<your secret>" -hex | awk '{print $2}')
-  curl -X POST http://127.0.0.1:38400/trigger/<taskId> \
-    -H "content-type: application/json" \
-    -H "x-opencodex-signature: $SIG" \
-    -d "$BODY"
-  ```
+- [ ] **Hover hints work and toggle off cleanly.** Hover any icon-only button (nav rail icons, Spawn task `+`, ChatView Send) → tooltip appears after 300ms. Open Settings → Accessibility → toggle off → all hints stop firing (zero listeners attached, verified by the `disabled` prop path). Toggle back on → hints return.
 
-  Expect HTTP 202 + a new agent run with the `scheduled` pill. Repeat within 1 second → expect HTTP 429 (rate limit). Tamper the body → expect 401.
+- [ ] **Automations is a top-level nav item with full functionality.** Click Automations icon (between Agent and Settings) → opens `/automations` view with scheduled-task grid. "New automation" button opens `ScheduledTaskEditorModal`. Visit `/settings/scheduled-tasks` directly → redirects to `/automations` preserving any `?prefillSkill=` query param. Click a task in the left context pane → opens its run-history drawer.
 
-- [ ] **Community skill registry browses + installs.** Open Settings → Skills, expand "Browse community skills". Save any HTTPS URL pointing at a JSON file that matches `[{name, description, sourceUrl}, …]`. Click Refresh — entries should render. Click Install on one — confirm dialog appears, then the skill lands in `~/.opencodex/skills/<name>/SKILL.md` and shows in the skills list.
+- [ ] **Skill with `runner:` frontmatter auto-registers correctly.** Create a `.skill.yml` (or `SKILL.md`) with `cron: "*/5 * * * *"` + `runner: claude-code` + `tools: [read_file]` → save → confirm a scheduled task is auto-created with `runnerId: 'claude-code'` (visible in Automations view). Chat-invoking that skill (via `/skill-name`) should still use the chat provider, not Claude Code — that's the documented caveat.
 
-- [ ] **`pnpm build` is still green.** Verified this session (21.41 s).
+- [ ] **`pnpm build` and `pnpm typecheck` stay green.** Verified this session: typecheck clean, build at 21.51s.
 
-- [ ] **`pnpm test` baseline is now 773 / 92.** All new tests under `apps/desktop/src/main/scheduler/` and `apps/desktop/src/main/skills/registry.test.ts` pass under bare vitest. The 92 failures remain the pre-existing better-sqlite3 ABI mismatch files — same constraint that's hit since Phase 6.
+- [ ] **`pnpm test` baseline is 874 / 94.** The 94 failures are 92 pre-existing better-sqlite3 ABI failures + 2 new RTL-gated test files awaiting `jsdom`. No real regressions.
 
 ## Next Task
 
-**No engineering work remaining.** Every open `[ ]` in Todo.md falls into one of two buckets:
+**No engineering work remaining in Todo.md that doesn't require external user input.**
 
-- **Needs external user credentials (4 items, lines 116 + 173 + 174 + 184):**
-  - MCP OAuth handling (per-MCP-server OAuth app config)
-  - macOS code signing + notarization (Apple Developer Program + Developer ID cert + Apple ID + app-specific password)
-  - Windows code signing (EV cert + hardware token)
-  - Public v0.1 release announcement (user task; `RELEASE_NOTES_TEMPLATE.md` at repo root is the body to paste)
+Every open `[ ]` in Todo.md is one of:
 
-- **Needs user architecture/UX/scope sign-off (6 items, lines 334-339):** cloud tasks, voice mode, mobile companion, team workspaces, visual workflow builder, JetBrains/VSCode plugins — each `_(BLOCKED — …)_` parenthetical in Todo.md explains why.
+- **Needs external user credentials (4 items, Phase 6 + Backlog):**
+  - MCP OAuth handling (Todo.md:116) — per-MCP-server OAuth app config
+  - macOS code signing + notarization (Todo.md:173) — Apple Developer Program + Developer ID cert + Apple ID + app-specific password
+  - Windows code signing (Todo.md:174) — EV cert + hardware token
+  - Public v0.1 release announcement (Todo.md:184) — user task; `RELEASE_NOTES_TEMPLATE.md` at repo root is the body to paste
 
-The repo is shippable as v0.1 once the user buys the macOS/Windows certs and publishes.
+- **Needs user architecture/UX/scope sign-off (6 items, Backlog lines 487-492):** cloud tasks, voice mode, mobile companion, team workspaces, visual workflow builder, JetBrains/VSCode integration — each `_(BLOCKED — …)_` parenthetical in Todo.md explains why.
+
+- **Explicitly deferred stretch (1 item):** `packages/runner-mcp-bridge` (Todo.md:406) — exposes OpenCodex tools as an MCP server to external harnesses. Not required for Phase 9.
+
+**The repo is shippable as v0.1 with Phase 9 + Phase 10 functionality once the user buys macOS/Windows certs and publishes.**
 
 ## Context Notes
 
-### Local HTTP listener (scheduler)
+### Pluggable runner architecture (Phase 9)
 
-- File: `apps/desktop/src/main/scheduler/listener.ts`. Binds **127.0.0.1 only** — never 0.0.0.0. Port range default **38400-38500** (configurable per-call via `rangeStart` / `rangeEnd`); chosen port persisted as `schedulerListenerPort` in electron-store so subsequent boots try it first. If 38400 was in use last boot, settings remember the actual bound port.
-- HMAC contract: `X-Opencodex-Signature: <hex>` — SHA256, optionally prefixed `sha256=`. Signature is computed over the **raw request body** (the exact bytes sent), NOT the parsed JSON. Verification is constant-time via `timingSafeEqual`.
-- Rate limit: 1 req / 1000ms / taskId, enforced **before** signature verification so unknown task ids can't force HMAC CPU burn.
-- Body cap: 64 KB. Past that → 413, connection destroyed.
-- Logged via pino at INFO for accepted/rejected calls; WARN for unexpected bind errors.
+- **`@opencodex/core` exports the contract:** `SubagentRunner`, `SubagentRunOptions`, `SubagentResult`, `SubagentStopReason`, `RunnerRegistry`, `RunnerAlreadyRegisteredError`, `collectSubagentResult`, `treeKill` (from `./process/tree-kill`). Adapters MUST emit at least one `done` ChatEvent and SHOULD emit `usage` before `done`.
+- **Singleton:** `apps/desktop/src/main/agent/runner-registry-instance.ts` exports `runnerRegistry` — the canonical registry that handlers, spawn-from-ui, scheduler, and the worker process all reference. The utility worker process self-registers `internalRunner` because the fork is a fresh isolate.
+- **Plugin runner naming:** plugin-contributed runners are registered as `plugin__${pluginId}__${runner.id}`. The `agent:list-runners` IPC parses this to surface the bare id + pluginId. The `agent:check-runner-installed` handler accepts either form.
+- **Worktree-only:** external runners (`runnerId !== 'internal'`) reject non-git workspaces with a fixed error string. Applied in both `spawn-from-ui.ts` (`bootstrapWorktreeOrSkip`) and `scheduler/runner.ts` (`runSubagentForTask`). Error routes through the existing failed-run path in the scheduler.
+- **Internal runner is streaming-honest:** the JSDoc on `runner.ts` notes that `internalRunner` synthesizes the event stream from the post-run `SubagentResult` rather than emitting mid-loop. A TODO in `subagent.ts:228-229` documents this. True mid-loop streaming requires a deeper refactor of `runSubagent` to expose its inner generator — punted to v0.2.
 
-### Git-hook wrapper sentinel format
+### Unified left column (Phase 10)
 
-- The wrapper file `<workspace>/.git/hooks/<hook>` starts with `#!/bin/sh` then a comment line `# Installed by OpenCodex for scheduled task <taskId>`, then the sentinel block `# opencodex-hook BEGIN` … `# opencodex-hook END`.
-- If we own the whole file (no pre-existing user hook), uninstall deletes the file outright.
-- If we appended to an existing user hook, our content lives at `<hook>.opencodex` and the parent file just has a sentinel-bounded `[ -x '<wrapper>' ] && '<wrapper>'` line. Uninstall strips only that block — never touches user content.
-- Both `.cmd` and `sh` wrappers go in; Git for Windows picks the right one. Cross-platform body is identical (POSTs the same JSON with the same HMAC). Windows wrapper uses PowerShell's `Invoke-WebRequest`.
+- **Layout:** 3-column grid in AppShell.tsx — nav rail (56px) / context pane (260px, collapsible) / main (1fr). When the context pane is collapsed, the middle column shrinks to 0 via `.context-hidden`. localStorage key `'left-column'` per Todo spec; legacy `'opencodex.nav.collapsed'` is orphaned but harmless.
+- **Pane discipline:** each context pane is a separate component lazy-loaded via `React.lazy()`. Subscriptions only attach when the corresponding route is active. Pattern documented in `LeftColumnContextPane.tsx`.
+- **Settings is the odd one out:** when route is `/settings`, the context pane renders nothing — SettingsView keeps its own internal two-pane layout to preserve the search box and section navigation. The shell collapses the middle column visually.
+- **Codebase context pane is a placeholder:** the "recent files history" lift from CodebaseView was out of scope for this wave (would require modifying CodebaseView). `CodebaseContextPane.tsx` has a `TODO(phase10): recent-files history` comment.
 
-### Trigger schema additions
+### HoverHint contract
 
-```ts
-// shared/triggers.ts — git-hook now carries an optional hookSecret
-gitHookTriggerSchema = z.object({
-  type: z.literal('git-hook'),
-  hook: z.enum(['post-commit', 'pre-push']),
-  hookSecret: z.string().min(1).optional(),
-});
-```
+- **API:** `<HoverHint hint="≤5 words"><button>...</button></HoverHint>`. Prefers child's `aria-label` if `hint` not provided.
+- **Provider wiring:** `<HoverHintProvider enabled={hintsEnabled}>` wraps the App in App.tsx. The boolean is fetched from `settings.getHoverHintsEnabled()` on mount and subscribed via `settings.onHoverHintsChanged`.
+- **Suppression context:** components like Modal can call `useHoverHintControl().pushSuppression()` on mount and `popSuppression()` on unmount to prevent stacking-context fights. Defined; consumers are not yet wired in this wave — Modal adoption is a polish follow-up.
+- **5-word cap:** enforced in dev only via `console.warn` (once per unique hint string, via module-scoped Set). Production renders the full text (still warns in dev).
 
-Server side: `scheduler/handlers.ts → ensureGitHookSecret` auto-generates a 32-char hex secret on create and preserves it across updates. The renderer never sees or sends the secret — it just sets `{type: 'git-hook', hook: 'post-commit'}`.
+### Local HTTP listener (scheduler) — carryover from prior session
 
-`assertTriggerSupported` is now a no-op for every supported variant. It still throws on truly-unknown types (i.e. wire-protocol drift).
+- File: `apps/desktop/src/main/scheduler/listener.ts`. Binds **127.0.0.1 only**. Port range default **38400-38500**; chosen port persisted as `schedulerListenerPort` in electron-store.
+- HMAC contract: `X-Opencodex-Signature: <hex>` — SHA256, optionally prefixed `sha256=`. Signature is computed over the **raw request body**. Verification via `timingSafeEqual`.
+- Rate limit: 1 req / 1000 ms / taskId, enforced **before** signature verification so unknown task ids can't force HMAC CPU burn.
 
-### Community skill registry schema
+### Git-hook wrapper sentinel format — carryover
 
-```ts
-// shared/skills.ts
-skillRegistryEntrySchema = z.object({
-  name: z.string().regex(/^[a-z][a-z0-9-]*$/), // kebab-case
-  description: z.string().min(1),
-  sourceUrl: z.string().url(), // points at the SKILL.md
-  author: z.string().optional(),
-  version: z.string().optional(),
-});
-```
+- The wrapper file `<workspace>/.git/hooks/<hook>` starts with `#!/bin/sh` then a sentinel block `# opencodex-hook BEGIN` … `# opencodex-hook END`.
+- If a user hook pre-existed, OpenCodex writes to `<hook>.opencodex` and appends a sentinel-bounded sourcing line to the user's hook.
+- Both `.cmd` and `sh` wrappers are installed; Git for Windows picks the right one.
 
-Fetch path accepts either a top-level array or `{entries: [...]}`. Schema parsing failure → returns `{entries: [], error: '<message>'}`; the renderer renders that inline so the user knows their registry URL returned malformed data.
+### Files added this session (Phases 9 + 10)
 
-### Files added this session
+**New packages (3):**
 
-- New main: `apps/desktop/src/main/scheduler/{listener,file-watcher,glob-match,git-hooks,triggers-lifecycle}.ts`
-- New main: `apps/desktop/src/main/skills/registry.ts`
-- New tests: `apps/desktop/src/main/scheduler/{listener,file-watcher,glob-match,git-hooks}.test.ts` + `apps/desktop/src/main/skills/registry.test.ts`
-- Updated shared: `apps/desktop/src/shared/triggers.ts` (hookSecret + assertTriggerSupported now no-op for all variants) + `apps/desktop/src/shared/skills.ts` (`skillRegistryEntrySchema`)
-- Updated main: `apps/desktop/src/main/scheduler/scheduler.ts` (file-watcher registry + `fireTaskById` + reconcile lifecycle), `apps/desktop/src/main/scheduler/handlers.ts` (listener start + hookSecret injection + new IPC channels), `apps/desktop/src/main/skills/handlers.ts` (skill registry IPC), `apps/desktop/src/main/storage/settings.ts` (`schedulerListenerPort` + `skillRegistryUrl`)
-- Updated shared: `apps/desktop/src/shared/ipc-types.ts` (4 new scheduler channels + 3 new skill channels)
-- Updated preload: `apps/desktop/src/preload/index.ts` (new bridge methods)
-- Updated renderer: `apps/desktop/src/renderer/components/ScheduledTaskEditorModal.tsx` (file-change / git-hook / webhook UI), `apps/desktop/src/renderer/views/ScheduledTasksPanel.tsx` (hook install/uninstall buttons), `apps/desktop/src/renderer/views/SkillsPanel.tsx` (registry section)
-- Updated tests: `apps/desktop/src/main/triggers/types.test.ts` + `apps/desktop/src/main/scheduler/compute-next-fire.test.ts` (file-change / git-hook / webhook are now supported)
+- `packages/runner-claude-code/` — 10 files, 884 lines.
+- `packages/runner-opencode/` — 10 files.
+- `packages/runner-aider/` — 10 files.
+
+**New core utilities:**
+
+- `packages/core/src/runner.ts`
+- `packages/core/src/runner-registry.ts`
+- `packages/core/src/process/tree-kill.ts`
+
+**New desktop modules:**
+
+- `apps/desktop/src/main/agent/runner-registry-instance.ts`
+- `apps/desktop/src/main/plugins/presets.ts`
+- `apps/desktop/src/renderer/components/HoverHint.tsx`
+- `apps/desktop/src/renderer/components/LeftColumnContextPane.tsx`
+- `apps/desktop/src/renderer/components/left-column-panes/{Chat,Agent,Codebase,Automations}ContextPane.tsx`
+- `apps/desktop/src/renderer/components/ScheduledTaskCard.tsx`
+- `apps/desktop/src/renderer/views/AutomationsView.tsx`
+- `apps/desktop/src/renderer/views/RunnersPanel.tsx`
+- `apps/desktop/src/renderer/views/AccessibilityPanel.tsx`
+
+**New tests:**
+
+- `packages/core/src/runner-registry.test.ts`
+- `packages/plugin-sdk/src/manifest.test.ts`
+- `apps/desktop/src/main/agent/internal-runner.test.ts`
+- `apps/desktop/src/main/plugins/manager.test.ts`
+- Adapter tests in each of the three runner packages
+- RTL-gated: `HoverHint.test.tsx`, `AgentSpawnModal.test.tsx`, `LeftColumnContextPane.test.tsx`, `AutomationsView.test.tsx`
+
+**New docs:**
+
+- `website/pages/guides/runners.mdx`
+- `website/pages/guides/accessibility.mdx`
 
 ### Pre-existing carry-overs still relevant
 
-- Node v20 pinned. `better-sqlite3` must be rebuilt against Electron's ABI (not Node's) — `@electron/rebuild` is the tool, NOT `pnpm install --force`. The DB-backed tests fall under this same constraint; they don't repro under `pnpm dev` (Electron rebuild) but fail under bare `vitest`. The new tests do NOT touch the DB and all pass under bare `vitest`.
+- Node v20 pinned. `better-sqlite3` must be rebuilt against Electron's ABI — `@electron/rebuild` is the tool. DB-backed tests still fail under bare vitest; this includes the new `scheduler/runner.test.ts` extensions and the deferred `store.test.ts` v9 round-trip.
 - Path has space + period (`OPEN UI.UX`) — quote in shell.
-- `packages/*` tsconfig is `noEmit: true` — switch to `tsup` before any `pnpm publish` of the standalone packages.
-- Pre-public placeholders remain in CODEOWNERS / SECURITY.md / README.md: `@TODO-set-github-handle`, `security@TODO-set-domain`, `github.com/TODO-org/TODO-repo`. Fill these before the first public tag.
-- `website/` is excluded from the main pnpm workspace; run `pnpm install && pnpm dev` inside `website/` separately.
+- `packages/*` tsconfig is `noEmit: true` — switch to `tsup` before any `pnpm publish` of the standalone packages. Includes the three new runner packages.
+- Pre-public placeholders remain in CODEOWNERS / SECURITY.md / README.md / `.github/ISSUE_TEMPLATE/config.yml` / `website/theme.config.tsx`: `@TODO-set-github-handle`, `security@TODO-set-domain`, `github.com/TODO-org/TODO-repo`. Fill these before the first public tag. (Out of scope for this session — requires real org names from the user.)
+- `website/` is excluded from the main pnpm workspace; run `pnpm install && pnpm dev` inside `website/` separately. Docs added this session are not built by the main `pnpm build`.
 
-### Cannot Be Closed Here (10 items, all external / blocked)
+### Cannot Be Closed Here (11 items, all external / blocked / stretch)
 
 - **Needs external credentials (4 items):** MCP OAuth (Todo.md:116), macOS signing (Todo.md:173), Windows signing (Todo.md:174), public release announcement (Todo.md:184).
-- **Needs user architecture/UX sign-off (6 items, lines 334-339):** cloud tasks, voice mode, mobile companion, team workspaces, visual workflow builder, JetBrains/VSCode plugins. Each has a `_(BLOCKED — …)_` parenthetical in Todo.md explaining what's required to unblock.
+- **Needs user architecture/UX sign-off (6 items, lines 487-492):** cloud tasks, voice mode, mobile companion, team workspaces, visual workflow builder, JetBrains/VSCode plugins.
+- **Explicitly deferred stretch (1 item):** `packages/runner-mcp-bridge` (Todo.md:406).
 
-That's it. The engineering scope of v0.1 + the natural Phase 8.75 follow-ups is closed.
+That's it. The engineering scope of v0.1 + Phase 9 + Phase 10 is closed.

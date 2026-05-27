@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { OnboardingBanner } from '../components/OnboardingBanner';
 import { SettingsRail } from '../components/SettingsRail';
 import { SettingsSectionCard } from '../components/SettingsSectionCard';
+import { AccessibilityPanel } from './AccessibilityPanel';
 import { ApprovalsPanel } from './ApprovalsPanel';
 import { AuditLogPanel } from './AuditLogPanel';
 import { CrashReportingPanel } from './CrashReportingPanel';
@@ -11,6 +12,7 @@ import { McpServersPanel } from './McpServersPanel';
 import { MemoryPanel } from './MemoryPanel';
 import { PluginsPanel } from './PluginsPanel';
 import { ProvidersPanel } from './ProvidersPanel';
+import { RunnersPanel } from './RunnersPanel';
 import { ScheduledTasksPanel } from './ScheduledTasksPanel';
 import { SkillsPanel } from './SkillsPanel';
 import {
@@ -145,6 +147,18 @@ function SettingsSectionBody({ section }: { section: SettingsSection }): JSX.Ele
       return (
         <SettingsSectionCard title={section.title} description={section.description}>
           <SkillsPanel />
+        </SettingsSectionCard>
+      );
+    case 'runners':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <RunnersPanel />
+        </SettingsSectionCard>
+      );
+    case 'accessibility':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <AccessibilityPanel />
         </SettingsSectionCard>
       );
     default:

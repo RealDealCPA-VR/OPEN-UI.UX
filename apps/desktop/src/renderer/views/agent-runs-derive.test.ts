@@ -22,6 +22,7 @@ function makeRun(overrides: Partial<AgentRun> = {}): AgentRun {
     task: 'Investigate failing test',
     providerId: 'openai',
     modelId: 'gpt-4o-mini',
+    runnerId: 'internal',
     status: 'running',
     startedAt: 1_000,
     completedAt: null,

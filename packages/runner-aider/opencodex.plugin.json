@@ -1,0 +1,12 @@
+{
+  "name": "runner-aider",
+  "version": "0.0.0",
+  "displayName": "Aider Runner",
+  "description": "Run OpenCodex subagents via the Aider CLI in non-interactive mode.",
+  "entry": "./dist/index.js",
+  "engines": { "opencodex": ">=0.1.0" },
+  "permissions": ["agent.runner"],
+  "contributions": {
+    "runners": [{ "id": "aider", "displayName": "Aider" }]
+  }
+}
