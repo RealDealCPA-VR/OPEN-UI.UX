@@ -129,7 +129,7 @@ export function ApprovalQueue(): JSX.Element | null {
               <span className="approval-kbd">1</span>Allow once
             </button>
             <button ref={registerBtn(1)} onClick={() => void respond(current, 'allow', 'session')}>
-              <span className="approval-kbd">2</span>Allow for session
+              <span className="approval-kbd">2</span>Allow session
             </button>
             <button ref={registerBtn(2)} onClick={() => void respond(current, 'allow', 'always')}>
               <span className="approval-kbd">3</span>Allow always
@@ -140,7 +140,7 @@ export function ApprovalQueue(): JSX.Element | null {
               <span className="approval-kbd">4</span>Deny once
             </button>
             <button ref={registerBtn(4)} onClick={() => void respond(current, 'deny', 'session')}>
-              <span className="approval-kbd">5</span>Deny for session
+              <span className="approval-kbd">5</span>Deny session
             </button>
             <button ref={registerBtn(5)} onClick={() => void respond(current, 'deny', 'always')}>
               <span className="approval-kbd">6</span>Deny always

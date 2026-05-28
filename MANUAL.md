@@ -396,6 +396,31 @@ The 15th section. Lists registered subagent runners: `internal` (built-in), plus
 - **Install status** via the runner's `checkInstalled()` — green check or "Not installed → hint URL".
 - **CLI path override** input — persists to `settings.runners.<id>.cliPath`. Useful when your CLI isn't on `PATH`.
 - **Re-check** button.
+- **Auth status** column — populated by the per-runner auth probe (see _Test connection_ below). Green means the CLI ran without an auth error in the last 60 seconds; amber means a probe is needed; red surfaces the friendly hint.
+
+##### Install from the app
+
+For any not-installed runner, the row exposes an **Install** button that opens a small picker. Pick a package manager (npm, Homebrew, pipx, or cargo, depending on what the runner supports), confirm the exact command that will run, then click **Install**. The install log streams live underneath the button. Exit code and duration are recorded; on success the install-status pill flips to green without a manual re-check.
+
+##### Test connection
+
+Each runner row has a **Test connection** button that spawns a minimal command against the CLI (for example `claude --print echo`) and watches for auth errors in stderr. The result is cached for 60 seconds so repeated clicks do not re-spawn. A red pill carries the friendly fix string — typically a one-line hint such as `Run 'claude login' in your terminal.`
+
+##### Verify before spawn
+
+The Agent spawn modal now exposes a **Verify runner** button next to **Spawn task** when an external runner is selected. Clicking it runs the same probe used by Settings → Runners and shows ✓ Ready or ✗ &lt;hint&gt; inline. The check is non-blocking — you can still spawn without verifying — but it saves a round-trip if the CLI is logged out.
+
+##### Initialize git from the spawn modal
+
+When you pick an external runner against a non-git workspace, the modal renders the safety boundary callout:
+
+> External runners require a git repository. Run 'git init' in this workspace or pick the internal runner.
+
+The inline **Initialize git repo** button next to that note runs `git init -b main` in the workspace, refreshes the repo check, and unlocks the spawn button. If you want a first commit too, use the terminal — the inline init does not commit by default.
+
+##### Safety boundary callout
+
+The callout copy is deliberate. External runners cannot fall back to writing into a non-git folder; their diffs would not be reviewable. Initializing git or switching to the internal runner are the only two paths forward.
 
 #### Accessibility
 

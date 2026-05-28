@@ -4,14 +4,21 @@ An open-source desktop coding agent that works with **any LLM**.
 
 OpenCodex is a from-scratch, MIT-licensed reimagining of the Codex desktop experience. It runs locally on macOS, Windows, and Linux, talks to whichever LLM provider you point it at, and ships with a real plugin system plus first-class Model Context Protocol (MCP) support.
 
+**New here?** Read [QUICKSTART.md](./QUICKSTART.md) for a 10-minute first run.
+
 ## What it does
 
 - **Local coding agent** — reads, edits, and runs code in your repo with per-tool approval gates.
 - **Chat with your codebase** — AST-aware RAG (tree-sitter + hybrid vector/keyword search) so the model actually knows what's in your project.
 - **Multi-agent orchestration** — fan out subtasks to parallel workers, each with its own model, scope, and git worktree.
+- **Pluggable agent harness** — use the built-in runner, Claude Code, OpenCode, Aider, or ship your own via a plugin.
 - **Any LLM** — built-in adapters for OpenAI, Anthropic, Google Gemini, xAI Grok, Mistral, Ollama (local), and OpenRouter. Add your own via plugins.
 - **MCP-native** — every MCP server you connect becomes a tool/resource source automatically.
 - **Plugins** — third-party tools, providers, and UI panels. Plugin SDK ships with v1.
+
+## Why OpenCodex vs alternatives
+
+Aider is editor-bound and Python-centric — great in a terminal, less so as a daily desktop home for codebase chat. Claude Code is a polished Anthropic-only CLI. OpenCodex is provider-agnostic by design (every LLM goes through the same `LLMProvider` interface), plugin-extensible from day one (tools, providers, runners, and UI panels), and ships as a real desktop app with a graphical diff review, audit log, and approval system. If you want to use Claude Code or Aider, OpenCodex can drive them as runners — it does not compete with them, it composes them.
 
 ## Using OpenCodex
 

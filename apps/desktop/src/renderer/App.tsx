@@ -13,6 +13,7 @@ import { ChatView } from './views/ChatView';
 import { AgentView } from './views/AgentView';
 import { AutomationsView } from './views/AutomationsView';
 import { CodebaseView } from './views/CodebaseView';
+import { RunnersView } from './views/RunnersView';
 import { SettingsView } from './views/SettingsView';
 
 export function App(): JSX.Element {
@@ -56,6 +57,8 @@ export function App(): JSX.Element {
                   <Route path="/agent/:runId" element={<AgentView />} />
                   <Route path="/codebase" element={<CodebaseView />} />
                   <Route path="/automations" element={<AutomationsView />} />
+                  <Route path="/runners" element={<RunnersView />} />
+                  <Route path="/settings/runners" element={<RunnersRedirect />} />
                   <Route path="/settings/scheduled-tasks" element={<ScheduledTasksRedirect />} />
                   <Route path="/settings" element={<Navigate to="/settings/theme" replace />} />
                   <Route path="/settings/:section" element={<SettingsView />} />
@@ -97,6 +100,11 @@ function DeepLinkRouter(): null {
 function ScheduledTasksRedirect(): JSX.Element {
   const location = useLocation();
   return <Navigate to={`/automations${location.search}`} replace />;
+}
+
+function RunnersRedirect(): JSX.Element {
+  const location = useLocation();
+  return <Navigate to={`/runners${location.search}${location.hash}`} replace />;
 }
 
 function parseDeepLink(raw: string): string | null {

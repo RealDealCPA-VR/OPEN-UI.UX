@@ -2,8 +2,8 @@
   "architecture": "Architecture",
   "security": "Security model",
   "mcp": "MCP integration",
-  "scheduled-tasks": "Scheduled tasks",
-  "authoring-skills": "Authoring skills",
   "runners": "Agent runners",
+  "authoring-skills": "Authoring skills",
+  "scheduled-tasks": "Scheduled tasks",
   "accessibility": "Accessibility"
 }

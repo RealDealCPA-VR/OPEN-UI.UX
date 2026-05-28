@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentRun, AgentRunToolEvent } from '../../shared/agent-runs';
+import type { RunnerFriendlyError, RunnerFriendlyErrorKind } from '../../shared/runner-discovery';
 import { pushTransfer } from '../state/transfer';
 import {
   canContinueInChat,
@@ -12,6 +13,31 @@ import {
   statusPillClass,
   stopReasonLabel,
 } from '../views/agent-runs-derive';
+
+interface RunnerBridge {
+  onFriendlyError?: (listener: (payload: RunnerFriendlyError) => void) => () => void;
+}
+
+function runnerBridge(): RunnerBridge | null {
+  const bridge = (window as unknown as { opencodex?: { runner?: RunnerBridge } }).opencodex;
+  return bridge?.runner ?? null;
+}
+
+const KIND_ICON: Record<RunnerFriendlyErrorKind, string> = {
+  auth: '🔑',
+  'model-not-found': '⚠',
+  'rate-limit': '⏱',
+  network: '⌧',
+  unknown: '⚠',
+};
+
+const KIND_LABEL: Record<RunnerFriendlyErrorKind, string> = {
+  auth: 'Authentication',
+  'model-not-found': 'Model not found',
+  'rate-limit': 'Rate limit',
+  network: 'Network',
+  unknown: 'Error',
+};
 
 export interface AgentRunDrawerProps {
   run: AgentRun;
@@ -54,8 +80,53 @@ export function AgentRunDrawer({
   const [expandedEvents, setExpandedEvents] = useState<Record<number, boolean>>({});
   const [focusedIdx, setFocusedIdx] = useState<number>(-1);
   const [stickyBottom, setStickyBottom] = useState<boolean>(true);
+  const [friendlyError, setFriendlyError] = useState<RunnerFriendlyError | null>(null);
+  const [showRawError, setShowRawError] = useState(false);
+  const [respawnBusy, setRespawnBusy] = useState<'same' | 'internal' | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const eventRefs = useRef<Array<HTMLLIElement | null>>([]);
+
+  useEffect(() => {
+    const bridge = runnerBridge();
+    if (!bridge?.onFriendlyError) return;
+    const off = bridge.onFriendlyError((payload) => {
+      if (payload.runnerId !== run.runnerId) return;
+      setFriendlyError(payload);
+    });
+    return () => {
+      off();
+    };
+  }, [run.runnerId]);
+
+  useEffect(() => {
+    // Reset transient UI state when the run we're showing changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFriendlyError(null);
+    setShowRawError(false);
+  }, [run.id]);
+
+  const handleRespawn = useCallback(
+    async (mode: 'same' | 'internal') => {
+      setRespawnBusy(mode);
+      try {
+        const useRunnerId = mode === 'same' ? run.runnerId : 'internal';
+        const res = await window.opencodex.agent.spawnFromUi({
+          task: run.task,
+          providerId: run.providerId,
+          modelId: run.modelId,
+          workspaceRoot: run.worktreeRepoRoot ?? '',
+          useWorktree: useRunnerId !== 'internal',
+          runnerId: useRunnerId,
+        });
+        window.location.hash = `#/agent/${res.runId}`;
+      } catch {
+        // surface failure via no-op — user can retry
+      } finally {
+        setRespawnBusy(null);
+      }
+    },
+    [run.runnerId, run.task, run.providerId, run.modelId, run.worktreeRepoRoot],
+  );
 
   useEffect(() => {
     if (!hasUnresolvedWorktree(run)) return;
@@ -204,22 +275,74 @@ export function AgentRunDrawer({
           <div className="agent-run-drawer-section agent-run-drawer-callout">
             <h3>Runner not installed</h3>
             <p>
-              The runner <code>{run.runnerId}</code> is not installed on this machine. Configure its
-              CLI path in Settings.
+              The runner <code>{run.runnerId}</code> is not installed on this machine. Install it or
+              set its CLI path from the Runners panel.
             </p>
             <button
               type="button"
               className="btn btn-primary"
               onClick={() => {
-                window.location.hash = '#/settings/runners';
+                window.location.hash = '#/runners';
               }}
             >
-              Open Runners settings
+              Open Runners
             </button>
           </div>
         )}
 
-        {run.error && (
+        {run.stopReason === 'runner_error' && friendlyError && (
+          <div className="agent-run-drawer-section agent-run-drawer-callout">
+            <h3>
+              <span aria-hidden style={{ marginRight: 6 }}>
+                {KIND_ICON[friendlyError.kind]}
+              </span>
+              {KIND_LABEL[friendlyError.kind]}
+            </h3>
+            <p>{friendlyError.message}</p>
+            {friendlyError.suggestedFix && (
+              <p
+                style={{
+                  color: 'var(--text-secondary)',
+                  fontSize: 13,
+                }}
+              >
+                Suggested fix: {friendlyError.suggestedFix}
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={respawnBusy !== null}
+                onClick={() => void handleRespawn('same')}
+              >
+                {respawnBusy === 'same' ? 'Re-spawning…' : `Retry with ${run.runnerId}`}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={respawnBusy !== null}
+                onClick={() => void handleRespawn('internal')}
+              >
+                {respawnBusy === 'internal' ? 'Re-spawning…' : 'Re-spawn with internal runner'}
+              </button>
+            </div>
+            {run.error && (
+              <details
+                style={{ marginTop: 8 }}
+                open={showRawError}
+                onToggle={(e) => setShowRawError((e.target as HTMLDetailsElement).open)}
+              >
+                <summary style={{ cursor: 'pointer', fontSize: 12 }}>Show raw error</summary>
+                <pre className="agent-run-drawer-error" style={{ marginTop: 6 }}>
+                  {run.error}
+                </pre>
+              </details>
+            )}
+          </div>
+        )}
+
+        {run.error && !(run.stopReason === 'runner_error' && friendlyError) && (
           <div className="agent-run-drawer-section">
             <h3>Error</h3>
             <pre className="agent-run-drawer-error">{run.error}</pre>

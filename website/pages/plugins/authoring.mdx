@@ -14,6 +14,7 @@ OpenCodex plugins are npm packages that extend the host with tools, providers, s
 | --------------- | ----------- | -------------- |
 | Tools           | wired       | `ToolRegistry` (same registry as `@opencodex/tools` built-ins). |
 | Providers       | wired       | `ProviderRegistry` for `LLMProvider` factories. |
+| Runners         | wired       | `RunnerRegistry` for `SubagentRunner` adapters. |
 | Slash commands  | host method | `PluginHost.registerSlashCommand`. |
 | UI panels       | wired       | sandboxed iframe with `postMessage` bridge. |
 | Settings access | wired       | `PluginHost.getSetting` / `setSetting`. |
@@ -104,6 +105,10 @@ A runner adapter lets your plugin contribute a new entry to the agent-runner
 dropdown — sitting alongside the built-in `internal` runner and the
 first-party `claude-code` / `opencode` / `aider` adapters. See the
 [Agent runners guide](../guides/runners/) for the user-facing perspective.
+
+<Callout type="info">
+  For a worked example, see [Building a runner](./building-a-runner) and the [runner-stub example plugin](https://github.com/TODO-org/TODO-repo/tree/main/examples/plugins/runner-stub).
+</Callout>
 
 ### Permission
 

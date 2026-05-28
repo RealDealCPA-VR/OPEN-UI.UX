@@ -46,7 +46,7 @@ const EXTENSION_LANGUAGE: Record<string, string> = {
 };
 
 function languageFor(path: string): string {
-  const ext = path.includes('.') ? path.split('.').pop()!.toLowerCase() : '';
+  const ext = (path.split('.').at(-1) ?? '').toLowerCase();
   return EXTENSION_LANGUAGE[ext] ?? 'plaintext';
 }
 
@@ -139,10 +139,12 @@ export function MergeReviewModal({
     }
   }, [parsedFiles, focusedPath]);
 
-  const focusedFile = useMemo(
-    () => parsedFiles.find((f) => f.path === focusedPath) ?? parsedFiles[0],
-    [parsedFiles, focusedPath],
-  );
+  const focusedIndex = useMemo(() => {
+    const idx = parsedFiles.findIndex((f) => f.path === focusedPath);
+    return idx === -1 ? 0 : idx;
+  }, [parsedFiles, focusedPath]);
+
+  const focusedFile = parsedFiles[focusedIndex];
 
   const onAccept = async (): Promise<void> => {
     setBusy('accept');
@@ -186,6 +188,37 @@ export function MergeReviewModal({
     onClose();
     window.location.hash = `#/codebase?path=${encodeURIComponent(path)}`;
   };
+
+  useEffect(() => {
+    if (parsedFiles.length === 0) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      if (target instanceof HTMLElement && target.isContentEditable) return;
+      if (e.key === 'j') {
+        e.preventDefault();
+        const next = Math.min(parsedFiles.length - 1, focusedIndex + 1);
+        const nextPath = parsedFiles[next]?.path;
+        if (nextPath) setFocusedPath(nextPath);
+      } else if (e.key === 'k') {
+        e.preventDefault();
+        const prev = Math.max(0, focusedIndex - 1);
+        const prevPath = parsedFiles[prev]?.path;
+        if (prevPath) setFocusedPath(prevPath);
+      } else if (e.key === 'a') {
+        if (!bundle || busy !== null) return;
+        e.preventDefault();
+        setConfirm('accept');
+      } else if (e.key === 'r') {
+        if (!bundle || busy !== null) return;
+        e.preventDefault();
+        setConfirm('reject');
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [parsedFiles, focusedIndex, bundle, busy]);
 
   return (
     <div className="approval-modal-backdrop" role="dialog" aria-modal="true">
@@ -240,6 +273,7 @@ export function MergeReviewModal({
                         <button
                           type="button"
                           onClick={() => setFocusedPath(f.path)}
+                          aria-current={isActive ? 'true' : undefined}
                           style={{
                             display: 'flex',
                             flexDirection: 'column',
@@ -249,6 +283,9 @@ export function MergeReviewModal({
                             padding: '8px 10px',
                             background: isActive ? 'var(--bg-selected)' : 'transparent',
                             border: 'none',
+                            borderLeft: isActive
+                              ? '3px solid var(--accent-border, var(--accent, #6366f1))'
+                              : '3px solid transparent',
                             borderBottom: '1px solid var(--border-row-divider)',
                             color: 'var(--text-primary)',
                             cursor: 'pointer',

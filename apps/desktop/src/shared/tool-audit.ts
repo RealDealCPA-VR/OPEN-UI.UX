@@ -22,6 +22,7 @@ export interface ToolCallAuditRow {
   inputTruncated: boolean;
   outputTruncated: boolean;
   triggerSource: ToolCallAuditTriggerSource;
+  runnerId: string | null;
 }
 
 export interface ToolCallAuditQueryRow extends ToolCallAuditRow {

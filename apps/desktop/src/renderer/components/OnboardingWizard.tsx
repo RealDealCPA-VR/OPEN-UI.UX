@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ProviderListItem } from '../../shared/provider-config';
+import type { RunnerInfo, RunnerInstallCheck } from '../../shared/ipc-types';
 import type { WorkspaceState } from '../../shared/workspace';
 import { useSelectedModel } from '../state/selected-model-context';
+import { RunnersStep } from './onboarding/RunnersStep';
 
-type Step = 'provider' | 'apikey' | 'workspace' | 'skills' | 'done';
+type Step = 'provider' | 'apikey' | 'runners' | 'workspace' | 'skills' | 'done';
 
-const VISIBLE_STEPS: readonly Step[] = ['provider', 'apikey', 'workspace', 'skills'];
+const VISIBLE_STEPS: readonly Step[] = ['provider', 'apikey', 'runners', 'workspace', 'skills'];
 
 const STARTER_SKILLS: ReadonlyArray<{ name: string; description: string }> = [
   { name: 'daily-standup', description: 'Summarize recent git activity in a standup-style report' },
@@ -111,9 +113,42 @@ export function OnboardingWizard(): JSX.Element | null {
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [runners, setRunners] = useState<RunnerInfo[]>([]);
+  const [installStatuses, setInstallStatuses] = useState<Map<string, RunnerInstallCheck>>(
+    () => new Map(),
+  );
 
   const { providers, configuredProviders, loading, reload } = useSelectedModel();
   const navigate = useNavigate();
+
+  const refreshRunners = useCallback(async () => {
+    try {
+      const list = await window.opencodex.agent.listRunners();
+      setRunners(list);
+      const entries = await Promise.all(
+        list.map(async (r) => {
+          try {
+            const status = await window.opencodex.agent.checkRunnerInstalled(r.id);
+            return [r.id, status] as const;
+          } catch {
+            return [
+              r.id,
+              { ok: false, hint: 'Status check failed' } as RunnerInstallCheck,
+            ] as const;
+          }
+        }),
+      );
+      setInstallStatuses(new Map(entries));
+    } catch {
+      // Non-fatal — the runners step is optional. Leave empty state.
+    }
+  }, []);
+
+  useEffect(() => {
+    // refreshRunners is async; setState happens in the awaited continuation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refreshRunners();
+  }, [refreshRunners]);
 
   useEffect(() => {
     let cancelled = false;
@@ -235,7 +270,7 @@ export function OnboardingWizard(): JSX.Element | null {
             setApiKey={setApiKey}
             busy={busy}
             onBack={() => setStep('provider')}
-            onSkip={() => setStep('workspace')}
+            onSkip={() => setStep('runners')}
             onNext={async () => {
               setBusy(true);
               setError(null);
@@ -264,7 +299,7 @@ export function OnboardingWizard(): JSX.Element | null {
                   // Test endpoint missing or threw — proceed; the key still saved.
                 }
                 reload();
-                setStep('workspace');
+                setStep('runners');
               } catch (err) {
                 setError(err instanceof Error ? err.message : String(err));
               } finally {
@@ -273,11 +308,20 @@ export function OnboardingWizard(): JSX.Element | null {
             }}
           />
         )}
+        {step === 'runners' && (
+          <RunnersStep
+            runners={runners}
+            installStatuses={installStatuses}
+            onRefreshStatuses={() => void refreshRunners()}
+            onSkip={() => setStep('workspace')}
+            onContinue={() => setStep('workspace')}
+          />
+        )}
         {step === 'workspace' && (
           <WorkspaceStep
             workspace={workspace}
             busy={busy}
-            onBack={() => setStep('apikey')}
+            onBack={() => setStep('runners')}
             onBrowse={async () => {
               setBusy(true);
               setError(null);
@@ -560,7 +604,7 @@ function DoneStep({ onFinish }: { onFinish(): void }): JSX.Element {
           <polyline points="20 6 9 17 4 12" />
         </svg>
       </div>
-      <h3>You&apos;re ready</h3>
+      <h3>Setup complete</h3>
       <p className="onboarding-step-desc">
         That&apos;s it — start chatting, or tweak more in Settings (approvals, MCP servers, audit
         log, theme).

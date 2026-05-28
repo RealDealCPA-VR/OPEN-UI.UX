@@ -33,6 +33,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Rebuild native modules
+        id: rebuild_native
+        continue-on-error: true
+        run: pnpm --filter @opencodex/desktop run rebuild-native
+
+      - name: Warn on rebuild-native failure
+        if: steps.rebuild_native.outcome == 'failure'
+        run: echo "::warning::rebuild-native failed — DB-backed tests will be skipped"
+
+      - name: Check placeholders
+        run: pnpm check-placeholders
+
       - name: Lint
         run: pnpm lint
 

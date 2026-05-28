@@ -51,6 +51,8 @@ OpenCodex uses a two-file session baton so multiple agent runs can share the sam
 3. Run `pnpm build` to confirm the tree compiles.
 4. Tell the user: `Handoff ready. Start a new session and say: /pickup`
 
+Use the `/pickup` and `/handoff` slash commands in Claude Code for one-step access (see `.claude/commands/`). Human contributors can either follow the same Todo.md/HANDOFF.md flow, or open PRs directly without updating HANDOFF.md.
+
 ## Coding conventions
 
 - TypeScript strict mode. `noUncheckedIndexedAccess` is on — handle `undefined` from array access.

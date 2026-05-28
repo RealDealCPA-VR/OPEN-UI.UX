@@ -6,9 +6,11 @@ import { AgentRunRow } from '../components/AgentRunRow';
 import { AgentSpawnModal } from '../components/AgentSpawnModal';
 import { HoverHint } from '../components/HoverHint';
 import { MergeReviewModal } from '../components/MergeReviewModal';
+import { RunnerDiscoveryCards } from '../components/RunnerDiscoveryCards';
 import { consumeTransfer, onTransferPushed } from '../state/transfer';
 import { partitionRunsByActivity } from './agent-runs-derive';
 import type { AgentRun } from '../../shared/agent-runs';
+import type { RunnerInfo, RunnerInstallCheck } from '../../shared/ipc-types';
 
 export function AgentView(): JSX.Element {
   const navigate = useNavigate();
@@ -25,6 +27,34 @@ export function AgentView(): JSX.Element {
   const [spawnOpen, setSpawnOpen] = useState(false);
   const [spawnInitialTask, setSpawnInitialTask] = useState<string>('');
   const [spawnInitialWorkspace, setSpawnInitialWorkspace] = useState<string | undefined>(undefined);
+  const [spawnInitialRunnerId, setSpawnInitialRunnerId] = useState<string | undefined>(undefined);
+  const [runners, setRunners] = useState<RunnerInfo[]>([]);
+  const [installStatuses, setInstallStatuses] = useState<Map<string, RunnerInstallCheck>>(
+    () => new Map(),
+  );
+
+  const refreshRunners = useCallback(async () => {
+    try {
+      const list = await window.opencodex.agent.listRunners();
+      setRunners(list);
+      const entries = await Promise.all(
+        list.map(async (r) => {
+          try {
+            const status = await window.opencodex.agent.checkRunnerInstalled(r.id);
+            return [r.id, status] as const;
+          } catch {
+            return [
+              r.id,
+              { ok: false, hint: 'Status check failed' } as RunnerInstallCheck,
+            ] as const;
+          }
+        }),
+      );
+      setInstallStatuses(new Map(entries));
+    } catch {
+      // Non-fatal — empty state still works without runner data.
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -58,6 +88,18 @@ export function AgentView(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    // refreshRunners is async; setState happens in the awaited continuation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void refreshRunners();
+    const off = window.opencodex.agent.onRunnersChanged(() => {
+      void refreshRunners();
+    });
+    return () => {
+      off();
+    };
+  }, [refreshRunners]);
+
+  useEffect(() => {
     if (!runs) return;
     const anyRunning = runs.some((r) => r.status === 'running');
     if (!anyRunning) return;
@@ -68,13 +110,26 @@ export function AgentView(): JSX.Element {
   // Handle inbound chat-to-agent transfers: pre-open the spawn modal.
   useEffect(() => {
     return onTransferPushed((ctx) => {
-      if (ctx.kind !== 'chat-to-agent') return;
-      consumeTransfer();
-      setSpawnInitialTask(ctx.lastUserMessage);
-      setSpawnInitialWorkspace(ctx.workspaceRoot);
-      setSpawnOpen(true);
+      if (ctx.kind === 'chat-to-agent') {
+        consumeTransfer();
+        setSpawnInitialTask(ctx.lastUserMessage);
+        setSpawnInitialWorkspace(ctx.workspaceRoot);
+        setSpawnOpen(true);
+        return;
+      }
+      if (ctx.kind === 'codebase-to-agent') {
+        consumeTransfer();
+        const firstRunId = ctx.runIds[0];
+        if (firstRunId && runs && runs.some((r) => r.id === firstRunId)) {
+          navigate(`/agent/${firstRunId}`);
+          return;
+        }
+        setSpawnInitialTask(`Re: ${ctx.filePath}\n\n`);
+        setSpawnInitialWorkspace(undefined);
+        setSpawnOpen(true);
+      }
     });
-  }, []);
+  }, [navigate, runs]);
 
   // Honor ?spawn=1 from left-column empty-state CTA.
   useEffect(() => {
@@ -115,10 +170,25 @@ export function AgentView(): JSX.Element {
       setSpawnOpen(false);
       setSpawnInitialTask('');
       setSpawnInitialWorkspace(undefined);
+      setSpawnInitialRunnerId(undefined);
       openRun(runId);
       void refresh();
     },
     [openRun, refresh],
+  );
+
+  const handleDiscoverySpawn = useCallback((runnerId: string) => {
+    setSpawnInitialTask('');
+    setSpawnInitialWorkspace(undefined);
+    setSpawnInitialRunnerId(runnerId);
+    setSpawnOpen(true);
+  }, []);
+
+  const handleDiscoverySetup = useCallback(
+    (runnerId: string) => {
+      navigate(`/runners?install=${runnerId}`);
+    },
+    [navigate],
   );
 
   const drawerRun = drawerRunId && runs ? (runs.find((r) => r.id === drawerRunId) ?? null) : null;
@@ -141,6 +211,7 @@ export function AgentView(): JSX.Element {
             onClick={() => {
               setSpawnInitialTask('');
               setSpawnInitialWorkspace(undefined);
+              setSpawnInitialRunnerId(undefined);
               setSpawnOpen(true);
             }}
           >
@@ -178,10 +249,20 @@ export function AgentView(): JSX.Element {
         </div>
 
         {runs && partition.active.length === 0 && partition.history.length === 0 && !loadError && (
-          <p className="audit-empty">
-            No subagent runs yet. Click <strong>Spawn task</strong> above, or call{' '}
-            <code>spawn_subagent</code> from chat.
-          </p>
+          <div className="agent-view-empty">
+            <p className="audit-empty" style={{ marginBottom: 4 }}>
+              No runs yet. Pick a runner to get started.
+            </p>
+            <p className="settings-section-desc" style={{ marginTop: 0, marginBottom: 12 }}>
+              Or call <code>spawn_subagent</code> from chat.
+            </p>
+            <RunnerDiscoveryCards
+              runners={runners}
+              installStatuses={installStatuses}
+              onSpawn={handleDiscoverySpawn}
+              onSetup={handleDiscoverySetup}
+            />
+          </div>
         )}
 
         {partition.history.length > 0 && (
@@ -232,7 +313,11 @@ export function AgentView(): JSX.Element {
         <AgentSpawnModal
           initialTask={spawnInitialTask}
           {...(spawnInitialWorkspace ? { initialWorkspaceRoot: spawnInitialWorkspace } : {})}
-          onClose={() => setSpawnOpen(false)}
+          {...(spawnInitialRunnerId ? { initialRunnerId: spawnInitialRunnerId } : {})}
+          onClose={() => {
+            setSpawnOpen(false);
+            setSpawnInitialRunnerId(undefined);
+          }}
           onSpawned={onSpawned}
         />
       )}

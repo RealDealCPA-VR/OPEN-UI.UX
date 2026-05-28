@@ -146,6 +146,12 @@ const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE scheduled_tasks ADD COLUMN runner_id TEXT;
     `,
   },
+  {
+    version: 10,
+    sql: `
+      ALTER TABLE tool_calls ADD COLUMN runner_id TEXT;
+    `,
+  },
 ];
 
 let db: Database.Database | null = null;

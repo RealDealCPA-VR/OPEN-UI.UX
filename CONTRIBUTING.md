@@ -27,6 +27,12 @@ This project uses a session-baton model between contributors (and AI agents).
 
 If you're a human contributor, the workflow is the same — just don't update HANDOFF.md unless you're explicitly picking up an agent session.
 
+Use the `/pickup` and `/handoff` slash commands in Claude Code for one-step access (see `.claude/commands/`). Human contributors can either follow the same Todo.md/HANDOFF.md flow, or open PRs directly without updating HANDOFF.md.
+
+### Working on the docs site
+
+The `website/` directory is a separate Next.js + Nextra app excluded from the main pnpm workspace. Run `pnpm install && pnpm dev` inside `website/` to work on docs.
+
 ## Branches and commits
 
 - Branch off `main`. Feature branches: `feat/<short-name>`. Fixes: `fix/<short-name>`. Docs: `docs/<short-name>`.
@@ -83,3 +89,7 @@ Do **not** open a public issue for security vulnerabilities. See [SECURITY.md](.
 ## Code of conduct
 
 Participation is governed by the [Code of Conduct](./CODE_OF_CONDUCT.md). In short: be respectful, assume good faith, focus on the work.
+
+### Before public tag
+
+A handful of strings in the repo — GitHub handles in `CODEOWNERS`, the security email in `SECURITY.md`, the issue-template config, the website theme — are intentional placeholders waiting for the maintainer to fill in real values before v0.1. See [PLACEHOLDERS.md](./PLACEHOLDERS.md) for the full checklist. CI gates this with `pnpm check-placeholders`.

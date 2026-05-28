@@ -3,15 +3,28 @@ import { z } from 'zod';
 import { registerInvoke } from '../ipc/registry';
 import {
   checkRunnerInstalledRequestSchema,
+  runnerInstallProgressChannel,
   type RunnerInfo,
   type RunnerInstallCheck,
 } from '../../shared/ipc-types';
+import {
+  gitInitRequestSchema,
+  runnerInstallRequestSchema,
+  runnerProbeAuthRequestSchema,
+} from '../../shared/runner-discovery';
 import { toFriendlyError } from '../util/friendly-error';
 import { acceptMerge, prepareMergeBundle, rejectMerge } from './merge-review';
 import { clear, listRuns, onRunsChanged } from './run-registry';
 import { runnerRegistry } from './runner-registry-instance';
 import { abortSpawnedRun, spawnFromUiAsync } from './spawn-from-ui';
 import { isGitRepo } from './worktrees';
+import { getAvailablePackageManagers, installRunner } from './runner-install';
+import { probeRunnerAuth } from './runner-probe';
+import { initGitRepo } from './git-init';
+
+function assertRunnerExists(runnerId: string): void {
+  if (!runnerRegistry.has(runnerId)) throw new Error(`Unknown runner: ${runnerId}`);
+}
 
 const runIdRequest = z.object({ runId: z.string().min(1) });
 
@@ -108,9 +121,7 @@ export function registerAgentHandlers(): void {
 
   registerInvoke('agent:spawn-from-ui', spawnFromUiSchema, async (req) => {
     const runnerId = req.runnerId ?? 'internal';
-    if (!runnerRegistry.has(runnerId)) {
-      throw new Error(`Unknown runner: ${runnerId}`);
-    }
+    assertRunnerExists(runnerId);
     try {
       return await spawnFromUiAsync({
         task: req.task,
@@ -135,10 +146,12 @@ export function registerAgentHandlers(): void {
   registerInvoke('agent:check-runner-installed', checkRunnerInstalledRequestSchema, async (req) => {
     const registeredId = resolveRegisteredRunnerId(req.runnerId);
     if (!registeredId) {
+      assertRunnerExists(req.runnerId);
       throw new Error(`Unknown runner: ${req.runnerId}`);
     }
     const runner = runnerRegistry.get(registeredId);
     if (!runner) {
+      assertRunnerExists(registeredId);
       throw new Error(`Unknown runner: ${req.runnerId}`);
     }
     if (typeof runner.checkInstalled !== 'function') {
@@ -157,6 +170,28 @@ export function registerAgentHandlers(): void {
   registerInvoke('git:is-repo', gitIsRepoSchema, async (req) => {
     const isRepo = await isGitRepo(req.path);
     return { isRepo };
+  });
+
+  registerInvoke('runner:list-package-managers', z.void(), async () => {
+    const managers = await getAvailablePackageManagers();
+    return { managers };
+  });
+
+  registerInvoke('runner:install', runnerInstallRequestSchema, async (req) => {
+    return await installRunner(req, (chunk) => {
+      const payload = { runnerId: req.runnerId, stream: chunk.stream, chunk: chunk.chunk };
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send(runnerInstallProgressChannel, payload);
+      }
+    });
+  });
+
+  registerInvoke('runner:probe-auth', runnerProbeAuthRequestSchema, async (req) => {
+    return await probeRunnerAuth(req.runnerId);
+  });
+
+  registerInvoke('git:init-repo', gitInitRequestSchema, async (req) => {
+    return await initGitRepo(req);
   });
 
   onRunsChanged((runs) => {

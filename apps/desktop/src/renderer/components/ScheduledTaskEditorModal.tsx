@@ -115,7 +115,7 @@ export function ScheduledTaskEditorModal({
   const initialDescription = task?.description ?? prefill?.description ?? '';
   const initialPrompt = task?.prompt ?? prefill?.prompt ?? '';
   const initialAllowedTools = task?.allowedTools ?? prefill?.allowedTools ?? [];
-  const initialTriggerType: TriggerType = task?.trigger.type ?? (prefill?.cron ? 'cron' : 'cron');
+  const initialTriggerType: TriggerType = task?.trigger.type ?? (prefill?.cron ? 'cron' : 'manual');
   const initialCronExpr =
     task?.trigger.type === 'cron' ? task.trigger.expr : (prefill?.cron ?? '0 9 * * *');
   const initialGlob = task?.trigger.type === 'file-change' ? task.trigger.glob : '**/*.ts';

@@ -134,6 +134,16 @@ import type {
   RunnerInstallCheck,
   RunnersChangedEvent,
 } from '../shared/ipc-types';
+import type {
+  GitInitRequest,
+  GitInitResult,
+  PackageManager,
+  RunnerFriendlyError,
+  RunnerInstallProgress,
+  RunnerInstallRequest,
+  RunnerInstallResult,
+  RunnerProbeResult,
+} from '../shared/runner-discovery';
 import type { UiErrorEvent } from '../shared/ui-errors';
 
 type DeepLinkListener = (url: string) => void;
@@ -359,6 +369,8 @@ const plugins = {
   listPanels: (): Promise<{ panels: PluginPanelDescriptor[] }> =>
     ipcRenderer.invoke('plugins:list-panels'),
   listPresets: (): Promise<PluginPreset[]> => ipcRenderer.invoke('plugins:list-presets'),
+  installPreset: (presetId: string): Promise<{ plugins: PluginListItem[] }> =>
+    ipcRenderer.invoke('plugins:install-preset', { presetId }),
   onChanged: (listener: PluginsChangedListener): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: PluginsChangedEvent): void =>
       listener(payload);
@@ -413,6 +425,32 @@ const codebase = {
 
 const git = {
   isRepo: (path: string): Promise<GitIsRepoResponse> => ipcRenderer.invoke('git:is-repo', { path }),
+  initRepo: (req: GitInitRequest): Promise<GitInitResult> =>
+    ipcRenderer.invoke('git:init-repo', req),
+};
+
+type RunnerInstallProgressListener = (payload: RunnerInstallProgress) => void;
+type RunnerFriendlyErrorListener = (payload: RunnerFriendlyError) => void;
+
+const runner = {
+  getInstallablePackageManagers: (): Promise<{ managers: PackageManager[] }> =>
+    ipcRenderer.invoke('runner:list-package-managers'),
+  install: (req: RunnerInstallRequest): Promise<RunnerInstallResult> =>
+    ipcRenderer.invoke('runner:install', req),
+  onInstallProgress: (listener: RunnerInstallProgressListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: RunnerInstallProgress): void =>
+      listener(payload);
+    ipcRenderer.on('runner:install-progress', wrapped);
+    return () => ipcRenderer.off('runner:install-progress', wrapped);
+  },
+  probeAuth: (runnerId: string): Promise<RunnerProbeResult> =>
+    ipcRenderer.invoke('runner:probe-auth', { runnerId }),
+  onFriendlyError: (listener: RunnerFriendlyErrorListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: RunnerFriendlyError): void =>
+      listener(payload);
+    ipcRenderer.on('runner:friendly-error', wrapped);
+    return () => ipcRenderer.off('runner:friendly-error', wrapped);
+  },
 };
 
 const shellBridge = {
@@ -590,6 +628,7 @@ const api = {
   onboarding,
   plugins,
   agent,
+  runner,
   codebase,
   git,
   shell: shellBridge,

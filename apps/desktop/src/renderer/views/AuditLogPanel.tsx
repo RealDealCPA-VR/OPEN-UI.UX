@@ -10,6 +10,9 @@ import {
   type ToolCallAuditTriggerSource,
 } from '../../shared/tool-audit';
 import type { ToolListItem } from '../../shared/tools';
+import type { RunnerInfo } from '../../shared/ipc-types';
+
+const OPENCODEX_RUNNER_KEY = '__opencodex__';
 
 const PAGE_SIZE = 50;
 
@@ -85,6 +88,8 @@ export function AuditLogPanel(): JSX.Element {
   const [decisionFilter, setDecisionFilter] = useState<string>('');
   const [errorFilter, setErrorFilter] = useState<ToolCallAuditErrorFilter>('any');
   const [triggerFilter, setTriggerFilter] = useState<ToolCallAuditTriggerSource | ''>('');
+  const [runnerFilter, setRunnerFilter] = useState<string>('');
+  const [runners, setRunners] = useState<RunnerInfo[]>([]);
   const [timeRange, setTimeRange] = useState<TimeRange>('all');
   const [page, setPage] = useState(0);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -124,6 +129,35 @@ export function AuditLogPanel(): JSX.Element {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await window.opencodex.agent.listRunners();
+        if (!cancelled) setRunners(list);
+      } catch {
+        if (!cancelled) setRunners([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const runnerNameById = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const r of runners) out[r.id] = r.displayName;
+    return out;
+  }, [runners]);
+
+  const runnerDisplayName = useCallback(
+    (runnerId: string | null): string => {
+      if (runnerId === null || runnerId === '' || runnerId === 'internal') return 'OpenCodex';
+      return runnerNameById[runnerId] ?? runnerId;
+    },
+    [runnerNameById],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -383,6 +417,23 @@ export function AuditLogPanel(): JSX.Element {
         </label>
 
         <label className="audit-filter">
+          <span className="audit-filter-label">Runner</span>
+          <select
+            className="approvals-select"
+            value={runnerFilter}
+            onChange={(e) => resetPageAnd(() => setRunnerFilter(e.target.value))}
+          >
+            <option value="">All runners</option>
+            <option value={OPENCODEX_RUNNER_KEY}>OpenCodex</option>
+            {runners.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="audit-filter">
           <span className="audit-filter-label">Trigger</span>
           <select
             className="approvals-select"
@@ -405,7 +456,16 @@ export function AuditLogPanel(): JSX.Element {
       {!data && !loadError && <p className="approvals-loading">Loading…</p>}
 
       {data &&
-        data.rows.filter((r) => !triggerFilter || r.triggerSource === triggerFilter).length === 0 &&
+        data.rows
+          .filter((r) => !triggerFilter || r.triggerSource === triggerFilter)
+          .filter((r) => {
+            if (!runnerFilter) return true;
+            const rid = r.runnerId;
+            if (runnerFilter === OPENCODEX_RUNNER_KEY) {
+              return rid === null || rid === '' || rid === 'internal';
+            }
+            return rid === runnerFilter;
+          }).length === 0 &&
         !loadError && (
           <p className="audit-empty">
             No tool calls match these filters
@@ -418,6 +478,14 @@ export function AuditLogPanel(): JSX.Element {
           <ul className="audit-list">
             {data.rows
               .filter((r) => !triggerFilter || r.triggerSource === triggerFilter)
+              .filter((r) => {
+                if (!runnerFilter) return true;
+                const rid = r.runnerId;
+                if (runnerFilter === OPENCODEX_RUNNER_KEY) {
+                  return rid === null || rid === '' || rid === 'internal';
+                }
+                return rid === runnerFilter;
+              })
               .map((row) => {
                 const tier = tierByTool[row.toolName] ?? null;
                 const isExpanded = expandedId === row.id;
@@ -444,6 +512,9 @@ export function AuditLogPanel(): JSX.Element {
                           {DECISION_LABELS[row.decision] ?? row.decision}
                         </span>
                         {row.isError && <span className="pill audit-error-pill">Error</span>}
+                        <span className="pill" title={`Runner: ${runnerDisplayName(row.runnerId)}`}>
+                          {runnerDisplayName(row.runnerId)}
+                        </span>
                         {row.triggerSource === 'scheduled' && (
                           <span className="pill" title="Triggered by a scheduled task">
                             scheduled

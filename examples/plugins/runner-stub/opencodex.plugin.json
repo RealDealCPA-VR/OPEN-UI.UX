@@ -1,0 +1,14 @@
+{
+  "name": "runner-stub",
+  "version": "0.0.0",
+  "displayName": "Stub runner",
+  "description": "Minimal example showing how to ship an external agent harness as a plugin.",
+  "author": "OpenCodex contributors",
+  "license": "MIT",
+  "entry": "dist/index.js",
+  "engines": { "opencodex": "^0.1.0" },
+  "permissions": ["agent.runner"],
+  "contributions": {
+    "runners": [{ "id": "runner-stub", "displayName": "Stub runner" }]
+  }
+}

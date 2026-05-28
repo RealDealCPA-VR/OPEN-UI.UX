@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Permission } from '@opencodex/plugin-sdk';
+import type { PluginPreset } from '../../shared/ipc-types';
 import type { PluginListItem } from '../../shared/plugins';
 
 export function PluginsPanel(): JSX.Element {
   const [plugins, setPlugins] = useState<PluginListItem[] | null>(null);
+  const [presets, setPresets] = useState<PluginPreset[]>([]);
   const [registryUrl, setRegistryUrl] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -12,12 +14,37 @@ export function PluginsPanel(): JSX.Element {
   useEffect(() => {
     void window.opencodex.plugins.list().then((r) => setPlugins(r.plugins));
     void window.opencodex.plugins.getRegistryUrl().then((r) => setRegistryUrl(r.url));
+    void window.opencodex.plugins
+      .listPresets()
+      .then(setPresets)
+      .catch(() => {
+        // Non-fatal — preset cards just don't render.
+      });
     return window.opencodex.plugins.onChanged((evt) => setPlugins(evt.plugins));
   }, []);
 
+  const availablePresets = useMemo(() => {
+    if (!plugins) return [];
+    const installedNames = new Set(plugins.map((p) => p.manifest.name));
+    return presets.filter((preset) => !installedNames.has(preset.id));
+  }, [plugins, presets]);
+
   if (!plugins) return <p className="settings-section-desc">Loading…</p>;
 
-  const onInstall = async (): Promise<void> => {
+  const onInstallPreset = async (presetId: string): Promise<void> => {
+    setBusyId(`preset:${presetId}`);
+    setError(null);
+    try {
+      const result = await window.opencodex.plugins.installPreset(presetId);
+      setPlugins(result.plugins);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const onSideload = async (): Promise<void> => {
     setBusyId('__install__');
     setError(null);
     try {
@@ -79,14 +106,49 @@ export function PluginsPanel(): JSX.Element {
   return (
     <div className="plugins-panel">
       {error && <div className="mcp-panel-error">{error}</div>}
+
+      {availablePresets.length > 0 && (
+        <section className="plugins-presets">
+          <h3 className="plugins-presets-head">Available plugins</h3>
+          <p className="plugins-presets-desc">
+            Bundled with OpenCodex. Click Install to enable — no download required.
+          </p>
+          <ul className="plugins-presets-list">
+            {availablePresets.map((preset) => {
+              const presetBusy = busyId === `preset:${preset.id}`;
+              return (
+                <li key={preset.id} className="plugins-preset-card">
+                  <div className="plugins-preset-card-body">
+                    <strong>{preset.displayName}</strong>
+                    <p>{preset.description}</p>
+                    {preset.installHint && (
+                      <p className="plugins-preset-hint">{preset.installHint}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => void onInstallPreset(preset.id)}
+                    disabled={presetBusy}
+                  >
+                    {presetBusy ? 'Installing…' : 'Install'}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       <div className="plugins-toolbar">
         <button
           type="button"
-          className="btn btn-primary"
-          onClick={() => void onInstall()}
+          className="btn"
+          onClick={() => void onSideload()}
           disabled={busyId === '__install__'}
+          title="Pick a folder containing an opencodex.plugin.json (developer / power-user path)"
         >
-          Install from folder…
+          Sideload from folder…
         </button>
         <span className="plugins-registry">
           Registry: <code>{registryUrl ?? 'none configured'}</code>

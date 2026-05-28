@@ -100,6 +100,15 @@ describe('LeftColumnContextPane route dispatch', () => {
     expect(mountCounts.codebase).toBe(0);
     expect(mountCounts.automations).toBe(0);
   });
+
+  it('renders nothing on /runners (RunnersView owns its own header)', () => {
+    const { container } = render(<LeftColumnContextPane route="runners" />);
+    expect(container.textContent).toBe('');
+    expect(mountCounts.chat).toBe(0);
+    expect(mountCounts.agent).toBe(0);
+    expect(mountCounts.codebase).toBe(0);
+    expect(mountCounts.automations).toBe(0);
+  });
 });
 
 describe('routeFromPathname', () => {
@@ -118,6 +127,11 @@ describe('routeFromPathname', () => {
 
   it('maps /settings paths to settings', () => {
     expect(routeFromPathname('/settings/theme')).toBe('settings');
+  });
+
+  it('maps /runners paths to runners', () => {
+    expect(routeFromPathname('/runners')).toBe('runners');
+    expect(routeFromPathname('/runners?install=claude-code')).toBe('runners');
   });
 
   it('defaults unknown paths to chat', () => {

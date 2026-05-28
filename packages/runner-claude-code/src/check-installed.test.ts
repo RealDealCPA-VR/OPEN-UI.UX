@@ -55,6 +55,10 @@ vi.mock('node:child_process', () => ({
   execFile: harness.execFileMock,
 }));
 
+vi.mock('node:fs', () => ({
+  existsSync: () => false,
+}));
+
 import { CLAUDE_INSTALL_HINT, autoDetect, checkInstalled } from './check-installed';
 
 function setExecResult(opts: ExecResult): void {

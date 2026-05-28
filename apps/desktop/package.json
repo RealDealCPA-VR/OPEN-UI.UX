@@ -7,17 +7,20 @@
   "type": "module",
   "main": "out/main/index.cjs",
   "scripts": {
-    "dev": "node scripts/dev.cjs",
-    "build": "electron-vite build",
+    "dev": "node scripts/build-runner-plugins.mjs && node scripts/dev.cjs",
+    "build": "node scripts/build-runner-plugins.mjs && electron-vite build",
+    "build:plugins": "node scripts/build-runner-plugins.mjs",
     "preview": "electron-vite preview",
-    "package": "electron-vite build && electron-builder --dir",
-    "dist": "electron-vite build && electron-builder",
+    "package": "node scripts/build-runner-plugins.mjs && electron-vite build && electron-builder --dir",
+    "dist": "node scripts/build-runner-plugins.mjs && electron-vite build && electron-builder",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "e2e": "playwright test",
-    "clean": "rimraf out release .vite"
+    "clean": "rimraf out release .vite",
+    "rebuild-native": "electron-rebuild -f -w better-sqlite3",
+    "postinstall": "electron-rebuild -f -w better-sqlite3 || echo 'rebuild-native skipped — run pnpm rebuild-native manually'"
   },
   "dependencies": {
     "@opencodex/core": "workspace:*",
@@ -49,6 +52,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
     "@monaco-editor/react": "^4.6.0",
     "@playwright/test": "^1.42.0",
     "@testing-library/react": "^16.0.0",
@@ -60,6 +64,7 @@
     "electron": "^30.0.0",
     "electron-builder": "^24.13.0",
     "electron-vite": "^2.1.0",
+    "esbuild": "^0.21.5",
     "jsdom": "^25.0.0",
     "monaco-editor": "^0.52.0",
     "react": "^18.2.0",

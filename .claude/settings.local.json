@@ -116,7 +116,11 @@
       "Bash(xargs -0 -I{} echo \"{}\")",
       "Bash(pnpm lint-staged *)",
       "Bash(pnpm --filter @opencodex/desktop exec eslint --max-warnings 0 src/renderer/components/HoverHint.tsx)",
-      "Bash(pnpm --filter @opencodex/desktop exec tsc --noEmit)"
+      "Bash(pnpm --filter @opencodex/desktop exec tsc --noEmit)",
+      "Bash(git stash *)",
+      "Bash(grep -rn \"openExternal\\\\|shell\\\\\\\\.open\" \"c:/Users/VR/Projects/OPEN UI.UX/apps/desktop/src/main/\")",
+      "Bash(node scripts/build-runner-plugins.mjs)",
+      "Bash(node -e \"import\\('./index.js'\\).then\\(m => console.log\\('keys:', Object.keys\\(m\\), 'default:', typeof m.default, 'activate:', typeof m.default?.activate\\)\\)\")"
     ],
     "additionalDirectories": ["c:\\c\\Users\\VR\\Projects\\OPEN UI.UX\\apps\\desktop"]
   }

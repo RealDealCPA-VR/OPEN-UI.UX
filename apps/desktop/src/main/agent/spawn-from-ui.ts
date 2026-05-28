@@ -1,9 +1,12 @@
+import { BrowserWindow } from 'electron';
 import { logger } from '../logger';
 import { recordComplete, recordError, recordStart } from './run-registry';
 import { runnerRegistry } from './runner-registry-instance';
 import { type SubagentResult } from './subagent';
 import { isUtilityProcessAvailable, runSubagentInline, runSubagentInWorker } from './worker-host';
 import { createWorktree, isGitRepo } from './worktrees';
+import { classifyRunnerError } from './runner-friendly-errors';
+import { runnerFriendlyErrorChannel } from '../../shared/ipc-types';
 
 export interface SpawnFromUiOptions {
   task: string;
@@ -31,6 +34,15 @@ export async function spawnFromUiAsync(opts: SpawnFromUiOptions): Promise<{ runI
   const runnerId = opts.runnerId ?? 'internal';
   if (!runnerRegistry.has(runnerId)) {
     throw new Error(`Unknown runner: ${runnerId}`);
+  }
+
+  if (runnerId !== 'internal') {
+    const workspaceIsGit = await isGitRepo(opts.workspaceRoot);
+    if (!workspaceIsGit) {
+      throw new Error(
+        "External runners require a git workspace. Run 'git init' in this folder or pick the internal runner.",
+      );
+    }
   }
 
   const controller = new AbortController();
@@ -85,6 +97,9 @@ export async function spawnFromUiAsync(opts: SpawnFromUiOptions): Promise<{ runI
           runnerId,
         });
       }
+      if (runnerId !== 'internal' && result.stopReason === 'runner_error') {
+        broadcastRunnerFriendlyError(runnerId, result.error ?? '');
+      }
       recordComplete(runId, result);
     } catch (err) {
       recordError(runId, err);
@@ -100,6 +115,13 @@ interface WorktreeCtx {
   worktreePath?: string;
   worktreeBranch?: string;
   repoRoot?: string;
+}
+
+function broadcastRunnerFriendlyError(runnerId: string, errText: string): void {
+  const payload = classifyRunnerError(runnerId, errText);
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(runnerFriendlyErrorChannel, payload);
+  }
 }
 
 async function bootstrapWorktreeOrSkip(opts: SpawnFromUiOptions): Promise<WorktreeCtx> {

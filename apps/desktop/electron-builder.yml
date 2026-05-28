@@ -8,6 +8,18 @@ files:
 extraResources:
   - from: build/icon.png
     to: icon.png
+  - from: ../../packages/runner-claude-code/dist
+    to: plugins/runner-claude-code/dist
+  - from: ../../packages/runner-claude-code/opencodex.plugin.json
+    to: plugins/runner-claude-code/opencodex.plugin.json
+  - from: ../../packages/runner-opencode/dist
+    to: plugins/runner-opencode/dist
+  - from: ../../packages/runner-opencode/opencodex.plugin.json
+    to: plugins/runner-opencode/opencodex.plugin.json
+  - from: ../../packages/runner-aider/dist
+    to: plugins/runner-aider/dist
+  - from: ../../packages/runner-aider/opencodex.plugin.json
+    to: plugins/runner-aider/opencodex.plugin.json
 directories:
   output: release
   buildResources: build

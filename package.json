@@ -12,8 +12,9 @@
   "scripts": {
     "dev": "pnpm --filter @opencodex/desktop dev",
     "build": "pnpm -r build",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:watch": "vitest",
+    "check-placeholders": "node scripts/check-placeholders.mjs",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "format": "prettier --write .",

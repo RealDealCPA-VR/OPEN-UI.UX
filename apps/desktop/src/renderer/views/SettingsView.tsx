@@ -13,7 +13,6 @@ import { McpServersPanel } from './McpServersPanel';
 import { MemoryPanel } from './MemoryPanel';
 import { PluginsPanel } from './PluginsPanel';
 import { ProvidersPanel } from './ProvidersPanel';
-import { RunnersPanel } from './RunnersPanel';
 import { ScheduledTasksPanel } from './ScheduledTasksPanel';
 import { SkillsPanel } from './SkillsPanel';
 import {
@@ -195,12 +194,6 @@ function SettingsSectionBody({ section }: { section: SettingsSection }): JSX.Ele
       return (
         <SettingsSectionCard title={section.title} description={section.description}>
           <SkillsPanel />
-        </SettingsSectionCard>
-      );
-    case 'runners':
-      return (
-        <SettingsSectionCard title={section.title} description={section.description}>
-          <RunnersPanel />
         </SettingsSectionCard>
       );
     case 'accessibility':

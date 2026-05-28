@@ -1,10 +1,31 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import type { RunnerInfo, RunnerInstallCheck } from '../../shared/ipc-types';
+import type { GitInitResult, RunnerProbeResult } from '../../shared/runner-discovery';
 import { useSelectedModel } from '../state/selected-model-context';
+import { useToast } from './Toasts';
+
+interface RunnerBridge {
+  probeAuth?: (runnerId: string) => Promise<RunnerProbeResult>;
+}
+
+interface GitBridge {
+  initRepo?: (req: { workspacePath: string; initialCommit?: boolean }) => Promise<GitInitResult>;
+}
+
+function runnerBridge(): RunnerBridge | null {
+  const bridge = (window as unknown as { opencodex?: { runner?: RunnerBridge } }).opencodex;
+  return bridge?.runner ?? null;
+}
+
+function gitBridge(): GitBridge | null {
+  const bridge = (window as unknown as { opencodex?: { git?: GitBridge } }).opencodex;
+  return bridge?.git ?? null;
+}
 
 export interface AgentSpawnModalProps {
   initialTask?: string;
   initialWorkspaceRoot?: string;
+  initialRunnerId?: string;
   onClose: () => void;
   onSpawned: (runId: string) => void;
 }
@@ -16,6 +37,7 @@ interface InstallStateMap {
 export function AgentSpawnModal({
   initialTask = '',
   initialWorkspaceRoot,
+  initialRunnerId,
   onClose,
   onSpawned,
 }: AgentSpawnModalProps): JSX.Element {
@@ -36,9 +58,14 @@ export function AgentSpawnModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [runnerId, setRunnerId] = useState<string>('internal');
+  const [runnerId, setRunnerId] = useState<string>(initialRunnerId ?? 'internal');
   const [runners, setRunners] = useState<RunnerInfo[]>([]);
   const [installState, setInstallState] = useState<InstallStateMap>({});
+  const [probeResult, setProbeResult] = useState<RunnerProbeResult | null>(null);
+  const [probeBusy, setProbeBusy] = useState(false);
+  const [gitInitBusy, setGitInitBusy] = useState(false);
+  const [gitInitError, setGitInitError] = useState<string | null>(null);
+  const toast = useToast();
 
   if (initialWorkspaceRoot !== lastInitialWorkspaceRoot) {
     setLastInitialWorkspaceRoot(initialWorkspaceRoot);
@@ -111,6 +138,76 @@ export function AgentSpawnModal({
   const isRepo: boolean | null =
     isRepoState && isRepoState.root === workspaceRoot ? isRepoState.isRepo : null;
 
+  useEffect(() => {
+    // Reset the previous runner's probe result when the user switches runner.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setProbeResult(null);
+  }, [runnerId]);
+
+  const refreshIsRepo = useCallback(async (): Promise<boolean> => {
+    if (!workspaceRoot) return false;
+    const root = workspaceRoot;
+    try {
+      const r = await window.opencodex.git.isRepo(root);
+      setIsRepoState({ root, isRepo: r.isRepo });
+      return r.isRepo;
+    } catch {
+      setIsRepoState({ root, isRepo: false });
+      return false;
+    }
+  }, [workspaceRoot]);
+
+  const handleGitInit = useCallback(async () => {
+    if (!workspaceRoot) return;
+    const bridge = gitBridge();
+    if (!bridge?.initRepo) {
+      setGitInitError('Git init IPC not available yet.');
+      return;
+    }
+    setGitInitBusy(true);
+    setGitInitError(null);
+    try {
+      const res = await bridge.initRepo({ workspacePath: workspaceRoot, initialCommit: true });
+      if (res.ok) {
+        toast.show(`Initialized git repo on branch ${res.branch ?? 'main'}`, {
+          kind: 'success',
+        });
+        await refreshIsRepo();
+      } else {
+        setGitInitError(res.error ?? 'git init failed');
+      }
+    } catch (err) {
+      setGitInitError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setGitInitBusy(false);
+    }
+  }, [workspaceRoot, toast, refreshIsRepo]);
+
+  const handleVerifyRunner = useCallback(async () => {
+    const bridge = runnerBridge();
+    if (!bridge?.probeAuth) {
+      setProbeResult({
+        ok: false,
+        authenticated: false,
+        hint: 'Probe IPC not available yet.',
+      });
+      return;
+    }
+    setProbeBusy(true);
+    try {
+      const res = await bridge.probeAuth(runnerId);
+      setProbeResult(res);
+    } catch (err) {
+      setProbeResult({
+        ok: false,
+        authenticated: false,
+        hint: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setProbeBusy(false);
+    }
+  }, [runnerId]);
+
   const providerOptions = useMemo(
     () =>
       configuredProviders.map((p) => ({
@@ -182,10 +279,13 @@ export function AgentSpawnModal({
     onSpawned,
   ]);
 
+  const externalRunnerNeedsRepo = isExternalRunner && isRepo === false;
+
   const canSubmit =
     !busy &&
     task.trim().length > 0 &&
     workspaceRoot !== '' &&
+    !externalRunnerNeedsRepo &&
     (isExternalRunner || (providerId !== '' && effectiveModelId !== ''));
 
   const onKeyDown = (e: KeyboardEvent): void => {
@@ -266,10 +366,10 @@ export function AgentSpawnModal({
             <span style={{ fontSize: 12, color: 'var(--danger)' }}>
               Runner not installed.{' '}
               <a
-                href="#/settings/runners"
+                href="#/runners"
                 style={{ color: 'var(--accent-text)', textDecoration: 'underline' }}
               >
-                Open Runners settings
+                Open Runners
               </a>
               .
             </span>
@@ -277,9 +377,68 @@ export function AgentSpawnModal({
         </label>
 
         {isExternalRunner && (
-          <div className="agent-spawn-runner-note settings-section-desc">
-            This runner uses its own provider and tools — OpenCodex approvals do not apply inside
-            the harness.
+          <div
+            className="agent-spawn-runner-note"
+            style={{
+              background: 'var(--bg-pill)',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border-row-divider)',
+              borderRadius: 6,
+              padding: '8px 10px',
+              fontSize: 12,
+              lineHeight: 1.45,
+            }}
+          >
+            {selectedRunner?.displayName ?? 'This runner'} uses its own approval model. Changes land
+            in a git worktree for your review — your OpenCodex approval policy does not gate the
+            runner&apos;s internal tool calls.
+          </div>
+        )}
+
+        {externalRunnerNeedsRepo && (
+          <div
+            style={{
+              border: '1px solid var(--danger-border)',
+              background: 'var(--danger-bg)',
+              color: 'var(--danger)',
+              borderRadius: 6,
+              padding: '8px 10px',
+              margin: '4px 0',
+              fontSize: 13,
+              lineHeight: 1.4,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+            }}
+          >
+            <span>
+              External runners require a git repository. Run &apos;git init&apos; in this workspace
+              or pick the internal runner.
+            </span>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                type="button"
+                className="btn"
+                disabled={gitInitBusy || !workspaceRoot}
+                onClick={() => void handleGitInit()}
+              >
+                {gitInitBusy ? 'Initializing…' : 'Initialize git repo'}
+              </button>
+              {gitInitError && (
+                <span style={{ fontSize: 12, color: 'var(--danger)' }}>
+                  {gitInitError}{' '}
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => void handleGitInit()}
+                    disabled={gitInitBusy}
+                    style={{ marginLeft: 4 }}
+                  >
+                    Retry
+                  </button>
+                </span>
+              )}
+            </div>
           </div>
         )}
 
@@ -387,6 +546,21 @@ export function AgentSpawnModal({
 
         {error && <p className="approvals-save-error">{error}</p>}
 
+        {isExternalRunner && probeResult && (
+          <div
+            className={
+              probeResult.ok && probeResult.authenticated
+                ? 'test-result test-result-ok'
+                : 'test-result test-result-err'
+            }
+            role={probeResult.ok && probeResult.authenticated ? undefined : 'alert'}
+          >
+            {probeResult.ok && probeResult.authenticated
+              ? '✓ Ready'
+              : `✗ ${probeResult.hint ?? 'Not authenticated'}`}
+          </div>
+        )}
+
         <div className="approval-modal-actions">
           <div className="approval-modal-action-group">
             <button
@@ -398,6 +572,16 @@ export function AgentSpawnModal({
             >
               {busy ? 'Spawning…' : 'Spawn task'}
             </button>
+            {isExternalRunner && (
+              <button
+                type="button"
+                className="btn"
+                disabled={probeBusy || busy}
+                onClick={() => void handleVerifyRunner()}
+              >
+                {probeBusy ? 'Verifying…' : 'Verify runner'}
+              </button>
+            )}
             <button type="button" disabled={busy} onClick={onClose}>
               Cancel
             </button>

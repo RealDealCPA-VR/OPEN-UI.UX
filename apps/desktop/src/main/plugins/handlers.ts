@@ -1,4 +1,6 @@
-import { BrowserWindow, dialog } from 'electron';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { app, BrowserWindow, dialog } from 'electron';
 import { z } from 'zod';
 import { PermissionSchema } from '@opencodex/plugin-sdk';
 import { registerInvoke } from '../ipc/registry';
@@ -16,10 +18,37 @@ import { getPluginRegistryUrl, setPluginRegistryUrl } from '../storage/settings'
 import { toFriendlyError } from '../util/friendly-error';
 import { PLUGIN_PRESETS } from './presets';
 
+function resolveBundledPresetPath(presetId: string): string {
+  if (app.isPackaged) {
+    return join(process.resourcesPath, 'plugins', presetId);
+  }
+  return resolve(app.getAppPath(), '../..', 'packages', presetId);
+}
+
 export function registerPluginHandlers(): void {
   registerInvoke('plugins:list', z.void(), () => ({ plugins: listPlugins() }));
   registerInvoke('plugins:list-panels', z.void(), () => ({ panels: listPanels() }));
   registerInvoke('plugins:list-presets', z.void(), () => [...PLUGIN_PRESETS]);
+  registerInvoke(
+    'plugins:install-preset',
+    z.object({ presetId: z.string().min(1) }),
+    async ({ presetId }) => {
+      const preset = PLUGIN_PRESETS.find((p) => p.id === presetId);
+      if (!preset) throw new Error(`Unknown preset: ${presetId}`);
+      const installPath = resolveBundledPresetPath(presetId);
+      if (!existsSync(installPath)) {
+        throw new Error(
+          `Bundled plugin files not found at ${installPath}. ` +
+            `Run "pnpm --filter @opencodex/desktop build:plugins" (dev) or reinstall the app (packaged).`,
+        );
+      }
+      try {
+        return { plugins: await installPluginFromPath(installPath) };
+      } catch (err) {
+        throw toFriendlyError(err);
+      }
+    },
+  );
   registerInvoke(
     'plugins:install-from-path',
     z.object({ path: z.string().min(1) }),

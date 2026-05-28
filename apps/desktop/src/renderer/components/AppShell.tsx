@@ -22,17 +22,24 @@ const NAV_ITEMS: readonly NavItem[] = [
   { to: '/chat', label: 'Chat', hint: 'Chat conversations', shortcut: '⌘1', routeKey: 'chat' },
   { to: '/agent', label: 'Agent', hint: 'Agent runs', shortcut: '⌘2', routeKey: 'agent' },
   {
+    to: '/runners',
+    label: 'Runners',
+    hint: 'Configure agent runners',
+    shortcut: '⌘3',
+    routeKey: 'runners',
+  },
+  {
     to: '/codebase',
     label: 'Codebase',
     hint: 'Browse codebase',
-    shortcut: '⌘3',
+    shortcut: '⌘4',
     routeKey: 'codebase',
   },
   {
     to: '/automations',
     label: 'Automations',
     hint: 'Scheduled automations',
-    shortcut: '⌘4',
+    shortcut: '⌘5',
     routeKey: 'automations',
   },
   {
@@ -74,7 +81,7 @@ export function AppShell(): JSX.Element {
         navigate('/settings');
         return;
       }
-      if (e.key >= '1' && e.key <= '5') {
+      if (e.key >= '1' && e.key <= '6') {
         const idx = Number.parseInt(e.key, 10) - 1;
         const dest = NAV_ITEMS[idx];
         if (dest) {

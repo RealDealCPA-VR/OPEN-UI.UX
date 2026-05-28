@@ -134,6 +134,38 @@ import type {
   SkillsListResponse,
 } from './skills';
 import type { UiErrorEvent } from './ui-errors';
+import type {
+  GitInitRequest,
+  GitInitResult,
+  RunnerFriendlyError,
+  RunnerInstallProgress,
+  RunnerInstallRequest,
+  RunnerInstallResult,
+  RunnerListPackageManagersResponse,
+  RunnerProbeAuthRequest,
+  RunnerProbeResult,
+} from './runner-discovery';
+
+export type {
+  GitInitRequest,
+  GitInitResult,
+  PackageManager,
+  RunnerFriendlyError,
+  RunnerFriendlyErrorKind,
+  RunnerInstallProgress,
+  RunnerInstallRequest,
+  RunnerInstallResult,
+  RunnerListPackageManagersResponse,
+  RunnerProbeAuthRequest,
+  RunnerProbeResult,
+} from './runner-discovery';
+
+export const runnerListPackageManagersChannel = 'runner:list-package-managers' as const;
+export const runnerInstallChannel = 'runner:install' as const;
+export const runnerInstallProgressChannel = 'runner:install-progress' as const;
+export const runnerProbeAuthChannel = 'runner:probe-auth' as const;
+export const gitInitRepoChannel = 'git:init-repo' as const;
+export const runnerFriendlyErrorChannel = 'runner:friendly-error' as const;
 
 export const runnerInstallCheckSchema = z.object({
   ok: z.boolean(),
@@ -195,6 +227,7 @@ export const pluginPresetSchema = z.object({
   displayName: z.string(),
   description: z.string(),
   source: z.string(),
+  installHint: z.string().optional(),
 });
 
 export type PluginPreset = z.infer<typeof pluginPresetSchema>;
@@ -436,6 +469,10 @@ export interface IpcInvokeChannels {
     request: void;
     response: PluginPreset[];
   };
+  'plugins:install-preset': {
+    request: { presetId: string };
+    response: { plugins: PluginListItem[] };
+  };
   'chat:get-read-only-mode': {
     request: void;
     response: { readOnly: boolean };
@@ -665,6 +702,22 @@ export interface IpcInvokeChannels {
     request: { names?: string[] };
     response: SkillsListResponse;
   };
+  'runner:list-package-managers': {
+    request: void;
+    response: RunnerListPackageManagersResponse;
+  };
+  'runner:install': {
+    request: RunnerInstallRequest;
+    response: RunnerInstallResult;
+  };
+  'runner:probe-auth': {
+    request: RunnerProbeAuthRequest;
+    response: RunnerProbeResult;
+  };
+  'git:init-repo': {
+    request: GitInitRequest;
+    response: GitInitResult;
+  };
 }
 
 export interface IpcEventChannels {
@@ -688,6 +741,8 @@ export interface IpcEventChannels {
   'scheduler:run-completed': ScheduledRunCompletedEvent;
   'skills:changed': SkillsChangedEvent;
   'ui:error': UiErrorEvent;
+  'runner:install-progress': RunnerInstallProgress;
+  'runner:friendly-error': RunnerFriendlyError;
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

@@ -23,6 +23,7 @@ export interface RecordToolCallInput {
   isError: boolean;
   durationMs: number | null;
   triggerSource?: ToolCallAuditTriggerSource;
+  runnerId?: string | null;
 }
 
 interface RawRow {
@@ -36,6 +37,7 @@ interface RawRow {
   duration_ms: number | null;
   created_at: string;
   trigger_source: string;
+  runner_id: string | null;
 }
 
 interface RawQueryRow extends RawRow {
@@ -45,7 +47,7 @@ interface RawQueryRow extends RawRow {
   conversation_title: string;
 }
 
-const COLUMNS = `id, message_id, tool_name, input_json, output_json, decision, is_error, duration_ms, created_at, trigger_source`;
+const COLUMNS = `id, message_id, tool_name, input_json, output_json, decision, is_error, duration_ms, created_at, trigger_source, runner_id`;
 
 const QUERY_LIMIT_DEFAULT = 100;
 const QUERY_LIMIT_MAX = 500;
@@ -59,8 +61,8 @@ export function recordToolCall(
     db
       .prepare(
         `INSERT INTO tool_calls
-       (id, message_id, tool_name, input_json, output_json, decision, is_error, duration_ms, trigger_source)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, message_id, tool_name, input_json, output_json, decision, is_error, duration_ms, trigger_source, runner_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -72,6 +74,7 @@ export function recordToolCall(
         input.isError ? 1 : 0,
         input.durationMs,
         input.triggerSource ?? 'user',
+        input.runnerId ?? null,
       ),
   );
   return id;
@@ -131,7 +134,7 @@ export function queryToolCalls(
          LENGTH(tc.input_json) AS input_json_len,
          SUBSTR(tc.output_json, 1, ${TOOL_CALL_AUDIT_PAYLOAD_LIMIT}) AS output_json,
          LENGTH(tc.output_json) AS output_json_len,
-         tc.decision, tc.is_error, tc.duration_ms, tc.created_at, tc.trigger_source,
+         tc.decision, tc.is_error, tc.duration_ms, tc.created_at, tc.trigger_source, tc.runner_id,
          m.conversation_id AS conversation_id,
          c.title AS conversation_title
        FROM tool_calls tc
@@ -208,6 +211,7 @@ function rowToAudit(
     inputTruncated: inputLen > TOOL_CALL_AUDIT_PAYLOAD_LIMIT,
     outputTruncated: outputLen !== null && outputLen > TOOL_CALL_AUDIT_PAYLOAD_LIMIT,
     triggerSource: (row.trigger_source as ToolCallAuditTriggerSource) ?? 'user',
+    runnerId: row.runner_id ?? null,
   };
 }
 
