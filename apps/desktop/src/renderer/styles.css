@@ -570,90 +570,121 @@ body {
   margin: 8px 14px 14px;
 }
 
-.workspace-chip {
+/* Sticky workspace header — frosted glass, pinned to the top of the chat pane */
+.lcc-workspace-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: flex;
+  justify-content: center;
+  padding: 12px 14px;
+  background: rgba(17, 17, 20, 0.72);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--glass-stroke);
+}
+
+.workspace-chip {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin: 14px 14px 4px;
-  padding: 8px 10px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  width: 100%;
+  max-width: 240px;
+  margin: 0 auto;
+  padding: 7px 12px;
+  background: var(--glass-tint-strong);
+  border: 1px solid var(--glass-stroke);
+  border-radius: 999px;
   color: var(--text-primary);
   font: inherit;
   font-size: 12.5px;
-  text-align: left;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-align: center;
+  justify-content: center;
   cursor: pointer;
   min-width: 0;
   transition:
+    background var(--duration) var(--ease),
     border-color var(--duration) var(--ease),
-    background var(--duration) var(--ease);
+    transform var(--duration-fast) var(--ease);
 }
 
 .workspace-chip:hover:not(:disabled) {
-  background: var(--bg-elevated-strong);
-  border-color: var(--accent-soft-border);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-strong);
+}
+
+.workspace-chip:active:not(:disabled) {
+  transform: scale(0.985);
 }
 
 .workspace-chip-icon {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 
 .workspace-chip-label {
-  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
 }
 
 .workspace-chip-empty .workspace-chip-label {
   color: var(--text-muted);
-  font-style: italic;
   font-weight: 400;
 }
 
 .workspace-chip-caret {
+  display: inline-flex;
+  align-items: center;
   color: var(--text-muted);
-  font-size: 10px;
   flex-shrink: 0;
 }
 
 .chat-conversation-list {
   list-style: none;
   margin: 0;
-  padding: 0 8px 14px;
+  padding: 4px 10px 14px;
   overflow-y: auto;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .chat-conversation-empty {
-  padding: 16px 12px;
+  padding: 14px 10px;
   color: var(--text-muted);
   font-size: 12.5px;
+  text-align: center;
 }
 
 .chat-conversation-row {
   display: flex;
   align-items: stretch;
-  border-radius: 8px;
+  border-radius: 10px;
   margin: 0;
-  transition: background var(--duration-fast) var(--ease);
+  position: relative;
+  transition:
+    background var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease);
 }
 
 .chat-conversation-row:hover {
-  background: var(--bg-row-hover);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .chat-conversation-row.active {
-  background: var(--bg-selected);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-    0 0 0 1px var(--accent-soft-border);
+  background: var(--accent-soft-bg);
+  box-shadow: inset 0 0 0 1px var(--accent-soft-border);
+}
+
+.chat-conversation-row.active .chat-conversation-title {
+  color: var(--accent-text);
+  font-weight: 600;
 }
 
 .chat-conversation-btn {
@@ -663,12 +694,13 @@ body {
   border: 0;
   color: var(--text-primary);
   font: inherit;
-  padding: 8px 10px;
+  padding: 9px 12px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  border-radius: 10px;
 }
 
 .chat-conversation-title {
@@ -676,11 +708,14 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
 }
 
 .chat-conversation-meta {
   font-size: 11px;
   color: var(--text-muted);
+  letter-spacing: 0;
 }
 
 .chat-conversation-del {
@@ -688,15 +723,106 @@ body {
   border: 0;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 0 10px;
-  font-size: 18px;
+  padding: 0 12px;
+  font-size: 16px;
   line-height: 1;
-  border-radius: 6px;
+  border-radius: 8px;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.chat-conversation-row:hover .chat-conversation-del,
+.chat-conversation-row.active .chat-conversation-del {
+  opacity: 1;
 }
 
 .chat-conversation-del:hover {
   color: var(--danger);
   background: var(--danger-bg);
+}
+
+/* Chat pane header: title + round "+" icon (Apple Notes feel) */
+.lcc-pane-chat {
+  padding: 0;
+  gap: 0;
+}
+
+.lcc-pane-head-chat {
+  padding: 14px 14px 6px;
+}
+
+.lcc-pane-new-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: var(--accent-soft-bg);
+  color: var(--accent-text);
+  border: 1px solid var(--accent-soft-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+}
+
+.lcc-pane-new-icon:hover {
+  background: var(--accent-bg);
+  color: var(--accent-on-bg);
+}
+
+.lcc-pane-new-icon:active {
+  transform: scale(0.92);
+}
+
+/* Search row */
+.lcc-pane-search-row {
+  position: relative;
+  padding: 4px 14px 10px;
+}
+
+.lcc-pane-search-icon {
+  position: absolute;
+  left: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.lcc-pane-chat .lcc-pane-search {
+  width: 100%;
+  padding: 6px 10px 6px 28px;
+  background: var(--glass-tint);
+  border: 1px solid var(--glass-stroke);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  letter-spacing: -0.005em;
+  transition:
+    background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease);
+}
+
+.lcc-pane-chat .lcc-pane-search:focus {
+  outline: none;
+  background: var(--glass-tint-strong);
+  border-color: var(--accent-soft-border);
+}
+
+.lcc-pane-chat .lcc-pane-search::placeholder {
+  color: var(--text-muted);
+}
+
+/* Hide the default search clear-button cross to keep the input visually clean */
+.lcc-pane-chat .lcc-pane-search::-webkit-search-cancel-button {
+  appearance: none;
 }
 
 .chat-main {
