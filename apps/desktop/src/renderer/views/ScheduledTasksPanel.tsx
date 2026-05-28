@@ -12,7 +12,7 @@ export interface PrefillFromSkill {
   prompt: string;
   allowedTools: string[];
   cron: string | null;
-  linkedSkillId: string;
+  linkedSkillId: string | null;
 }
 
 export function ScheduledTasksPanel(): JSX.Element {

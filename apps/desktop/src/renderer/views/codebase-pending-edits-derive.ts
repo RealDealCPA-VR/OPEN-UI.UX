@@ -5,6 +5,7 @@ import type { PendingEditEntry } from '../../shared/codebase-search';
 /**
  * Filter the agent runs to those that should be queried for a pending merge
  * bundle: status not 'running', has worktree fields, mergeStatus 'pending'.
+ * Rejected or merged runs are excluded so their files don't keep a pill.
  */
 export function runsWithPendingEdits(runs: readonly AgentRun[]): AgentRun[] {
   const out: AgentRun[] = [];
@@ -17,17 +18,30 @@ export function runsWithPendingEdits(runs: readonly AgentRun[]): AgentRun[] {
   return out;
 }
 
+export interface PendingEditAnnotation {
+  status: EditAnnotation;
+  count: number;
+  runIds: string[];
+}
+
 /**
  * Build a path → annotation map from a flat list of pending-edit entries
- * already aggregated by main process. The same path appearing in multiple
- * runs collapses to a single 'pending' annotation.
+ * already aggregated by main process. Multiple entries against the same path
+ * (e.g. two pending runs touching the same file) aggregate into a single
+ * annotation whose `count` reflects how many runs are queued.
  */
 export function annotationMapFromPending(
   entries: readonly PendingEditEntry[],
-): Record<string, EditAnnotation> {
-  const out: Record<string, EditAnnotation> = {};
+): Record<string, PendingEditAnnotation> {
+  const out: Record<string, PendingEditAnnotation> = {};
   for (const e of entries) {
-    out[e.path] = 'pending';
+    const existing = out[e.path];
+    if (existing) {
+      existing.count += 1;
+      if (!existing.runIds.includes(e.runId)) existing.runIds.push(e.runId);
+    } else {
+      out[e.path] = { status: 'pending', count: 1, runIds: [e.runId] };
+    }
   }
   return out;
 }

@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react';
+import { tokenizeCitations } from './citations';
+import { pushTransfer } from '../state/transfer';
 import { parseMarkdown, type Block } from './markdown-parse';
 
 interface MarkdownProps {
@@ -19,7 +21,7 @@ export function Markdown({ text }: MarkdownProps): JSX.Element {
 function BlockView({ block }: { block: Block }): JSX.Element {
   switch (block.kind) {
     case 'heading':
-      return headingTag(block.level, renderInline(block.text));
+      return headingTag(block.level, block.id, renderInline(block.text));
     case 'paragraph':
       return <p>{renderInline(block.text)}</p>;
     case 'code':
@@ -39,30 +41,32 @@ function BlockView({ block }: { block: Block }): JSX.Element {
   }
 }
 
-function headingTag(level: number, children: ReactNode): JSX.Element {
+function headingTag(level: number, id: string, children: ReactNode): JSX.Element {
   switch (level) {
     case 1:
-      return <h1>{children}</h1>;
+      return <h1 id={id}>{children}</h1>;
     case 2:
-      return <h2>{children}</h2>;
+      return <h2 id={id}>{children}</h2>;
     case 3:
-      return <h3>{children}</h3>;
+      return <h3 id={id}>{children}</h3>;
     case 4:
-      return <h4>{children}</h4>;
+      return <h4 id={id}>{children}</h4>;
     case 5:
-      return <h5>{children}</h5>;
+      return <h5 id={id}>{children}</h5>;
     default:
-      return <h6>{children}</h6>;
+      return <h6 id={id}>{children}</h6>;
   }
 }
 
 function CodeBlock({ language, body }: { language: string | null; body: string }): JSX.Element {
   const [copied, setCopied] = useState(false);
+  const [wrap, setWrap] = useState(false);
+  const hasLongLines = body.split('\n').some((line) => line.length > 100);
   const handleCopy = async (): Promise<void> => {
     try {
       await navigator.clipboard.writeText(body);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setTimeout(() => setCopied(false), 1200);
     } catch {
       setCopied(false);
     }
@@ -71,11 +75,24 @@ function CodeBlock({ language, body }: { language: string | null; body: string }
     <div className="md-code">
       <div className="md-code-head">
         <span className="md-code-lang">{language ?? 'text'}</span>
-        <button type="button" className="md-code-copy" onClick={handleCopy}>
-          {copied ? 'Copied' : 'Copy'}
-        </button>
+        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+          {hasLongLines ? (
+            <button
+              type="button"
+              className="md-code-copy"
+              onClick={() => setWrap((v) => !v)}
+              aria-pressed={wrap}
+              title={wrap ? 'Disable line wrap' : 'Wrap long lines'}
+            >
+              {wrap ? 'Unwrap' : 'Wrap'}
+            </button>
+          ) : null}
+          <button type="button" className="md-code-copy" onClick={handleCopy}>
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </span>
       </div>
-      <pre>
+      <pre style={wrap ? { whiteSpace: 'pre-wrap', wordBreak: 'break-word' } : undefined}>
         <code>{highlight(body, language)}</code>
       </pre>
     </div>
@@ -390,10 +407,41 @@ function renderInlineRecursive(text: string, keyOffset: number): ReactNode {
   let buffer = '';
   let counter = keyOffset;
   const flush = (): void => {
-    if (buffer.length > 0) {
-      parts.push(buffer);
-      buffer = '';
+    if (buffer.length === 0) return;
+    const tokens = tokenizeCitations(buffer);
+    for (const tok of tokens) {
+      if (tok.kind === 'citation' && tok.file && tok.line !== undefined) {
+        const file = tok.file;
+        const line = tok.line;
+        parts.push(
+          <button
+            key={`cite-${counter++}`}
+            type="button"
+            className="md-citation"
+            onClick={() => {
+              pushTransfer({ kind: 'chat-to-codebase', filePaths: [file], workspaceRoot: '' });
+            }}
+            title={`Open ${file}:${line} in Codebase`}
+            style={{
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: 4,
+              padding: '0 5px',
+              font: 'inherit',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.9em',
+              color: 'var(--text-primary)',
+              cursor: 'pointer',
+            }}
+          >
+            {tok.text}
+          </button>,
+        );
+      } else {
+        parts.push(tok.text);
+      }
     }
+    buffer = '';
   };
   while (i < text.length) {
     const ch = text[i];
@@ -445,11 +493,28 @@ function renderInlineRecursive(text: string, keyOffset: number): ReactNode {
           const label = text.slice(i + 1, closeBracket);
           const href = text.slice(closeBracket + 2, closeParen);
           flush();
-          parts.push(
-            <a key={`l-${counter++}`} href={href} target="_blank" rel="noreferrer">
-              {label}
-            </a>,
-          );
+          if (href.startsWith('#')) {
+            const targetId = href.slice(1);
+            parts.push(
+              <a
+                key={`l-${counter++}`}
+                href={href}
+                onClick={(e) => {
+                  e.preventDefault();
+                  const el = document.getElementById(targetId);
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+              >
+                {label}
+              </a>,
+            );
+          } else {
+            parts.push(
+              <a key={`l-${counter++}`} href={href} target="_blank" rel="noreferrer">
+                {label}
+              </a>,
+            );
+          }
           i = closeParen + 1;
           continue;
         }

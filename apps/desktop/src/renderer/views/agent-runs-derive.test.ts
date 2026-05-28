@@ -7,13 +7,17 @@ import {
   formatDurationMs,
   formatTokens,
   hasUnresolvedWorktree,
+  humaneCountdown,
   partitionRunsByActivity,
+  runBudget,
   runDurationMs,
+  runProgressFraction,
   statusLabel,
   statusPillClass,
   stopReasonLabel,
   toolErrorCount,
   truncate,
+  RUN_BUDGET_DEFAULT,
 } from './agent-runs-derive';
 
 function makeRun(overrides: Partial<AgentRun> = {}): AgentRun {
@@ -211,5 +215,58 @@ describe('canContinueInChat + canAbort', () => {
     expect(canAbort(makeRun({ status: 'running' }))).toBe(true);
     expect(canAbort(makeRun({ status: 'completed' }))).toBe(false);
     expect(canAbort(makeRun({ status: 'failed' }))).toBe(false);
+  });
+});
+
+describe('runBudget', () => {
+  it('falls back to the default budget when no field is present', () => {
+    expect(runBudget(makeRun())).toBe(RUN_BUDGET_DEFAULT);
+  });
+  it('honors a numeric budget field carried on the run', () => {
+    const r = makeRun() as AgentRun & { budget: number };
+    r.budget = 25;
+    expect(runBudget(r)).toBe(25);
+  });
+  it('rejects non-positive and non-finite budgets', () => {
+    const a = makeRun() as AgentRun & { budget: number };
+    a.budget = -1;
+    expect(runBudget(a)).toBe(RUN_BUDGET_DEFAULT);
+    const b = makeRun() as AgentRun & { budget: number };
+    b.budget = Number.POSITIVE_INFINITY;
+    expect(runBudget(b)).toBe(RUN_BUDGET_DEFAULT);
+  });
+});
+
+describe('runProgressFraction', () => {
+  it('returns zero at zero iterations', () => {
+    expect(runProgressFraction(makeRun({ iterations: 0 }))).toBe(0);
+  });
+  it('clamps to one when iterations exceed the budget', () => {
+    expect(runProgressFraction(makeRun({ iterations: 999 }), 10)).toBe(1);
+  });
+  it('returns a fractional value mid-run', () => {
+    expect(runProgressFraction(makeRun({ iterations: 5 }), 10)).toBe(0.5);
+  });
+});
+
+describe('humaneCountdown', () => {
+  const now = Date.parse('2026-05-27T12:00:00Z');
+  it('returns em-dash for null', () => {
+    expect(humaneCountdown(null, now)).toBe('—');
+  });
+  it('returns "due now" when the timestamp has already passed', () => {
+    expect(humaneCountdown('2026-05-27 11:59:00', now)).toBe('due now');
+  });
+  it('returns seconds for sub-minute differences', () => {
+    expect(humaneCountdown('2026-05-27 12:00:30', now)).toBe('in 30s');
+  });
+  it('returns minutes for sub-hour differences', () => {
+    expect(humaneCountdown('2026-05-27 12:03:00', now)).toBe('in 3m');
+  });
+  it('returns hours for sub-day differences', () => {
+    expect(humaneCountdown('2026-05-27 14:00:00', now)).toBe('in 2h');
+  });
+  it('parses ISO timestamps with T separator and explicit Z', () => {
+    expect(humaneCountdown('2026-05-27T12:03:00Z', now)).toBe('in 3m');
   });
 });

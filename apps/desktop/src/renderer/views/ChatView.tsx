@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { ModelPicker } from '../components/ModelPicker';
 import type { ContentBlock } from '@opencodex/core';
 import {
   extractFilePathsFromMessages,
@@ -40,6 +41,7 @@ export function ChatView(): JSX.Element {
   const urlMessageId = searchParams.get('messageId');
   const transfer = useTransferPending();
   const [seededInput, setSeededInput] = useState<string | null>(null);
+  const [transferOrigin, setTransferOrigin] = useState<'agent' | 'codebase' | null>(null);
 
   useEffect(() => {
     if (!urlConversationId) return;
@@ -53,6 +55,8 @@ export function ChatView(): JSX.Element {
     if (transfer.kind === 'agent-to-chat') {
       const ctx = transfer;
       consumeTransfer();
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTransferOrigin('agent');
       void (async () => {
         const created = await createConversation(
           selected?.providerId ?? null,
@@ -72,6 +76,7 @@ export function ChatView(): JSX.Element {
     } else if (transfer.kind === 'codebase-to-chat') {
       const ctx = transfer;
       consumeTransfer();
+      setTransferOrigin('codebase');
       void (async () => {
         const created = await createConversation(
           selected?.providerId ?? null,
@@ -108,7 +113,9 @@ export function ChatView(): JSX.Element {
             scrollToMessageId={urlMessageId}
             scrollToConversationId={urlConversationId}
             seededInput={seededInput}
+            transferOrigin={transferOrigin}
             onConsumedSeededInput={() => setSeededInput(null)}
+            onClearTransferOrigin={() => setTransferOrigin(null)}
             onConsumeScrollTarget={() => {
               const next = new URLSearchParams(searchParams);
               next.delete('messageId');
@@ -131,9 +138,23 @@ interface ChatPaneProps {
   scrollToMessageId: string | null;
   scrollToConversationId: string | null;
   seededInput?: string | null;
+  transferOrigin?: 'agent' | 'codebase' | null;
   onConsumedSeededInput?: () => void;
+  onClearTransferOrigin?: () => void;
   onConsumeScrollTarget: () => void;
 }
+
+const STARTER_CHIPS: ReadonlyArray<{ label: string; prompt: string }> = [
+  {
+    label: 'Explain this repo',
+    prompt: 'Explain this repository: its purpose, layout, and how the pieces fit together.',
+  },
+  {
+    label: 'Find TODOs in src/',
+    prompt: 'Find all TODO and FIXME comments under src/ and group them by file.',
+  },
+  { label: 'Run the test suite', prompt: 'Run the project test suite and summarise any failures.' },
+];
 
 function ChatPane({
   providerId,
@@ -144,7 +165,9 @@ function ChatPane({
   scrollToMessageId,
   scrollToConversationId,
   seededInput,
+  transferOrigin,
   onConsumedSeededInput,
+  onClearTransferOrigin,
   onConsumeScrollTarget,
 }: ChatPaneProps): JSX.Element {
   const navigate = useNavigate();
@@ -256,7 +279,11 @@ function ChatPane({
     const el = inputRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
+    const cs = window.getComputedStyle(el);
+    const lineHeight = parseFloat(cs.lineHeight) || 20;
+    const minPx = parseFloat(cs.minHeight) || 120;
+    const maxPx = lineHeight * 12 + 24;
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, minPx), maxPx)}px`;
   }, [input]);
 
   useLayoutEffect(() => {
@@ -276,6 +303,10 @@ function ChatPane({
   const flatSlashEntries = useMemo(() => slashGroups.flatMap((g) => g.entries), [slashGroups]);
   const slashOpen = slashTrigger !== null;
 
+  const [lastSent, setLastSent] = useState<{ text: string; attachments: ChatAttachment[] } | null>(
+    null,
+  );
+
   const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
     if (slashOpen) return;
@@ -286,12 +317,41 @@ function ChatPane({
     const sent = attachments;
     setAttachments([]);
     setAttachmentError(null);
+    setLastSent({ text: trimmed, attachments: sent });
+    onClearTransferOrigin?.();
     void chat.send({
       providerId,
       modelId,
       userMessage: trimmed,
       ...(sent.length > 0 ? { attachments: sent } : {}),
     });
+  };
+
+  const handleRetry = (): void => {
+    if (chat.streaming) return;
+    if (!lastSent) {
+      const recovered = lastUserMessageText(chat.messages);
+      if (!recovered) return;
+      void chat.send({ providerId, modelId, userMessage: recovered });
+      return;
+    }
+    void chat.send({
+      providerId,
+      modelId,
+      userMessage: lastSent.text,
+      ...(lastSent.attachments.length > 0 ? { attachments: lastSent.attachments } : {}),
+    });
+  };
+
+  const handleStarterChip = (prompt: string): void => {
+    setInput(prompt);
+    const el = inputRef.current;
+    if (el) {
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(prompt.length, prompt.length);
+      });
+    }
   };
 
   const ingestDroppedPaths = async (paths: string[]): Promise<void> => {
@@ -437,7 +497,32 @@ function ChatPane({
     updateSlashFromCaret(el.value, el.selectionEnd ?? el.value.length);
   };
 
+  const openSlashMenuManually = (): void => {
+    const el = inputRef.current;
+    const caret = el ? (el.selectionEnd ?? input.length) : input.length;
+    const before = input.slice(0, caret);
+    const after = input.slice(caret);
+    const needsNewline = before.length > 0 && !before.endsWith('\n');
+    const insert = `${needsNewline ? '\n' : ''}/`;
+    const next = before + insert + after;
+    const nextCaret = before.length + insert.length;
+    setInput(next);
+    setSlashTrigger({ query: '', start: nextCaret - 1 });
+    setSlashActiveIndex(0);
+    if (el) {
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(nextCaret, nextCaret);
+      });
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      openSlashMenuManually();
+      return;
+    }
     if (slashOpen) {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -465,6 +550,24 @@ function ChatPane({
           }
           return;
         }
+      }
+    }
+    if (e.key === 'Escape' && chat.streaming) {
+      e.preventDefault();
+      void chat.cancel();
+      return;
+    }
+    if (e.key === 'ArrowUp' && input.length === 0 && !chat.streaming) {
+      const recovered = lastUserMessageText(chat.messages);
+      if (recovered) {
+        e.preventDefault();
+        setInput(recovered);
+        const len = recovered.length;
+        requestAnimationFrame(() => {
+          const el = inputRef.current;
+          if (el) el.setSelectionRange(len, len);
+        });
+        return;
       }
     }
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -574,7 +677,41 @@ function ChatPane({
       </header>
       <div className="chat-scroll" ref={scrollRef}>
         {visibleMessages.length === 0 && !chat.draft ? (
-          <div className="chat-empty">Start a conversation by sending a message below.</div>
+          <div
+            className="chat-empty"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 14,
+              padding: '40px 36px',
+              maxWidth: 920,
+              margin: '0 auto',
+            }}
+          >
+            <p style={{ margin: 0, color: 'var(--text-secondary)' }}>What can I help you build?</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {STARTER_CHIPS.map((chip) => (
+                <button
+                  key={chip.label}
+                  type="button"
+                  onClick={() => handleStarterChip(chip.prompt)}
+                  style={{
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 999,
+                    padding: '6px 12px',
+                    font: 'inherit',
+                    fontSize: 12.5,
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="chat-messages">
             {visibleMessages.map((m) => (
@@ -641,9 +778,9 @@ function ChatPane({
             onBlur={() => {
               setTimeout(() => closeSlash(), 0);
             }}
-            placeholder={`Message ${modelName}…`}
+            placeholder={composerPlaceholder(modelName, transferOrigin, chat.streaming)}
             rows={5}
-            disabled={chat.streaming}
+            style={{ maxHeight: 'calc(1.5em * 12 + 24px)', overflowY: 'auto' }}
           />
         </div>
         {triggerHintSkill && !slashOpen ? (
@@ -668,41 +805,167 @@ function ChatPane({
           </div>
         ) : null}
         <div className="chat-composer-actions">
+          <div className="chat-composer-actions-left">
+            <ComposerAddMenu
+              supportsTools={supportsTools}
+              toolsEnabled={toolsEnabled}
+              onToolsEnabledChange={setToolsEnabled}
+            />
+          </div>
+          <div className="chat-composer-actions-right">
+            <ModelPicker />
+            {chat.streaming ? (
+              <HoverHint hint="Stop streaming (Esc)">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    void chat.cancel();
+                  }}
+                >
+                  Stop
+                </button>
+              </HoverHint>
+            ) : chat.error && lastUserMessageText(chat.messages).length > 0 ? (
+              <HoverHint hint="Retry last message">
+                <button type="button" className="btn btn-primary" onClick={handleRetry}>
+                  Retry
+                </button>
+              </HoverHint>
+            ) : (
+              <HoverHint hint="Send message">
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={input.trim().length === 0 && attachments.length === 0}
+                >
+                  Send
+                </button>
+              </HoverHint>
+            )}
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+interface ComposerAddMenuProps {
+  supportsTools: boolean;
+  toolsEnabled: boolean;
+  onToolsEnabledChange: (enabled: boolean) => void;
+}
+
+function ComposerAddMenu({
+  supportsTools,
+  toolsEnabled,
+  onToolsEnabledChange,
+}: ComposerAddMenuProps): JSX.Element {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent): void => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const go = (path: string): void => {
+    setOpen(false);
+    navigate(path);
+  };
+
+  return (
+    <div className="composer-add" ref={rootRef}>
+      <HoverHint hint="Add tools, skills, MCPs, or plugins">
+        <button
+          type="button"
+          className={open ? 'composer-add-btn open' : 'composer-add-btn'}
+          onClick={() => setOpen((v) => !v)}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label="Add"
+        >
+          +
+        </button>
+      </HoverHint>
+      {open ? (
+        <div className="composer-add-pop" role="menu">
           {supportsTools ? (
-            <label className="toggle">
+            <label className="composer-add-row composer-add-row-toggle">
+              <span className="composer-add-row-label">
+                <span className="composer-add-icon" aria-hidden="true">
+                  🛠
+                </span>
+                Tools
+              </span>
               <input
                 type="checkbox"
                 checked={toolsEnabled}
-                onChange={(e) => setToolsEnabled(e.target.checked)}
+                onChange={(e) => onToolsEnabledChange(e.target.checked)}
               />
-              <span>Tools</span>
             </label>
-          ) : null}
-          {chat.streaming ? (
-            <HoverHint hint="Stop streaming">
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  void chat.cancel();
-                }}
-              >
-                Stop
-              </button>
-            </HoverHint>
           ) : (
-            <HoverHint hint="Send message">
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={input.trim().length === 0}
-              >
-                Send
-              </button>
-            </HoverHint>
+            <div className="composer-add-row composer-add-row-disabled">
+              <span className="composer-add-row-label">
+                <span className="composer-add-icon" aria-hidden="true">
+                  🛠
+                </span>
+                Tools
+              </span>
+              <span className="composer-add-row-meta">Not supported</span>
+            </div>
           )}
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-add-row"
+            onClick={() => go('/settings/skills')}
+          >
+            <span className="composer-add-row-label">
+              <span className="composer-add-icon" aria-hidden="true">
+                ✦
+              </span>
+              Skills
+            </span>
+            <span className="composer-add-row-meta">Manage →</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-add-row"
+            onClick={() => go('/settings/mcp')}
+          >
+            <span className="composer-add-row-label">
+              <span className="composer-add-icon" aria-hidden="true">
+                ⛓
+              </span>
+              MCPs
+            </span>
+            <span className="composer-add-row-meta">Manage →</span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-add-row"
+            onClick={() => go('/settings/plugins')}
+          >
+            <span className="composer-add-row-label">
+              <span className="composer-add-icon" aria-hidden="true">
+                🧩
+              </span>
+              Plugins
+            </span>
+            <span className="composer-add-row-meta">Manage →</span>
+          </button>
         </div>
-      </form>
+      ) : null}
     </div>
   );
 }
@@ -883,6 +1146,17 @@ function CaretBlink(): JSX.Element {
     return () => window.clearInterval(id);
   }, []);
   return <span className="chat-caret">{on ? '▍' : ' '}</span>;
+}
+
+function composerPlaceholder(
+  modelName: string,
+  transferOrigin: 'agent' | 'codebase' | null | undefined,
+  streaming: boolean,
+): string {
+  if (streaming) return 'Streaming… press Esc to stop';
+  if (transferOrigin === 'agent') return 'Continue from subagent run…';
+  if (transferOrigin === 'codebase') return 'Ask about this file…';
+  return `Ask ${modelName} anything…`;
 }
 
 function roleLabel(role: StoredMessage['role']): string {

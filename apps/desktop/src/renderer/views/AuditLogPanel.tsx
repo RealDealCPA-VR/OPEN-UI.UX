@@ -7,6 +7,7 @@ import {
   type ToolCallAuditErrorFilter,
   type ToolCallAuditQuery,
   type ToolCallAuditQueryResult,
+  type ToolCallAuditTriggerSource,
 } from '../../shared/tool-audit';
 import type { ToolListItem } from '../../shared/tools';
 
@@ -83,8 +84,22 @@ export function AuditLogPanel(): JSX.Element {
   const [toolFilter, setToolFilter] = useState<string>('');
   const [decisionFilter, setDecisionFilter] = useState<string>('');
   const [errorFilter, setErrorFilter] = useState<ToolCallAuditErrorFilter>('any');
+  const [triggerFilter, setTriggerFilter] = useState<ToolCallAuditTriggerSource | ''>('');
   const [timeRange, setTimeRange] = useState<TimeRange>('all');
   const [page, setPage] = useState(0);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const copyToClipboard = useCallback(async (key: string, text: string): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      window.setTimeout(() => {
+        setCopiedKey((k) => (k === key ? null : k));
+      }, 1200);
+    } catch {
+      // best-effort
+    }
+  }, []);
 
   const [retentionDays, setRetentionDays] = useState<number | null>(null);
   const [retentionLoaded, setRetentionLoaded] = useState(false);
@@ -92,6 +107,7 @@ export function AuditLogPanel(): JSX.Element {
   const [retentionStatus, setRetentionStatus] = useState<string | null>(null);
   const [retentionError, setRetentionError] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [clearConfirming, setClearConfirming] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
@@ -202,10 +218,8 @@ export function AuditLogPanel(): JSX.Element {
   }, []);
 
   const onClearLog = useCallback(async (): Promise<void> => {
-    if (!window.confirm('Permanently delete every row in the audit log? This cannot be undone.')) {
-      return;
-    }
     setClearing(true);
+    setClearConfirming(false);
     setRetentionError(null);
     setRetentionStatus(null);
     try {
@@ -257,16 +271,46 @@ export function AuditLogPanel(): JSX.Element {
             )}
           </select>
         </label>
-        <button
-          type="button"
-          className="audit-clear-button"
-          disabled={clearing || retentionPending}
-          onClick={() => {
-            void onClearLog();
-          }}
-        >
-          {clearing ? 'Clearing…' : 'Clear log'}
-        </button>
+        {clearConfirming ? (
+          <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--danger, #dc2626)' }}>
+              Delete every row? This cannot be undone.
+            </span>
+            <button
+              type="button"
+              className="audit-clear-button"
+              onClick={() => {
+                void onClearLog();
+              }}
+              disabled={clearing || retentionPending}
+            >
+              {clearing ? 'Clearing…' : 'Confirm clear'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setClearConfirming(false)}
+              style={{
+                background: 'transparent',
+                border: '1px solid var(--border, #2a2a32)',
+                color: 'var(--text-muted, #98a0aa)',
+                borderRadius: 4,
+                padding: '4px 10px',
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="audit-clear-button"
+            disabled={clearing || retentionPending}
+            onClick={() => setClearConfirming(true)}
+          >
+            Clear log
+          </button>
+        )}
         {retentionStatus && <span className="audit-retention-status">{retentionStatus}</span>}
         {retentionError && (
           <span className="audit-retention-error">Retention error: {retentionError}</span>
@@ -337,86 +381,154 @@ export function AuditLogPanel(): JSX.Element {
             ))}
           </select>
         </label>
+
+        <label className="audit-filter">
+          <span className="audit-filter-label">Trigger</span>
+          <select
+            className="approvals-select"
+            value={triggerFilter}
+            onChange={(e) =>
+              resetPageAnd(() =>
+                setTriggerFilter(e.target.value as ToolCallAuditTriggerSource | ''),
+              )
+            }
+          >
+            <option value="">All triggers</option>
+            <option value="user">User</option>
+            <option value="scheduled">Scheduled</option>
+          </select>
+        </label>
       </div>
 
       {loadError && <p className="approvals-save-error">Failed to load audit log: {loadError}</p>}
 
       {!data && !loadError && <p className="approvals-loading">Loading…</p>}
 
-      {data && data.rows.length === 0 && !loadError && (
-        <p className="audit-empty">
-          No tool calls match these filters
-          {total === 0 && page === 0 ? '. The audit log is empty so far.' : '.'}
-        </p>
-      )}
+      {data &&
+        data.rows.filter((r) => !triggerFilter || r.triggerSource === triggerFilter).length === 0 &&
+        !loadError && (
+          <p className="audit-empty">
+            No tool calls match these filters
+            {total === 0 && page === 0 ? '. The audit log is empty so far.' : '.'}
+          </p>
+        )}
 
       {data && data.rows.length > 0 && (
         <>
           <ul className="audit-list">
-            {data.rows.map((row) => {
-              const tier = tierByTool[row.toolName] ?? null;
-              const isExpanded = expandedId === row.id;
-              return (
-                <li key={row.id} className="audit-row">
-                  <div className="audit-row-head">
-                    <button
-                      type="button"
-                      className="audit-row-toggle"
-                      aria-expanded={isExpanded}
-                      aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${row.toolName} details`}
-                      onClick={() => setExpandedId(isExpanded ? null : row.id)}
-                    >
-                      <span className="audit-row-time">{formatTimestamp(row.createdAt)}</span>
-                      <span className="audit-row-tool">
-                        {tier && <span className={`pill tool-tier tool-tier-${tier}`}>{tier}</span>}
-                        <code className="approvals-tool-name">{row.toolName}</code>
-                      </span>
-                      <span
-                        className={`pill audit-decision audit-decision-${decisionClass(row.decision)}`}
+            {data.rows
+              .filter((r) => !triggerFilter || r.triggerSource === triggerFilter)
+              .map((row) => {
+                const tier = tierByTool[row.toolName] ?? null;
+                const isExpanded = expandedId === row.id;
+                return (
+                  <li key={row.id} className="audit-row">
+                    <div className="audit-row-head">
+                      <button
+                        type="button"
+                        className="audit-row-toggle"
+                        aria-expanded={isExpanded}
+                        aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${row.toolName} details`}
+                        onClick={() => setExpandedId(isExpanded ? null : row.id)}
                       >
-                        {DECISION_LABELS[row.decision] ?? row.decision}
-                      </span>
-                      {row.isError && <span className="pill audit-error-pill">Error</span>}
-                      <span className="audit-row-duration">{formatDuration(row.durationMs)}</span>
-                    </button>
-                    <Link
-                      className="audit-row-convo"
-                      to={buildConversationLink(row.conversationId, row.messageId)}
-                      title={`Open conversation: ${row.conversationTitle}`}
-                    >
-                      {row.conversationTitle}
-                    </Link>
-                    <span className="audit-row-caret" aria-hidden>
-                      {isExpanded ? '▾' : '▸'}
-                    </span>
-                  </div>
-                  {isExpanded && (
-                    <div className="audit-row-body">
-                      <div className="audit-row-section">
-                        <div className="audit-row-section-head">
-                          <h4>Input</h4>
-                          {row.inputTruncated && <span className="audit-truncated">truncated</span>}
-                        </div>
-                        <pre className="audit-row-pre">{safePretty(row.input)}</pre>
-                      </div>
-                      <div className="audit-row-section">
-                        <div className="audit-row-section-head">
-                          <h4>Output</h4>
-                          {row.outputTruncated && (
-                            <span className="audit-truncated">truncated</span>
+                        <span className="audit-row-time">{formatTimestamp(row.createdAt)}</span>
+                        <span className="audit-row-tool">
+                          {tier && (
+                            <span className={`pill tool-tier tool-tier-${tier}`}>{tier}</span>
                           )}
-                        </div>
-                        <pre
-                          className={`audit-row-pre${row.isError ? ' audit-row-pre-error' : ''}`}
+                          <code className="approvals-tool-name">{row.toolName}</code>
+                        </span>
+                        <span
+                          className={`pill audit-decision audit-decision-${decisionClass(row.decision)}`}
                         >
-                          {row.output === null ? '(no output)' : safePretty(row.output)}
-                        </pre>
-                      </div>
+                          {DECISION_LABELS[row.decision] ?? row.decision}
+                        </span>
+                        {row.isError && <span className="pill audit-error-pill">Error</span>}
+                        {row.triggerSource === 'scheduled' && (
+                          <span className="pill" title="Triggered by a scheduled task">
+                            scheduled
+                          </span>
+                        )}
+                        <span className="audit-row-duration">{formatDuration(row.durationMs)}</span>
+                      </button>
+                      <Link
+                        className="audit-row-convo"
+                        to={buildConversationLink(row.conversationId, row.messageId)}
+                        title={`Open conversation: ${row.conversationTitle}`}
+                      >
+                        {row.conversationTitle}
+                      </Link>
+                      <span className="audit-row-caret" aria-hidden>
+                        {isExpanded ? '▾' : '▸'}
+                      </span>
                     </div>
-                  )}
-                </li>
-              );
-            })}
+                    {isExpanded && (
+                      <div className="audit-row-body">
+                        <div className="audit-row-section">
+                          <div className="audit-row-section-head">
+                            <h4>Input</h4>
+                            {row.inputTruncated && (
+                              <span className="audit-truncated">truncated</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void copyToClipboard(`in:${row.id}`, safePretty(row.input))
+                              }
+                              style={{
+                                marginLeft: 'auto',
+                                fontSize: 11,
+                                background: 'transparent',
+                                border: '1px solid var(--border, #2a2a32)',
+                                borderRadius: 4,
+                                padding: '2px 8px',
+                                cursor: 'pointer',
+                                color: 'var(--text-muted, #98a0aa)',
+                              }}
+                            >
+                              {copiedKey === `in:${row.id}` ? 'Copied' : 'Copy'}
+                            </button>
+                          </div>
+                          <pre className="audit-row-pre">{safePretty(row.input)}</pre>
+                        </div>
+                        <div className="audit-row-section">
+                          <div className="audit-row-section-head">
+                            <h4>Output</h4>
+                            {row.outputTruncated && (
+                              <span className="audit-truncated">truncated</span>
+                            )}
+                            {row.output !== null && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void copyToClipboard(`out:${row.id}`, safePretty(row.output))
+                                }
+                                style={{
+                                  marginLeft: 'auto',
+                                  fontSize: 11,
+                                  background: 'transparent',
+                                  border: '1px solid var(--border, #2a2a32)',
+                                  borderRadius: 4,
+                                  padding: '2px 8px',
+                                  cursor: 'pointer',
+                                  color: 'var(--text-muted, #98a0aa)',
+                                }}
+                              >
+                                {copiedKey === `out:${row.id}` ? 'Copied' : 'Copy'}
+                              </button>
+                            )}
+                          </div>
+                          <pre
+                            className={`audit-row-pre${row.isError ? ' audit-row-pre-error' : ''}`}
+                          >
+                            {row.output === null ? '(no output)' : safePretty(row.output)}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
           </ul>
 
           <div className="audit-pagination">

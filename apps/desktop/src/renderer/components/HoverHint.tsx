@@ -24,6 +24,7 @@ type Placement = 'top' | 'bottom' | 'left' | 'right';
 export interface HoverHintProps {
   children: ReactElement;
   hint?: string;
+  shortcut?: string;
   placement?: Placement;
   disabled?: boolean;
 }
@@ -105,9 +106,25 @@ function capHintWords(hint: string): string {
     warnedHints.add(hint);
     console.warn(`HoverHint: hint exceeds 5 words: "${hint}"`);
   }
-  // Dev cap keeps the constraint honest; prod renders the full string.
   if (isDev) return words.slice(0, 5).join(' ');
   return hint;
+}
+
+interface ParsedHint {
+  text: string;
+  shortcut: string | null;
+}
+
+function parseHintAndShortcut(hint: string, explicitShortcut?: string): ParsedHint {
+  if (explicitShortcut && explicitShortcut.length > 0) {
+    return { text: hint, shortcut: explicitShortcut };
+  }
+  const idx = hint.lastIndexOf('·');
+  if (idx === -1) return { text: hint, shortcut: null };
+  const left = hint.slice(0, idx).trim();
+  const right = hint.slice(idx + 1).trim();
+  if (left.length === 0 || right.length === 0) return { text: hint, shortcut: null };
+  return { text: left, shortcut: right };
 }
 
 // --- tiny in-house positioner ------------------------------------------------
@@ -163,7 +180,7 @@ function computeCoords(
 
 // --- main component ---------------------------------------------------------
 export function HoverHint(props: HoverHintProps): JSX.Element {
-  const { children, hint, placement = 'top', disabled = false } = props;
+  const { children, hint, shortcut, placement = 'top', disabled = false } = props;
 
   const enabled = useHoverHintsEnabled();
   const suppressed = useHoverHintsSuppressed();
@@ -195,10 +212,14 @@ export function HoverHint(props: HoverHintProps): JSX.Element {
     return undefined;
   }, [hint, children]);
 
-  const cappedHint = useMemo(
-    () => (resolvedHint ? capHintWords(resolvedHint) : undefined),
-    [resolvedHint],
-  );
+  const parsed = useMemo<ParsedHint | null>(() => {
+    if (!resolvedHint) return null;
+    return parseHintAndShortcut(resolvedHint, shortcut);
+  }, [resolvedHint, shortcut]);
+
+  const cappedHint = useMemo(() => (parsed ? capHintWords(parsed.text) : undefined), [parsed]);
+
+  const shortcutLabel = parsed?.shortcut ?? null;
 
   // Nested-HoverHint guard. Warn once per mount and bail out at render time.
   useEffect(() => {
@@ -335,6 +356,20 @@ export function HoverHint(props: HoverHintProps): JSX.Element {
     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12)',
     opacity: coords && isOpen ? 1 : 0,
     transition: reducedMotion ? 'none' : 'opacity 120ms ease',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+  };
+
+  const kbdStyle: CSSProperties = {
+    fontFamily: 'var(--font-mono)',
+    fontSize: 10.5,
+    padding: '1px 5px',
+    borderRadius: 4,
+    border: '1px solid var(--border)',
+    background: 'var(--kbd-bg, var(--bg-sunken))',
+    color: 'var(--text-secondary)',
+    whiteSpace: 'nowrap',
   };
 
   const bubble =
@@ -348,7 +383,8 @@ export function HoverHint(props: HoverHintProps): JSX.Element {
               data-placement={coords?.placement ?? placement}
               style={bubbleStyle}
             >
-              {cappedHint}
+              <span>{cappedHint}</span>
+              {shortcutLabel ? <kbd style={kbdStyle}>{shortcutLabel}</kbd> : null}
             </div>
           </HoverHintBoundary.Provider>,
           document.body,

@@ -9,6 +9,14 @@ export function CrashReportingPanel(): JSX.Element {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savingField, setSavingField] = useState<string | null>(null);
   const [dsnDraft, setDsnDraft] = useState('');
+  const [savedFlash, setSavedFlash] = useState<string | null>(null);
+
+  const flashSaved = (key: string): void => {
+    setSavedFlash(key);
+    window.setTimeout(() => {
+      setSavedFlash((k) => (k === key ? null : k));
+    }, 1200);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +59,7 @@ export function CrashReportingPanel(): JSX.Element {
     try {
       const next = await window.opencodex.crashReporting.setConfig({ dsn: dsnDraft });
       setConfig(next);
+      flashSaved('dsn');
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -127,6 +136,11 @@ export function CrashReportingPanel(): JSX.Element {
           >
             Save
           </button>
+          {savedFlash === 'dsn' && (
+            <span aria-live="polite" style={{ fontSize: 12, color: 'var(--success, #22c55e)' }}>
+              Saved
+            </span>
+          )}
         </div>
       </div>
 

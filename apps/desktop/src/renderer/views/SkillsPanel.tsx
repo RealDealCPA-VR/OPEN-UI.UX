@@ -134,6 +134,8 @@ export function SkillsPanel(): JSX.Element {
       .catch(() => undefined);
   }, []);
 
+  const [registrySaved, setRegistrySaved] = useState(false);
+
   const saveRegistryUrl = useCallback(async () => {
     setRegistryBusy(true);
     setRegistryError(null);
@@ -146,6 +148,8 @@ export function SkillsPanel(): JSX.Element {
       }
       const res = await window.opencodex.skills.setRegistryUrl(value);
       setSavedRegistryUrl(res.url);
+      setRegistrySaved(true);
+      window.setTimeout(() => setRegistrySaved(false), 1200);
     } catch (err) {
       setRegistryError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -347,6 +351,18 @@ export function SkillsPanel(): JSX.Element {
               >
                 {registryBusy ? '…' : 'Refresh'}
               </button>
+              {registrySaved && (
+                <span
+                  aria-live="polite"
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--success, #22c55e)',
+                    alignSelf: 'center',
+                  }}
+                >
+                  Saved
+                </span>
+              )}
             </div>
             {savedRegistryUrl && (
               <p className="settings-section-desc">

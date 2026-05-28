@@ -17,6 +17,7 @@ import {
 } from './manager';
 import { SKILL_FILE_NAME } from './loader';
 import { getSkillRegistryUrl, setSkillRegistryUrl } from '../storage/settings';
+import { toFriendlyError } from '../util/friendly-error';
 import { skillRegistrySchema, type SkillRegistryEntry } from '../../shared/skills';
 
 const setEnabledSchema = z.object({ id: z.string().min(1), enabled: z.boolean() });
@@ -55,16 +56,24 @@ export function registerSkillHandlers(): void {
   });
 
   registerInvoke('skills:create-from-template', createFromTemplateSchema, async (req) => {
-    const skills = await createSkillFromTemplate({
-      name: req.name,
-      scope: req.scope ?? 'user',
-    });
-    return { skills };
+    try {
+      const skills = await createSkillFromTemplate({
+        name: req.name,
+        scope: req.scope ?? 'user',
+      });
+      return { skills };
+    } catch (err) {
+      throw toFriendlyError(err);
+    }
   });
 
   registerInvoke('skills:import-from-url', importFromUrlSchema, async (req) => {
-    const skills = await importSkillFromUrl({ url: req.url });
-    return { skills };
+    try {
+      const skills = await importSkillFromUrl({ url: req.url });
+      return { skills };
+    } catch (err) {
+      throw toFriendlyError(err);
+    }
   });
 
   registerInvoke('skills:set-enabled', setEnabledSchema, async (req) => {

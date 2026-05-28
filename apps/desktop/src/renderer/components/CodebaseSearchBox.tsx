@@ -1,12 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
-import type { CodebaseSearchHit, CodebaseSearchMode } from '../../shared/codebase-search';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CodebaseSearchHit } from '../../shared/codebase-search';
 import { HoverHint } from './HoverHint';
 
-const MODE_HINT: Record<CodebaseSearchMode, string> = {
-  both: 'Filenames and content',
-  filename: 'Search by filename',
-  content: 'Search file content',
-};
+type SearchScope = 'current-dir' | 'repo' | 'mcp';
+
+interface ScopeOption {
+  id: SearchScope;
+  label: string;
+  hint: string;
+}
+
+const SCOPES: ScopeOption[] = [
+  { id: 'current-dir', label: 'Current dir', hint: 'Search the active subfolder' },
+  { id: 'repo', label: 'Repo', hint: 'Search the whole workspace' },
+  { id: 'mcp', label: 'MCP resources', hint: 'Search connected MCP servers' },
+];
 
 interface CodebaseSearchBoxProps {
   workspaceRoot: string | null;
@@ -14,52 +22,149 @@ interface CodebaseSearchBoxProps {
   /** When set, the search box uses these as a fixed pre-filter (e.g. from a chat transfer). */
   pinnedPaths?: string[];
   onClearPinned?: () => void;
+  /** Optional sub-path that scopes the "Current dir" chip. */
+  currentDir?: string | null;
+}
+
+interface SearchResult {
+  hits: CodebaseSearchHit[];
+  timingMs: number;
 }
 
 const DEBOUNCE_MS = 300;
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isMacPlatform(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Mac|iPhone|iPad/i.test(navigator.platform || '');
+}
+
+interface HighlightedProps {
+  text: string;
+  query: string;
+}
+
+function HighlightedSnippet({ text, query }: HighlightedProps): JSX.Element {
+  const term = query.trim();
+  if (!term) return <>{text}</>;
+  const re = new RegExp(escapeRegExp(term), 'ig');
+  const out: Array<string | JSX.Element> = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(<mark key={i++}>{m[0]}</mark>);
+    last = m.index + m[0].length;
+    if (m.index === re.lastIndex) re.lastIndex++;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return <>{out}</>;
+}
 
 export function CodebaseSearchBox({
   workspaceRoot,
   onPick,
   pinnedPaths,
   onClearPinned,
+  currentDir,
 }: CodebaseSearchBoxProps): JSX.Element {
   const [query, setQuery] = useState('');
-  const [mode, setMode] = useState<CodebaseSearchMode>('both');
-  const [hits, setHits] = useState<CodebaseSearchHit[]>([]);
+  const [scope, setScope] = useState<SearchScope>('repo');
+  const [result, setResult] = useState<SearchResult | null>(null);
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
   const reqIdRef = useRef(0);
   const boxRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!query.trim() || !workspaceRoot) return;
+    const onKey = (e: KeyboardEvent): void => {
+      const isMac = isMacPlatform();
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+      if (cmdOrCtrl && (e.key === 'f' || e.key === 'F')) {
+        if (inputRef.current && document.activeElement !== inputRef.current) {
+          e.preventDefault();
+          inputRef.current.focus();
+          inputRef.current.select();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setResult(null);
+      return;
+    }
     const reqId = ++reqIdRef.current;
     const handle = window.setTimeout(async () => {
       setSearching(true);
       setError(null);
+      const startedAt = performance.now();
       try {
+        if (scope === 'mcp') {
+          const entries = await window.opencodex.mcp.listResources();
+          if (reqIdRef.current !== reqId) return;
+          const q = trimmed.toLowerCase();
+          const hits: CodebaseSearchHit[] = entries
+            .filter((e) => {
+              const r = e.resource;
+              return (
+                r.uri.toLowerCase().includes(q) ||
+                r.name.toLowerCase().includes(q) ||
+                (r.description ? r.description.toLowerCase().includes(q) : false)
+              );
+            })
+            .map((e) => ({
+              path: e.resource.uri,
+              kind: 'filename' as const,
+              snippet: e.resource.description ?? e.resource.name,
+            }));
+          setResult({ hits, timingMs: performance.now() - startedAt });
+          setOpen(true);
+          return;
+        }
+        if (!workspaceRoot) {
+          setResult({ hits: [], timingMs: 0 });
+          setOpen(true);
+          return;
+        }
         const res = await window.opencodex.codebase.search({
           workspaceRoot,
-          query: query.trim(),
-          mode,
+          query: trimmed,
+          mode: 'both',
         });
         if (reqIdRef.current !== reqId) return;
-        setHits(res.hits);
+        let hits = res.hits;
+        if (scope === 'current-dir' && currentDir) {
+          const prefix = currentDir.replace(/\\/g, '/');
+          hits = hits.filter((h) => h.path.replace(/\\/g, '/').startsWith(prefix));
+        }
+        setResult({ hits, timingMs: performance.now() - startedAt });
         setOpen(true);
       } catch (err) {
         if (reqIdRef.current !== reqId) return;
         setError(err instanceof Error ? err.message : String(err));
-        setHits([]);
+        setResult({ hits: [], timingMs: performance.now() - startedAt });
       } finally {
         if (reqIdRef.current === reqId) setSearching(false);
       }
     }, DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [query, mode, workspaceRoot]);
+  }, [query, scope, workspaceRoot, currentDir]);
 
-  const hasQuery = query.trim().length > 0 && !!workspaceRoot;
+  const hasQuery = query.trim().length > 0;
+  const inputDisabled = scope !== 'mcp' && !workspaceRoot;
 
   useEffect(() => {
     if (!open) return;
@@ -70,38 +175,74 @@ export function CodebaseSearchBox({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  const refocusHint = useMemo(() => (isMacPlatform() ? '⌘F to refocus' : 'Ctrl+F to refocus'), []);
+
+  const placeholder = useMemo(() => {
+    if (scope === 'mcp')
+      return focused ? 'Search MCP resources…' : `Search MCP resources… (${refocusHint})`;
+    if (!workspaceRoot) return 'Pick a workspace to search';
+    return focused
+      ? 'Search filenames or content…'
+      : `Search filenames or content… (${refocusHint})`;
+  }, [scope, workspaceRoot, focused, refocusHint]);
+
+  const trimmedQuery = query.trim();
+
   return (
     <div className="codebase-search-box" ref={boxRef}>
       <div className="codebase-search-row">
         <input
+          ref={inputRef}
           type="text"
           className="codebase-search-input"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => {
-            if (hasQuery && hits.length > 0) setOpen(true);
+            setFocused(true);
+            if (hasQuery && result && result.hits.length > 0) setOpen(true);
           }}
-          placeholder={
-            workspaceRoot ? 'Search filenames or content…' : 'Pick a workspace to search'
-          }
-          disabled={!workspaceRoot}
+          onBlur={() => setFocused(false)}
+          placeholder={placeholder}
+          disabled={inputDisabled}
         />
-        <div className="codebase-search-modes" role="tablist">
-          {(['both', 'filename', 'content'] as CodebaseSearchMode[]).map((m) => (
-            <HoverHint key={m} hint={MODE_HINT[m]}>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === m}
-                className={mode === m ? 'codebase-search-mode active' : 'codebase-search-mode'}
-                onClick={() => setMode(m)}
-              >
-                {m}
-              </button>
-            </HoverHint>
-          ))}
+        <div className="codebase-search-modes" role="tablist" aria-label="Search scope">
+          {SCOPES.map((s) => {
+            const disabled = s.id === 'current-dir' && !currentDir;
+            return (
+              <HoverHint key={s.id} hint={s.hint}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={scope === s.id}
+                  className={
+                    scope === s.id ? 'codebase-search-mode active' : 'codebase-search-mode'
+                  }
+                  onClick={() => setScope(s.id)}
+                  disabled={disabled}
+                  title={disabled ? 'No current directory selected' : undefined}
+                >
+                  {s.label}
+                </button>
+              </HoverHint>
+            );
+          })}
         </div>
         {searching && <span className="codebase-search-status">…</span>}
+        {!searching && result && hasQuery ? (
+          <span
+            className="codebase-search-timing"
+            aria-live="polite"
+            style={{
+              fontSize: 11,
+              color: 'var(--text-muted, #888)',
+              padding: '0 6px',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {result.hits.length} result{result.hits.length === 1 ? '' : 's'} ·{' '}
+            {Math.max(1, Math.round(result.timingMs))}ms
+          </span>
+        ) : null}
       </div>
       {pinnedPaths && pinnedPaths.length > 0 && (
         <div className="codebase-search-pinned">
@@ -132,9 +273,9 @@ export function CodebaseSearchBox({
         </div>
       )}
       {error && <p className="approvals-save-error codebase-search-error">{error}</p>}
-      {open && hasQuery && hits.length > 0 && (
+      {open && hasQuery && result && result.hits.length > 0 && (
         <ul className="codebase-search-results" role="listbox">
-          {hits.map((hit, idx) => (
+          {result.hits.map((hit, idx) => (
             <li key={`${hit.kind}-${hit.path}-${hit.line ?? ''}-${idx}`}>
               <button
                 type="button"
@@ -147,14 +288,20 @@ export function CodebaseSearchBox({
                 <span className={`codebase-search-kind codebase-search-kind-${hit.kind}`}>
                   {hit.kind === 'filename' ? 'file' : `:${hit.line}`}
                 </span>
-                <code className="codebase-search-path">{hit.path}</code>
-                {hit.snippet && <span className="codebase-search-snippet">{hit.snippet}</span>}
+                <code className="codebase-search-path">
+                  <HighlightedSnippet text={hit.path} query={trimmedQuery} />
+                </code>
+                {hit.snippet && (
+                  <span className="codebase-search-snippet">
+                    <HighlightedSnippet text={hit.snippet} query={trimmedQuery} />
+                  </span>
+                )}
               </button>
             </li>
           ))}
         </ul>
       )}
-      {open && hits.length === 0 && !searching && query.trim() && (
+      {open && result && result.hits.length === 0 && !searching && trimmedQuery && (
         <div className="codebase-search-empty">No matches.</div>
       )}
     </div>

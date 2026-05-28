@@ -21,6 +21,16 @@ export const TransferContextSchema = z.discriminatedUnion('kind', [
     kind: z.literal('codebase-to-chat'),
     filePath: z.string(),
   }),
+  z.object({
+    kind: z.literal('agent-to-codebase'),
+    filePaths: z.array(z.string()),
+    runId: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal('codebase-to-agent'),
+    filePath: z.string(),
+    runIds: z.array(z.string()),
+  }),
 ]);
 
 export type TransferContext = z.infer<typeof TransferContextSchema>;

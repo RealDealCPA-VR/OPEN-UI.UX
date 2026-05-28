@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ActiveRunCard } from '../components/ActiveRunCard';
 import { AgentRunDrawer } from '../components/AgentRunDrawer';
 import { AgentRunRow } from '../components/AgentRunRow';
@@ -13,6 +13,7 @@ import type { AgentRun } from '../../shared/agent-runs';
 export function AgentView(): JSX.Element {
   const navigate = useNavigate();
   const params = useParams<{ runId?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const drawerRunId = params.runId ?? null;
 
   const [runs, setRuns] = useState<AgentRun[] | null>(null);
@@ -74,6 +75,16 @@ export function AgentView(): JSX.Element {
       setSpawnOpen(true);
     });
   }, []);
+
+  // Honor ?spawn=1 from left-column empty-state CTA.
+  useEffect(() => {
+    if (searchParams.get('spawn') !== '1') return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSpawnOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('spawn');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const onClear = useCallback(async () => {
     setClearing(true);

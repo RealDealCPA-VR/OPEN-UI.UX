@@ -101,3 +101,56 @@ export function canContinueInChat(run: AgentRun): boolean {
 export function canAbort(run: AgentRun): boolean {
   return run.status === 'running';
 }
+
+export const RUN_BUDGET_DEFAULT = 10;
+
+export function runBudget(run: AgentRun): number {
+  const candidate = (run as unknown as { budget?: unknown }).budget;
+  if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+    return Math.floor(candidate);
+  }
+  return RUN_BUDGET_DEFAULT;
+}
+
+export function runProgressFraction(run: AgentRun, budget: number = runBudget(run)): number {
+  if (budget <= 0) return 0;
+  const used = Math.max(0, run.iterations);
+  return Math.min(1, used / budget);
+}
+
+function parseUtcTimestamp(input: string): number | null {
+  const trimmed = input.trim();
+  const candidate = trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T') + 'Z';
+  const ms = Date.parse(candidate);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+export function humaneCountdown(nextRunAt: string | null, now: number = Date.now()): string {
+  if (!nextRunAt) return '—';
+  const ts = parseUtcTimestamp(nextRunAt);
+  if (ts === null) return nextRunAt;
+  const diff = ts - now;
+  if (diff <= 0) return 'due now';
+  const seconds = Math.round(diff / 1000);
+  if (seconds < 60) return `in ${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `in ${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `in ${hours}h`;
+  const target = new Date(ts);
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const oneDay = 24 * 60 * 60 * 1000;
+  const dayDelta = Math.floor((target.getTime() - startOfToday.getTime()) / oneDay);
+  const hh = target.getHours().toString().padStart(2, '0');
+  const mm = target.getMinutes().toString().padStart(2, '0');
+  if (dayDelta === 1) return `tomorrow at ${hh}:${mm}`;
+  if (dayDelta < 7) {
+    const day = target.toLocaleDateString(undefined, { weekday: 'short' });
+    return `${day} at ${hh}:${mm}`;
+  }
+  const month = target.toLocaleDateString(undefined, { month: 'short' });
+  const dayNum = target.getDate();
+  const weekday = target.toLocaleDateString(undefined, { weekday: 'short' });
+  return `${weekday} ${month} ${dayNum} at ${hh}:${mm}`;
+}

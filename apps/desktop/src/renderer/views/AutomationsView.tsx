@@ -5,6 +5,7 @@ import { ScheduledTaskEditorModal } from '../components/ScheduledTaskEditorModal
 import { ScheduledTaskRunsDrawer } from '../components/ScheduledTaskRunsDrawer';
 import type { ScheduledTask } from '../../shared/scheduled-tasks';
 import type { Skill } from '../../shared/skills';
+import type { TriggerType } from '../../shared/triggers';
 
 interface PrefillFromSkill {
   name: string;
@@ -12,8 +13,59 @@ interface PrefillFromSkill {
   prompt: string;
   allowedTools: string[];
   cron: string | null;
-  linkedSkillId: string;
+  linkedSkillId: string | null;
 }
+
+type TriggerFilter = TriggerType | 'all';
+
+const TRIGGER_FILTER_LABEL: Record<TriggerFilter, string> = {
+  all: 'All',
+  manual: 'Manual',
+  cron: 'Cron',
+  'file-change': 'File',
+  'git-hook': 'Git',
+  webhook: 'Webhook',
+};
+
+const TRIGGER_FILTERS: readonly TriggerFilter[] = [
+  'all',
+  'manual',
+  'cron',
+  'file-change',
+  'git-hook',
+  'webhook',
+];
+
+interface TemplatePrefill {
+  name: string;
+  description: string;
+  prompt: string;
+  cron: string;
+}
+
+const TEMPLATES: readonly TemplatePrefill[] = [
+  {
+    name: 'Daily standup',
+    description: 'Summarize git activity from the last 24 hours.',
+    prompt:
+      'Read the git log for the last 24 hours in this workspace and produce a one-paragraph standup summary covering: what changed, which files were most active, and any TODO comments added.',
+    cron: '0 9 * * *',
+  },
+  {
+    name: 'Weekly security audit',
+    description: 'Scan the repo for committed secrets and risky patterns.',
+    prompt:
+      'Scan this repository for committed secrets (API keys, tokens, private keys) and risky patterns (hardcoded credentials, eval of untrusted input, disabled TLS verification). Output a markdown report with file:line references.',
+    cron: '0 14 * * 1',
+  },
+  {
+    name: 'Hourly TODO sweep',
+    description: 'Grep open TODOs and surface what is stale.',
+    prompt:
+      'Grep this workspace for TODO, FIXME, and HACK comments. Group by file, count totals, and call out any older than 30 days based on git blame.',
+    cron: '0 * * * *',
+  },
+];
 
 export function AutomationsView(): JSX.Element {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -23,6 +75,7 @@ export function AutomationsView(): JSX.Element {
   const [prefill, setPrefill] = useState<PrefillFromSkill | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [triggerFilter, setTriggerFilter] = useState<TriggerFilter>('all');
 
   // The runs drawer is URL-driven so deep links like ?taskId=xyz open it directly.
   const runsDrawerTaskId = searchParams.get('taskId');
@@ -157,6 +210,37 @@ export function AutomationsView(): JSX.Element {
     [tasks, runsDrawerTaskId],
   );
 
+  const filteredTasks = useMemo(() => {
+    if (!tasks) return null;
+    if (triggerFilter === 'all') return tasks;
+    return tasks.filter((t) => t.trigger.type === triggerFilter);
+  }, [tasks, triggerFilter]);
+
+  const triggerCounts = useMemo(() => {
+    const counts: Record<TriggerFilter, number> = {
+      all: tasks?.length ?? 0,
+      manual: 0,
+      cron: 0,
+      'file-change': 0,
+      'git-hook': 0,
+      webhook: 0,
+    };
+    for (const t of tasks ?? []) counts[t.trigger.type]++;
+    return counts;
+  }, [tasks]);
+
+  const applyTemplate = (tpl: TemplatePrefill): void => {
+    setPrefill({
+      name: tpl.name,
+      description: tpl.description,
+      prompt: tpl.prompt,
+      allowedTools: [],
+      cron: tpl.cron,
+      linkedSkillId: null,
+    });
+    setEditing('new');
+  };
+
   return (
     <section className="view automations-view">
       <header className="agent-view-header">
@@ -179,15 +263,119 @@ export function AutomationsView(): JSX.Element {
       {actionError && <p className="approvals-save-error">{actionError}</p>}
       {loadError && <p className="approvals-save-error">Failed to load tasks: {loadError}</p>}
 
+      {tasks !== null && tasks.length > 0 && (
+        <div
+          role="tablist"
+          aria-label="Filter automations by trigger"
+          style={{
+            display: 'flex',
+            gap: 6,
+            flexWrap: 'wrap',
+            marginBottom: 12,
+          }}
+        >
+          {TRIGGER_FILTERS.map((f) => {
+            const count = triggerCounts[f];
+            const active = triggerFilter === f;
+            return (
+              <button
+                key={f}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                disabled={f !== 'all' && count === 0}
+                onClick={() => setTriggerFilter(f)}
+                style={{
+                  padding: '4px 12px',
+                  borderRadius: 999,
+                  border: `1px solid ${active ? 'var(--accent-border)' : 'var(--border-strong)'}`,
+                  background: active ? 'var(--accent-soft-bg)' : 'transparent',
+                  color: active ? 'var(--accent-text)' : 'var(--text-secondary)',
+                  fontSize: 12,
+                  cursor: f !== 'all' && count === 0 ? 'not-allowed' : 'pointer',
+                  opacity: f !== 'all' && count === 0 ? 0.4 : 1,
+                }}
+              >
+                {TRIGGER_FILTER_LABEL[f]} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {tasks === null ? (
         <p className="audit-empty">Loading…</p>
       ) : tasks.length === 0 ? (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 16,
+            padding: '20px 0',
+          }}
+        >
+          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: 14 }}>
+            No automations yet. Start from a template, or click <strong>New automation</strong> for
+            a blank one.
+          </p>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+              gap: 12,
+            }}
+          >
+            {TEMPLATES.map((tpl) => (
+              <button
+                key={tpl.name}
+                type="button"
+                onClick={() => applyTemplate(tpl)}
+                style={{
+                  textAlign: 'left',
+                  border: '1px solid var(--border-strong)',
+                  borderRadius: 8,
+                  padding: '12px 14px',
+                  background: 'var(--bg-elevated)',
+                  color: 'var(--text-primary)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{tpl.name}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                  {tpl.description}
+                </span>
+                <span
+                  style={{
+                    marginTop: 4,
+                    fontSize: 11,
+                    color: 'var(--text-faint)',
+                    fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                  }}
+                >
+                  cron: {tpl.cron}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : filteredTasks && filteredTasks.length === 0 ? (
         <p className="audit-empty">
-          No automations yet. Click <strong>New automation</strong> to create one.
+          No {TRIGGER_FILTER_LABEL[triggerFilter].toLowerCase()} automations.{' '}
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setTriggerFilter('all')}
+            style={{ marginLeft: 4 }}
+          >
+            Show all
+          </button>
         </p>
       ) : (
         <ul className="audit-list automations-grid">
-          {tasks.map((task) => (
+          {(filteredTasks ?? []).map((task) => (
             <ScheduledTaskCard
               key={task.id}
               task={task}

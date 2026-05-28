@@ -38,7 +38,16 @@ export default function AgentContextPane(): JSX.Element {
       {runs === null ? (
         <p className="lcc-pane-empty">Loading…</p>
       ) : runs.length === 0 ? (
-        <p className="lcc-pane-empty">No agent runs yet.</p>
+        <div className="lcc-pane-empty-state">
+          <p className="lcc-pane-empty">No runs yet. Spawn a task to put the agent to work.</p>
+          <button
+            type="button"
+            className="btn btn-primary lcc-pane-cta"
+            onClick={() => navigate('/agent?spawn=1')}
+          >
+            Spawn task
+          </button>
+        </div>
       ) : (
         <ul className="lcc-list">
           {runs.slice(0, 30).map((run) => (

@@ -99,6 +99,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description:
       'Tune the UI for comfort. Toggle hover hints globally so contextual helper bubbles stay out of your way.',
   },
+  {
+    slug: 'help',
+    title: 'Help',
+    description:
+      'User manual covering every screen, concept, shortcut, and common workflow. Searchable in the section rail above.',
+  },
 ] as const;
 
 export function slugify(input: string): string {

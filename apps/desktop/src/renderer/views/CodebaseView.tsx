@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CodebasePreviewPane } from '../components/CodebasePreviewPane';
 import { CodebaseSearchBox } from '../components/CodebaseSearchBox';
 import { FileTree } from '../components/FileTree';
@@ -15,8 +15,23 @@ interface ContextMenuState {
   y: number;
 }
 
+const RECENT_FILES_KEY = 'opencodex.codebase.recent-files';
+const RECENT_FILES_MAX = 10;
+
+function pushRecentFile(path: string): void {
+  try {
+    const raw = localStorage.getItem(RECENT_FILES_KEY);
+    const list: string[] = raw ? JSON.parse(raw) : [];
+    const next = [path, ...list.filter((p) => p !== path)].slice(0, RECENT_FILES_MAX);
+    localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage may be unavailable; recents is best-effort.
+  }
+}
+
 export function CodebaseView(): JSX.Element {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [jumpToLine, setJumpToLine] = useState<number | null>(null);
@@ -72,7 +87,29 @@ export function CodebaseView(): JSX.Element {
   const handleOpenFile = useCallback((path: string) => {
     setSelectedPath(path);
     setJumpToLine(null);
+    pushRecentFile(path);
   }, []);
+
+  // Honor ?file= deep link from left-column recents.
+  useEffect(() => {
+    const f = searchParams.get('file');
+    if (!f) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelectedPath(f);
+
+    setJumpToLine(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete('file');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  const handleOpenPendingEdit = useCallback(
+    (path: string, runIds: string[]) => {
+      pushTransfer({ kind: 'codebase-to-agent', filePath: path, runIds });
+      navigate('/agent');
+    },
+    [navigate],
+  );
 
   const handleContextMenu = useCallback(
     (path: string, isDirectory: boolean, x: number, y: number) => {
@@ -89,30 +126,34 @@ export function CodebaseView(): JSX.Element {
     return [
       {
         label: 'Open in preview',
+        section: 'open',
         disabled: menu.isDirectory,
         onSelect: () => {
           if (!menu.isDirectory) handleOpenFile(path);
         },
       },
       {
-        label: 'Reveal in OS',
+        label: 'Ask agent about this file',
+        section: 'edit',
+        disabled: menu.isDirectory,
         onSelect: () => {
-          if (!workspaceRoot) return;
-          void window.opencodex.shell.showItemInFolder(workspaceRoot, path).catch(() => undefined);
+          pushTransfer({ kind: 'codebase-to-chat', filePath: path });
+          navigate('/chat');
         },
       },
       {
         label: 'Copy path',
+        section: 'edit',
         onSelect: () => {
           void navigator.clipboard.writeText(path).catch(() => undefined);
         },
       },
       {
-        label: 'Ask agent about this file',
-        disabled: menu.isDirectory,
+        label: 'Reveal in OS',
+        section: 'share',
         onSelect: () => {
-          pushTransfer({ kind: 'codebase-to-chat', filePath: path });
-          navigate('/chat');
+          if (!workspaceRoot) return;
+          void window.opencodex.shell.showItemInFolder(workspaceRoot, path).catch(() => undefined);
         },
       },
     ];
@@ -147,6 +188,7 @@ export function CodebaseView(): JSX.Element {
             annotations={annotations}
             onOpenFile={handleOpenFile}
             onContextMenu={handleContextMenu}
+            onOpenPendingEdit={handleOpenPendingEdit}
           />
         </aside>
         <div className="codebase-preview-wrap">

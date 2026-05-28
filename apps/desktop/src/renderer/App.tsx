@@ -6,6 +6,7 @@ import { HoverHintProvider } from './components/HoverHint';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { PluginPanelHost } from './components/PluginPanelHost';
 import { ThemeApplier } from './components/ThemeApplier';
+import { ToastProvider, useToast } from './components/Toasts';
 import { ChatProvider } from './state/chat-context';
 import { SelectedModelProvider } from './state/selected-model-context';
 import { ChatView } from './views/ChatView';
@@ -39,32 +40,47 @@ export function App(): JSX.Element {
   return (
     <HashRouter>
       <HoverHintProvider enabled={hintsEnabled}>
-        <SelectedModelProvider>
-          <ChatProvider>
-            <ThemeApplier />
-            <DeepLinkRouter />
-            <ApprovalQueue />
-            <OnboardingWizard />
-            <Routes>
-              <Route element={<AppShell />}>
-                <Route index element={<Navigate to="/chat" replace />} />
-                <Route path="/chat" element={<ChatView />} />
-                <Route path="/agent" element={<AgentView />} />
-                <Route path="/agent/:runId" element={<AgentView />} />
-                <Route path="/codebase" element={<CodebaseView />} />
-                <Route path="/automations" element={<AutomationsView />} />
-                <Route path="/settings/scheduled-tasks" element={<ScheduledTasksRedirect />} />
-                <Route path="/settings" element={<Navigate to="/settings/theme" replace />} />
-                <Route path="/settings/:section" element={<SettingsView />} />
-                <Route path="/plugins/:pluginId/:panelId" element={<PluginPanelHost />} />
-                <Route path="*" element={<Navigate to="/chat" replace />} />
-              </Route>
-            </Routes>
-          </ChatProvider>
-        </SelectedModelProvider>
+        <ToastProvider>
+          <SelectedModelProvider>
+            <ChatProvider>
+              <ThemeApplier />
+              <DeepLinkRouter />
+              <UiErrorBridge />
+              <ApprovalQueue />
+              <OnboardingWizard />
+              <Routes>
+                <Route element={<AppShell />}>
+                  <Route index element={<Navigate to="/chat" replace />} />
+                  <Route path="/chat" element={<ChatView />} />
+                  <Route path="/agent" element={<AgentView />} />
+                  <Route path="/agent/:runId" element={<AgentView />} />
+                  <Route path="/codebase" element={<CodebaseView />} />
+                  <Route path="/automations" element={<AutomationsView />} />
+                  <Route path="/settings/scheduled-tasks" element={<ScheduledTasksRedirect />} />
+                  <Route path="/settings" element={<Navigate to="/settings/theme" replace />} />
+                  <Route path="/settings/:section" element={<SettingsView />} />
+                  <Route path="/plugins/:pluginId/:panelId" element={<PluginPanelHost />} />
+                  <Route path="*" element={<Navigate to="/chat" replace />} />
+                </Route>
+              </Routes>
+            </ChatProvider>
+          </SelectedModelProvider>
+        </ToastProvider>
       </HoverHintProvider>
     </HashRouter>
   );
+}
+
+function UiErrorBridge(): null {
+  const toast = useToast();
+  useEffect(() => {
+    return window.opencodex.ui.onError((payload) => {
+      const kind =
+        payload.severity === 'error' ? 'error' : payload.severity === 'warning' ? 'warn' : 'info';
+      toast.show(`${payload.source}: ${payload.message}`, { kind });
+    });
+  }, [toast]);
+  return null;
 }
 
 function DeepLinkRouter(): null {

@@ -29,8 +29,28 @@ export default function AutomationsContextPane(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
+    let cancelled = false;
+    let timeoutId: number | null = null;
+    const tick = (): void => {
+      if (cancelled) return;
+      const t = Date.now();
+      setNow(t);
+      const nextDelay = 1000 - (t % 1000);
+      timeoutId = window.setTimeout(tick, nextDelay);
+    };
+    tick();
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'visible') {
+        if (timeoutId !== null) window.clearTimeout(timeoutId);
+        tick();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   const sorted = useMemo<ScheduledTask[]>(() => {
@@ -51,7 +71,16 @@ export default function AutomationsContextPane(): JSX.Element {
       {tasks === null ? (
         <p className="lcc-pane-empty">Loading…</p>
       ) : sorted.length === 0 ? (
-        <p className="lcc-pane-empty">No automations yet.</p>
+        <div className="lcc-pane-empty-state">
+          <p className="lcc-pane-empty">No automations. Create one to run prompts on a schedule.</p>
+          <button
+            type="button"
+            className="btn btn-primary lcc-pane-cta"
+            onClick={() => navigate('/automations')}
+          >
+            Create automation
+          </button>
+        </div>
       ) : (
         <ul className="lcc-list">
           {sorted.map((task) => (

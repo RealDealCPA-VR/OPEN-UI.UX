@@ -37,3 +37,13 @@ export interface ShellShowItemResponse {
   ok: boolean;
   error?: string;
 }
+
+export interface ShellOpenPathRequest {
+  workspaceRoot: string;
+  path: string;
+}
+
+export interface ShellOpenPathResponse {
+  ok: boolean;
+  error?: string;
+}

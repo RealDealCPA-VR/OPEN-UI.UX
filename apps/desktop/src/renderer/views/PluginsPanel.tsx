@@ -7,6 +7,7 @@ export function PluginsPanel(): JSX.Element {
   const [registryUrl, setRegistryUrl] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingUninstall, setConfirmingUninstall] = useState<string | null>(null);
 
   useEffect(() => {
     void window.opencodex.plugins.list().then((r) => setPlugins(r.plugins));
@@ -67,6 +68,7 @@ export function PluginsPanel(): JSX.Element {
     try {
       const result = await window.opencodex.plugins.uninstall({ id: item.id });
       setPlugins(result.plugins);
+      setConfirmingUninstall(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -124,7 +126,11 @@ export function PluginsPanel(): JSX.Element {
                   ))}
                 </div>
               )}
-              {item.lastError && <div className="plugin-error">{item.lastError}</div>}
+              {item.lastError && (
+                <div className="plugin-error" role="alert">
+                  {item.lastError}
+                </div>
+              )}
               {item.status === 'pending-permissions' &&
                 item.manifest.contributions.runners &&
                 item.manifest.contributions.runners.length > 0 && (
@@ -154,14 +160,37 @@ export function PluginsPanel(): JSX.Element {
                 >
                   {item.enabled ? 'Disable' : 'Enable'}
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-danger"
-                  onClick={() => void onUninstall(item)}
-                  disabled={busyId === item.id}
-                >
-                  Uninstall
-                </button>
+                {confirmingUninstall === item.id ? (
+                  <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                    <span style={{ fontSize: 12, color: 'var(--danger, #dc2626)' }}>
+                      Uninstall {item.manifest.displayName}?
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={() => void onUninstall(item)}
+                      disabled={busyId === item.id}
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => setConfirmingUninstall(null)}
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={() => setConfirmingUninstall(item.id)}
+                    disabled={busyId === item.id}
+                  >
+                    Uninstall
+                  </button>
+                )}
               </div>
             </li>
           ))}

@@ -4,7 +4,9 @@ import {
   currentToolName,
   formatDurationMs,
   formatTokens,
+  runBudget,
   runDurationMs,
+  runProgressFraction,
   truncate,
 } from '../views/agent-runs-derive';
 
@@ -14,17 +16,24 @@ interface ActiveRunCardProps {
   onSelect: () => void;
 }
 
-const DEFAULT_BUDGET = 10;
+const prefersReducedMotion = (): boolean =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function ActiveRunCard({ run, now, onSelect }: ActiveRunCardProps): JSX.Element {
   const [aborting, setAborting] = useState(false);
+  const [confirmAbort, setConfirmAbort] = useState(false);
   const [abortErr, setAbortErr] = useState<string | null>(null);
 
   const tool = currentToolName(run);
   const duration = runDurationMs(run, now);
+  const budget = runBudget(run);
+  const fraction = runProgressFraction(run, budget);
+  const segments = Array.from({ length: budget }, (_, i) => i < run.iterations);
+  const pulse = !prefersReducedMotion();
 
-  const handleAbort = async (e: React.MouseEvent): Promise<void> => {
-    e.stopPropagation();
+  const handleAbort = async (): Promise<void> => {
     if (aborting) return;
     setAborting(true);
     setAbortErr(null);
@@ -35,6 +44,7 @@ export function ActiveRunCard({ run, now, onSelect }: ActiveRunCardProps): JSX.E
       setAbortErr(err instanceof Error ? err.message : String(err));
     } finally {
       setAborting(false);
+      setConfirmAbort(false);
     }
   };
 
@@ -65,6 +75,49 @@ export function ActiveRunCard({ run, now, onSelect }: ActiveRunCardProps): JSX.E
         )}
         <h3 className="active-run-card-title">{truncate(run.task, 140)}</h3>
       </header>
+
+      <div
+        role="progressbar"
+        aria-label="Run progress against iteration budget"
+        aria-valuemin={0}
+        aria-valuemax={budget}
+        aria-valuenow={Math.min(run.iterations, budget)}
+        style={{
+          display: 'flex',
+          gap: 3,
+          height: 4,
+          width: '100%',
+          marginTop: -2,
+        }}
+      >
+        {segments.map((filled, i) => (
+          <span
+            key={i}
+            style={{
+              flex: 1,
+              borderRadius: 2,
+              background: filled ? 'var(--accent)' : 'var(--border-strong)',
+              opacity: filled ? 1 : 0.45,
+              transition: prefersReducedMotion() ? 'none' : 'background 160ms ease',
+            }}
+          />
+        ))}
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          fontSize: 11,
+          color: 'var(--text-muted)',
+          marginTop: -4,
+        }}
+      >
+        <span>
+          {run.iterations} / {budget} iterations
+        </span>
+        <span>{Math.round(fraction * 100)}%</span>
+      </div>
+
       <div className="active-run-card-meta">
         <div className="active-run-card-meta-item">
           <span className="active-run-card-meta-label">Tokens</span>
@@ -73,22 +126,50 @@ export function ActiveRunCard({ run, now, onSelect }: ActiveRunCardProps): JSX.E
           </span>
         </div>
         <div className="active-run-card-meta-item">
-          <span className="active-run-card-meta-label">Iterations</span>
-          <span className="active-run-card-meta-value">
-            {run.iterations} / {DEFAULT_BUDGET}
-          </span>
-        </div>
-        <div className="active-run-card-meta-item">
           <span className="active-run-card-meta-label">Tool</span>
           <span className="active-run-card-meta-value">
-            {tool ? <code>{tool}</code> : <span className="audit-row-duration">idle</span>}
+            {tool ? (
+              <code
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                  background: 'var(--accent-soft-bg)',
+                  color: 'var(--accent-text)',
+                  border: '1px solid var(--accent-soft-border)',
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: 'var(--accent)',
+                    animation: pulse ? 'statusbar-pulse 1.4s ease-in-out infinite' : 'none',
+                  }}
+                />
+                {tool}
+              </code>
+            ) : (
+              <span className="audit-row-duration">idle</span>
+            )}
           </span>
         </div>
         <div className="active-run-card-meta-item">
           <span className="active-run-card-meta-label">Elapsed</span>
           <span className="active-run-card-meta-value">{formatDurationMs(duration)}</span>
         </div>
+        <div className="active-run-card-meta-item">
+          <span className="active-run-card-meta-label">Trigger</span>
+          <span className="active-run-card-meta-value">
+            {run.triggerSource === 'scheduled' ? 'Scheduled' : 'You'}
+          </span>
+        </div>
       </div>
+
       <div className="active-run-card-actions">
         <button
           type="button"
@@ -100,14 +181,54 @@ export function ActiveRunCard({ run, now, onSelect }: ActiveRunCardProps): JSX.E
         >
           Open
         </button>
-        <button
-          type="button"
-          className="btn"
-          onClick={(e) => void handleAbort(e)}
-          disabled={aborting}
-        >
-          {aborting ? 'Aborting…' : 'Abort'}
-        </button>
+        {!confirmAbort ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmAbort(true);
+            }}
+            disabled={aborting}
+          >
+            Abort
+          </button>
+        ) : (
+          <span
+            style={{ display: 'inline-flex', gap: 6 }}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="btn"
+              style={{
+                borderColor: 'var(--danger-border)',
+                color: 'var(--danger)',
+                background: 'var(--danger-bg)',
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleAbort();
+              }}
+              disabled={aborting}
+              autoFocus
+            >
+              {aborting ? 'Aborting…' : 'Confirm abort'}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmAbort(false);
+              }}
+              disabled={aborting}
+            >
+              Cancel
+            </button>
+          </span>
+        )}
       </div>
       {abortErr && <p className="approvals-save-error">{abortErr}</p>}
     </article>

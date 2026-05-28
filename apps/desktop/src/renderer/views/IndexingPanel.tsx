@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 export function IndexingPanel(): JSX.Element {
   const [readOnly, setReadOnly] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void window.opencodex.chat.getReadOnlyMode().then(({ readOnly: r }) => setReadOnly(r));
@@ -10,8 +11,15 @@ export function IndexingPanel(): JSX.Element {
 
   const toggle = async (): Promise<void> => {
     const next = !readOnly;
+    const prev = readOnly;
     setReadOnly(next);
-    await window.opencodex.chat.setReadOnlyMode(next);
+    setError(null);
+    try {
+      await window.opencodex.chat.setReadOnlyMode(next);
+    } catch (err) {
+      setReadOnly(prev);
+      setError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   return (
@@ -39,6 +47,22 @@ export function IndexingPanel(): JSX.Element {
           </div>
         </div>
       </div>
+      {error && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 10,
+            padding: 10,
+            background: 'var(--danger-bg, rgba(220,38,38,0.08))',
+            color: 'var(--danger, #dc2626)',
+            border: '1px solid var(--danger-border, rgba(220,38,38,0.3))',
+            borderRadius: 6,
+            fontSize: 13,
+          }}
+        >
+          Failed to update read-only mode: {error}
+        </div>
+      )}
     </div>
   );
 }

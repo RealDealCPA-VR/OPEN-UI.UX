@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { SettingsSection } from '../views/settings-sections';
 
 export interface SettingsRailProps {
@@ -15,21 +16,65 @@ export function SettingsRail({
   query,
   onQueryChange,
 }: SettingsRailProps): JSX.Element {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const isMeta = e.metaKey || e.ctrlKey;
+      if (isMeta && e.key === 'f' && document.activeElement?.closest('.settings-view')) {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   return (
     <nav className="settings-rail" aria-label="Settings sections">
-      <div className="settings-rail-search">
+      <div className="settings-rail-search" style={{ position: 'relative' }}>
         <input
+          ref={inputRef}
           type="search"
           className="settings-rail-search-input"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Search settings…"
           aria-label="Search settings"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && query.length > 0) {
+              e.preventDefault();
+              onQueryChange('');
+            }
+          }}
         />
+        {query.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onQueryChange('')}
+            aria-label="Clear search"
+            style={{
+              position: 'absolute',
+              right: 6,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              border: 'none',
+              background: 'transparent',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              fontSize: 14,
+              padding: '2px 6px',
+              borderRadius: 4,
+            }}
+          >
+            ×
+          </button>
+        )}
       </div>
       <ul className="settings-rail-list">
         {sections.length === 0 ? (
-          <li className="settings-rail-empty">No matches</li>
+          <li className="settings-rail-empty">No matches for &ldquo;{query}&rdquo;</li>
         ) : (
           sections.map((section) => {
             const active = section.slug === activeSlug;

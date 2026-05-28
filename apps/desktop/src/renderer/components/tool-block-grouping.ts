@@ -81,3 +81,9 @@ export function formatRerunPrompt(toolName: string, args: unknown): string {
     ? `Re-run this tool call: ${toolName}(${argsText})`
     : `Re-run this tool call: ${toolName}()`;
 }
+
+const READ_ONLY_TOOLS = new Set<string>(['read_file', 'list_dir', 'glob', 'grep', 'web_fetch']);
+
+export function isReadOnlyTool(toolName: string): boolean {
+  return READ_ONLY_TOOLS.has(toolName);
+}

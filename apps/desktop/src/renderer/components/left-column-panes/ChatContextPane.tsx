@@ -42,7 +42,9 @@ export default function ChatContextPane(): JSX.Element {
       <ul className="chat-conversation-list">
         {filtered.length === 0 ? (
           <li className="chat-conversation-empty">
-            {conversations.length === 0 ? 'No conversations yet' : 'No matches'}
+            {conversations.length === 0
+              ? 'No conversations yet. Start one with “+ New chat”.'
+              : 'No matches'}
           </li>
         ) : (
           filtered.map((c) => (

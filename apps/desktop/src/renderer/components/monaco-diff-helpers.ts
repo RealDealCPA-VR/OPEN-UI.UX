@@ -58,6 +58,34 @@ export function summarizeHunks(hunks: readonly MonacoDiffHunk[]): string {
   return `${hunks.length} hunk${hunks.length === 1 ? '' : 's'}: ${parts.join(', ')}`;
 }
 
+export interface HunkLineDelta {
+  added: number;
+  removed: number;
+}
+
+/**
+ * Sum per-line additions/removals across hunks. An "add" hunk counts only
+ * the modified-side span; "remove" only the original-side; "modify" counts
+ * both (lines replaced).
+ */
+export function countLineDelta(hunks: readonly MonacoDiffHunk[]): HunkLineDelta {
+  let added = 0;
+  let removed = 0;
+  for (const h of hunks) {
+    const origLen =
+      h.originalEndLine < h.originalStartLine ? 0 : h.originalEndLine - h.originalStartLine + 1;
+    const modLen =
+      h.modifiedEndLine < h.modifiedStartLine ? 0 : h.modifiedEndLine - h.modifiedStartLine + 1;
+    if (h.kind === 'add') added += modLen;
+    else if (h.kind === 'remove') removed += origLen;
+    else {
+      added += modLen;
+      removed += origLen;
+    }
+  }
+  return { added, removed };
+}
+
 export function formatHunkRange(hunk: MonacoDiffHunk): string {
   const orig = formatLineRange(hunk.originalStartLine, hunk.originalEndLine);
   const mod = formatLineRange(hunk.modifiedStartLine, hunk.modifiedEndLine);

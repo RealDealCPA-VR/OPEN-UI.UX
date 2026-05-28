@@ -13,6 +13,7 @@ import {
   uninstallPlugin,
 } from './manager';
 import { getPluginRegistryUrl, setPluginRegistryUrl } from '../storage/settings';
+import { toFriendlyError } from '../util/friendly-error';
 import { PLUGIN_PRESETS } from './presets';
 
 export function registerPluginHandlers(): void {
@@ -22,9 +23,13 @@ export function registerPluginHandlers(): void {
   registerInvoke(
     'plugins:install-from-path',
     z.object({ path: z.string().min(1) }),
-    async ({ path }) => ({
-      plugins: await installPluginFromPath(path),
-    }),
+    async ({ path }) => {
+      try {
+        return { plugins: await installPluginFromPath(path) };
+      } catch (err) {
+        throw toFriendlyError(err);
+      }
+    },
   );
   registerInvoke('plugins:browse-and-install', z.void(), async () => {
     const result = await dialog.showOpenDialog({

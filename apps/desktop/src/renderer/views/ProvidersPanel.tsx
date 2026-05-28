@@ -4,6 +4,11 @@ import { useSelectedModel } from '../state/selected-model-context';
 
 const KEY_MASK = '••••••••';
 
+interface ExtendedTestResult extends ProviderTestResult {
+  latencyMs?: number;
+  modelCount?: number;
+}
+
 interface DraftState {
   apiKey: string;
   apiKeyDirty: boolean;
@@ -11,7 +16,49 @@ interface DraftState {
   extra: Record<string, string>;
   busy: 'idle' | 'saving' | 'testing' | 'clearing';
   errors: string[];
-  testResult: ProviderTestResult | null;
+  testResult: ExtendedTestResult | null;
+  saved: boolean;
+}
+
+// Map a provider id + http status to a one-line suggested fix. We surface the
+// real provider message above this; the fix is a humanizer hint.
+function suggestedFix(providerId: string, result: ProviderTestResult): string | null {
+  const status = result.httpStatus;
+  const id = providerId.toLowerCase();
+  if (!status && result.code === 'network') {
+    return 'Check your network connection or proxy settings.';
+  }
+  if (!status && result.code === 'timeout') {
+    return 'The provider did not respond in time. Retry in a moment.';
+  }
+  if (status === 401) {
+    if (id.includes('openai')) {
+      return 'Check your key has access to the chat completions endpoint.';
+    }
+    if (id.includes('anthropic')) {
+      return 'Anthropic returned 401 — verify the key has not been revoked.';
+    }
+    return 'The key was rejected. Confirm it is current and copied without spaces.';
+  }
+  if (status === 403) {
+    if (id.includes('anthropic')) {
+      return 'Your key may be billing-limited. Check usage at console.anthropic.com.';
+    }
+    if (id.includes('openai')) {
+      return 'Forbidden — your org may not have access to this model. Try a different model.';
+    }
+    return 'The provider refused the request. Check workspace/billing permissions.';
+  }
+  if (status === 429) {
+    return 'Rate-limited. Wait a moment and retry.';
+  }
+  if (status === 404) {
+    return 'Endpoint not found — verify the base URL override is correct.';
+  }
+  if (status && status >= 500 && status < 600) {
+    return 'The provider is having trouble. Try again shortly.';
+  }
+  return null;
 }
 
 function makeDraft(item: ProviderListItem): DraftState {
@@ -23,6 +70,7 @@ function makeDraft(item: ProviderListItem): DraftState {
     busy: 'idle',
     errors: [],
     testResult: item.status.lastTestResult,
+    saved: false,
   };
 }
 
@@ -125,7 +173,7 @@ function ProviderCard({ item, draft, onDraftChange, onApplyItem }: ProviderCardP
   );
 
   const handleSave = async (): Promise<void> => {
-    onDraftChange({ busy: 'saving', errors: [] });
+    onDraftChange({ busy: 'saving', errors: [], saved: false });
     try {
       const resp = await window.opencodex.providers.save({
         id: info.id,
@@ -141,6 +189,11 @@ function ProviderCard({ item, draft, onDraftChange, onApplyItem }: ProviderCardP
         return;
       }
       onApplyItem(resp.item);
+      // applyItem replaces the draft with a fresh one; surface the saved chip
+      // via a follow-up patch on the *new* draft (the onDraftChange closure
+      // still targets the same id).
+      onDraftChange({ saved: true });
+      window.setTimeout(() => onDraftChange({ saved: false }), 1500);
     } catch (err) {
       onDraftChange({
         busy: 'idle',
@@ -151,9 +204,16 @@ function ProviderCard({ item, draft, onDraftChange, onApplyItem }: ProviderCardP
 
   const handleTest = async (): Promise<void> => {
     onDraftChange({ busy: 'testing', testResult: null });
+    const start = performance.now();
     try {
       const result = await window.opencodex.providers.test({ id: info.id });
-      onDraftChange({ busy: 'idle', testResult: result });
+      const latencyMs = Math.round(performance.now() - start);
+      const next: ExtendedTestResult = {
+        ...result,
+        latencyMs,
+        modelCount: result.ok ? chatModelCount + embedModelCount : undefined,
+      };
+      onDraftChange({ busy: 'idle', testResult: next });
     } catch (err) {
       onDraftChange({
         busy: 'idle',
@@ -161,6 +221,7 @@ function ProviderCard({ item, draft, onDraftChange, onApplyItem }: ProviderCardP
           ok: false,
           code: 'unknown',
           message: err instanceof Error ? err.message : String(err),
+          latencyMs: Math.round(performance.now() - start),
         },
       });
     }
@@ -252,16 +313,76 @@ function ProviderCard({ item, draft, onDraftChange, onApplyItem }: ProviderCardP
         )}
 
         {draft.testResult && (
-          <p
+          <div
             className={
               draft.testResult.ok ? 'test-result test-result-ok' : 'test-result test-result-err'
             }
+            role={draft.testResult.ok ? undefined : 'alert'}
           >
-            {draft.testResult.ok ? '✓ ' : '✗ '}
-            {draft.testResult.message}
-            {status.lastTestedAt && (
-              <span className="test-result-time"> · {formatTime(status.lastTestedAt)}</span>
+            <div>
+              {draft.testResult.ok ? '✓ ' : '✗ '}
+              {draft.testResult.message}
+              {draft.testResult.ok && draft.testResult.latencyMs !== undefined && (
+                <span className="test-result-time">
+                  {' '}
+                  · {draft.testResult.latencyMs} ms
+                  {draft.testResult.modelCount !== undefined && (
+                    <>
+                      {' '}
+                      · {draft.testResult.modelCount} model
+                      {draft.testResult.modelCount === 1 ? '' : 's'} discovered
+                    </>
+                  )}
+                </span>
+              )}
+              {!draft.testResult.ok && draft.testResult.httpStatus && (
+                <span className="test-result-time"> · HTTP {draft.testResult.httpStatus}</span>
+              )}
+              {status.lastTestedAt && (
+                <span className="test-result-time"> · {formatTime(status.lastTestedAt)}</span>
+              )}
+            </div>
+            {!draft.testResult.ok &&
+              (() => {
+                const fix = suggestedFix(info.id, draft.testResult);
+                return fix ? (
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      color: 'var(--text-muted, #98a0aa)',
+                    }}
+                  >
+                    Suggested fix: {fix}
+                  </div>
+                ) : null;
+              })()}
+            {!draft.testResult.ok && (
+              <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => void handleTest()}
+                  disabled={draft.busy !== 'idle'}
+                >
+                  Retry test
+                </button>
+              </div>
             )}
+          </div>
+        )}
+
+        {draft.saved && (
+          <p
+            aria-live="polite"
+            style={{
+              fontSize: 12,
+              color: 'var(--success, #22c55e)',
+              margin: '4px 0 0',
+              transition: 'opacity 300ms ease',
+            }}
+          >
+            Saved
           </p>
         )}
       </div>

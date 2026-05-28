@@ -12,6 +12,8 @@ import type {
   AgentSpawnFromUiResponse,
   GitIsRepoRequest,
   GitIsRepoResponse,
+  ShellOpenPathRequest,
+  ShellOpenPathResponse,
   ShellShowItemRequest,
   ShellShowItemResponse,
 } from './agent-spawn';
@@ -131,6 +133,7 @@ import type {
   SkillsChangedEvent,
   SkillsListResponse,
 } from './skills';
+import type { UiErrorEvent } from './ui-errors';
 
 export const runnerInstallCheckSchema = z.object({
   ok: z.boolean(),
@@ -502,6 +505,10 @@ export interface IpcInvokeChannels {
     request: ShellShowItemRequest;
     response: ShellShowItemResponse;
   };
+  'shell:open-path': {
+    request: ShellOpenPathRequest;
+    response: ShellOpenPathResponse;
+  };
   'file-tree:list': {
     request: { path?: string };
     response: {
@@ -680,6 +687,7 @@ export interface IpcEventChannels {
   'scheduler:tasks-changed': ScheduledTasksChangedEvent;
   'scheduler:run-completed': ScheduledRunCompletedEvent;
   'skills:changed': SkillsChangedEvent;
+  'ui:error': UiErrorEvent;
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

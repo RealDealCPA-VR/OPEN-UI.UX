@@ -58,6 +58,7 @@ export function ThemePanel(): JSX.Element {
                   onChange={() => void handleSelect(opt.value)}
                   disabled={saving !== null}
                 />
+                <ThemeSwatch value={opt.value} />
                 <span className="theme-option-text">
                   <span className="theme-option-name">{opt.label}</span>
                   <span className="theme-option-desc">{opt.description}</span>
@@ -69,5 +70,58 @@ export function ThemePanel(): JSX.Element {
       </ul>
       {saveError && <p className="theme-action-error">Failed: {saveError}</p>}
     </div>
+  );
+}
+
+function ThemeSwatch({ value }: { value: ThemePreference }): JSX.Element {
+  if (value === 'light') {
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          display: 'inline-block',
+          width: 28,
+          height: 18,
+          borderRadius: 4,
+          border: '1px solid var(--border, #2a2a32)',
+          marginRight: 10,
+          background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+  if (value === 'dark') {
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          display: 'inline-block',
+          width: 28,
+          height: 18,
+          borderRadius: 4,
+          border: '1px solid var(--border, #2a2a32)',
+          marginRight: 10,
+          background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
+  // System: split-tone swatch.
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        display: 'inline-block',
+        width: 28,
+        height: 18,
+        borderRadius: 4,
+        border: '1px solid var(--border, #2a2a32)',
+        marginRight: 10,
+        background: 'linear-gradient(135deg, #f8fafc 0%, #f8fafc 49%, #0f172a 51%, #0f172a 100%)',
+        flexShrink: 0,
+      }}
+    />
   );
 }

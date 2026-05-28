@@ -6,6 +6,7 @@ import {
   type RunnerInfo,
   type RunnerInstallCheck,
 } from '../../shared/ipc-types';
+import { toFriendlyError } from '../util/friendly-error';
 import { acceptMerge, prepareMergeBundle, rejectMerge } from './merge-review';
 import { clear, listRuns, onRunsChanged } from './run-registry';
 import { runnerRegistry } from './runner-registry-instance';
@@ -78,13 +79,17 @@ export function registerAgentHandlers(): void {
   });
 
   registerInvoke('agent:get-merge-bundle', runIdRequest, async (req) => {
-    const bundle = await prepareMergeBundle(req.runId);
-    return {
-      runId: bundle.runId,
-      diff: bundle.diff,
-      files: bundle.files,
-      branch: bundle.branch,
-    };
+    try {
+      const bundle = await prepareMergeBundle(req.runId);
+      return {
+        runId: bundle.runId,
+        diff: bundle.diff,
+        files: bundle.files,
+        branch: bundle.branch,
+      };
+    } catch (err) {
+      throw toFriendlyError(err);
+    }
   });
 
   registerInvoke('agent:accept-merge', runIdRequest, async (req) => {
@@ -106,14 +111,18 @@ export function registerAgentHandlers(): void {
     if (!runnerRegistry.has(runnerId)) {
       throw new Error(`Unknown runner: ${runnerId}`);
     }
-    return spawnFromUiAsync({
-      task: req.task,
-      providerId: req.providerId,
-      modelId: req.modelId,
-      workspaceRoot: req.workspaceRoot,
-      useWorktree: req.useWorktree,
-      runnerId,
-    });
+    try {
+      return await spawnFromUiAsync({
+        task: req.task,
+        providerId: req.providerId,
+        modelId: req.modelId,
+        workspaceRoot: req.workspaceRoot,
+        useWorktree: req.useWorktree,
+        runnerId,
+      });
+    } catch (err) {
+      throw toFriendlyError(err);
+    }
   });
 
   registerInvoke('agent:abort-run', runIdRequest, (req) => {

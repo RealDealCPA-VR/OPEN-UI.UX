@@ -28,7 +28,7 @@ import {
 import { registerSkillHandlers } from './skills/handlers';
 import { startSkills, stopSkills } from './skills/manager';
 import { registerSelectedModelHandlers } from './selected-model/handlers';
-import { openDb, closeDb } from './storage/db';
+import { closeDb, getDb, openDb } from './storage/db';
 import {
   getAuditRetentionDays,
   getSchedulerEnabledInDev,
@@ -67,6 +67,25 @@ if (!gotLock) {
   app.quit();
   process.exit(0);
 }
+
+async function reportToCrashClientIfEnabled(err: unknown, kind: string): Promise<void> {
+  try {
+    const mod = await import('@opencodex/crash-reporting');
+    mod.captureException(err, { kind });
+  } catch {
+    // crash-reporting opt-out path — nothing to do
+  }
+}
+
+process.on('unhandledRejection', (reason: unknown) => {
+  logger.error({ reason }, 'unhandledRejection');
+  void reportToCrashClientIfEnabled(reason, 'unhandledRejection');
+});
+
+process.on('uncaughtException', (err: Error) => {
+  logger.error({ err }, 'uncaughtException');
+  void reportToCrashClientIfEnabled(err, 'uncaughtException');
+});
 
 let mainWindow: BrowserWindow | null = null;
 let pendingDeepLink: string | null = null;
@@ -209,7 +228,11 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+let beforeQuitRan = false;
+
 app.on('before-quit', () => {
+  if (beforeQuitRan) return;
+  beforeQuitRan = true;
   destroyTray();
   shutdownAllPlugins();
   void shutdownAllMcpServers();
@@ -218,6 +241,11 @@ app.on('before-quit', () => {
   void shutdownTelemetry();
   stopSchedulerForApp();
   void stopSkills();
+  try {
+    getDb().pragma('wal_checkpoint(TRUNCATE)');
+  } catch (err) {
+    logger.warn({ err }, 'wal_checkpoint on quit failed');
+  }
   closeDb();
 });
 

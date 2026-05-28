@@ -493,4 +493,206 @@ Goal: collapse the two-column nav-rail + per-view sidebar into a single context-
 - [x] File-change triggers for scheduled tasks (Phase 8.75 follow-up) _(`apps/desktop/src/main/scheduler/file-watcher.ts` — per-task chokidar watcher rooted at the task's workspace, 500ms debounce, glob filtering via in-house `globToRegExp`, skips heavy dirs + `.gitignore` + `.opencodexignore`. `FileChangeWatcherRegistry` reconciles against the current set of enabled file-change tasks; `scheduler.ts` calls reconcile after `startScheduler`, on every `rescheduleNow`, and tears watchers down in `stopScheduler`. `fireTaskById` is the shared entry point used by every event-driven trigger (file-change, git-hook, webhook) — honors the concurrent-run guard. ScheduledTaskEditorModal extends the trigger radio set with "File change" + glob input (placeholder `**/*.ts`). `computeNextFire` returns null for event-driven triggers so `next_run_at` stays NULL. Tests: 6 cases (`glob-match.test.ts` 6 + `file-watcher.test.ts` 5) covering glob conversion, matching files in/out, debounce coalescing, heavy-dir exclusion, and registry reconcile.)_
 - [x] Git-hook triggers (Phase 8.75 follow-up) _(`apps/desktop/src/main/scheduler/git-hooks.ts` installs sentinel-guarded `sh` wrapper scripts into `<workspace>/.git/hooks/<hook>` plus a `.cmd` companion for Git for Windows. Wrapper script POSTs `{taskId, hook}` to the local listener (item 342) with an HMAC-SHA256 signature baked in at install time (no secret on disk in plaintext outside the trigger_json). Coexists with existing user hooks: writes to `<hook>.opencodex` and appends a sentinel-bounded sourcing line to the user's hook so both run. Idempotent — re-installing leaves exactly one sentinel block. Path-traversal guard limits writes to `<workspace>/.git/hooks/`. `gitHookTriggerSchema` adds optional `hookSecret`; handlers auto-generate a 32-char hex secret on create and preserve it across updates. ScheduledTasksPanel exposes "Reinstall hook" / "Uninstall hook" buttons on git-hook rows. Tests: 8 cases (`git-hooks.test.ts`) covering empty-dir install, coexisting user-hook merge, idempotent re-install, full uninstall, partial-strip uninstall, non-git-repo refusal, and HMAC signature shape.)_
 - [x] Webhook triggers for external systems (Phase 8.75 follow-up) _(`apps/desktop/src/main/scheduler/listener.ts` binds an HTTP server to `127.0.0.1` on the first available port in 38400-38500 (configurable; chosen port persisted to settings as `schedulerListenerPort` for next-boot stability). Exposes `POST /trigger/:taskId`, validates HMAC-SHA256 over the raw body via the `X-Opencodex-Signature` header against the per-task secret, rate-limits to 1 req/sec/task, rejects non-POST methods (405), non-JSON content-types (415), unknown task ids (404), tampered/missing signatures (401), and bodies over 64 KB (413). Every request logged with structured pino. `webhookTriggerSchema.secret` is required; the editor surfaces a "Generate" button (browser `crypto.getRandomValues`) and a "Copy URL" button that reveals the inbound URL once the listener is bound. Item 341's git-hook scripts call this same listener under the hood — same HMAC contract, same rate-limit. Tests: 10 cases (`listener.test.ts`) covering port-range binding, fallback when preferred port is busy, signed-happy-path, tampered body, wrong secret, missing header, unknown task, non-POST, non-JSON, and the 1-req/sec rate limit.)_
+
+---
+
+## Phase 11 — UX polish & robustness (Codex/Claude-grade feel)
+
+Goal: review the entire renderer surface with **UX as the primary concern** and make OpenCodex feel as polished, calm, and trustworthy as Claude Code and Codex. Fan-out review with **strict lane ownership** so subagents don't collide. Each lane: audit → fix → leave the code working.
+
+### Operating rules for this phase
+
+- **Lane ownership is strict.** A subagent only edits files explicitly listed under its lane. If a fix needs another lane's file, it raises a follow-up note and stops — does not touch.
+- **`styles.css` is owned by Lane E only.** Other lanes must NOT modify it. If a lane needs a new design token, it requests Lane E (via a note in this section) and uses an inline style as a temporary bridge.
+- **No file paths overlap.** Each lane's file list below is authoritative.
+- **No agent runs `pnpm build` or `pnpm install`.** The orchestrator runs the build pass once at the end.
+- **No agent modifies `Todo.md` or `HANDOFF.md`.** The orchestrator updates both.
+- **No backwards-compat shims.** If something is being renamed or restructured, do it cleanly and update all callers in-lane. Cross-lane caller updates are coordinated via this section.
+- **Adopt existing primitives** (HoverHint, SettingsSectionCard, ToolCallCard, ModelPicker, design tokens). Don't reinvent.
+- **Tone**: confident, terse, helpful. No exclamation marks in user copy. No emojis in code. Microcopy should sound like a calm senior engineer.
+
+### Shared "joyful UX" principles every lane applies
+
+- **Empty states have purpose**: a one-line hook + a concrete next action, never "Nothing here yet."
+- **Loading states never block — skeletons over spinners** wherever a row count is roughly known.
+- **Errors are recoverable**: every error toast/banner has a "Retry" or "Open settings" button where applicable.
+- **Destructive actions confirm in-place** (no `window.confirm`), and the destructive button is visibly secondary.
+- **Keyboard parity with mouse**: every clickable primary action also has a keyboard path (and a HoverHint that shows the shortcut).
+- **Optimistic UI** for instant-feedback actions (rename, toggle, reorder) — roll back on failure with a toast.
+- **Reduced motion** is honored everywhere new motion is introduced.
+- **Copy buttons** never have unbounded "Copied!" toasts; they swap label in-place for 1.2s and revert.
+
+### Lane A — Chat surface (the heart)
+
+**Owned files** (Lane A may edit only these):
+
+- `apps/desktop/src/renderer/views/ChatView.tsx`
+- `apps/desktop/src/renderer/components/Markdown.tsx`
+- `apps/desktop/src/renderer/components/ToolCallCard.tsx`
+- `apps/desktop/src/renderer/components/tool-block-grouping.ts`
+- `apps/desktop/src/renderer/components/tool-result-preview.tsx`
+- `apps/desktop/src/renderer/components/EmbeddedTerminal.tsx`
+- `apps/desktop/src/renderer/components/StatusBar.tsx`
+- `apps/desktop/src/renderer/components/status-bar-derive.ts`
+- `apps/desktop/src/renderer/components/slash-commands.ts`
+- `apps/desktop/src/renderer/components/SlashCommands.tsx`
+- `apps/desktop/src/renderer/components/extract-file-paths.ts`
+- `apps/desktop/src/renderer/components/markdown-parse.ts`
+
+**Focus areas**
+
+- [x] Composer: Shift+Enter newline / Enter sends / Esc cancels mid-stream / Up-arrow recalls last user message on empty composer / contextual placeholder driven by transferOrigin
+- [x] Streaming UX: Send → Stop while streaming → Retry on error (resubmits last user message + attachments); partial assistant content preserved on Stop
+- [x] Slash menu: skill description right-aligned hint, ArrowUp/Down/Enter/Tab/Esc unchanged; menu received baseline drop-down styling (`.slash-commands*`)
+- [x] Empty conversation state: hook + 3 starter chips (Explain repo / Find TODOs / Run tests)
+- [x] Markdown: code-block Wrap/Unwrap toggle for >100ch lines, Copy→"Copied" 1.2s revert, citations parsed and rendered as clickable buttons that fire `chat-to-codebase` transfer
+- [x] Tool-call cards: read-tool successful calls auto-collapsed (`isReadOnlyTool`), errors auto-expand, manual toggle wins; grep/glob result entries are clickable file-links
+- [x] StatusBar: segmented token meter against `selectedCapabilities.contextWindow` with 70%/90% thresholds (helper `computeTokenMeterSegments` covered by 5 tests), workspace name click → Reveal in OS, active-tool pulse during streaming
+- [x] Polish: Cmd/Ctrl+K opens slash menu from composer. (`Cmd+/` comment placeholder in fenced blocks intentionally deferred — markdown lives in messages, not composer.)
+
+### Lane B — Agent + Automations surface
+
+**Owned files** (Lane B may edit only these):
+
+- `apps/desktop/src/renderer/views/AgentView.tsx`
+- `apps/desktop/src/renderer/views/AutomationsView.tsx`
+- `apps/desktop/src/renderer/views/ScheduledTasksPanel.tsx`
+- `apps/desktop/src/renderer/views/agent-runs-derive.ts`
+- `apps/desktop/src/renderer/components/ActiveRunCard.tsx`
+- `apps/desktop/src/renderer/components/AgentRunRow.tsx`
+- `apps/desktop/src/renderer/components/AgentRunDrawer.tsx`
+- `apps/desktop/src/renderer/components/AgentSpawnModal.tsx`
+- `apps/desktop/src/renderer/components/MergeReviewModal.tsx`
+- `apps/desktop/src/renderer/components/ScheduledTaskCard.tsx`
+- `apps/desktop/src/renderer/components/ScheduledTaskEditorModal.tsx`
+- `apps/desktop/src/renderer/components/ScheduledTaskRunsDrawer.tsx`
+
+**Focus areas**
+
+- [x] ActiveRunCard: segmented progress bar against budget, pulsing current-tool badge (matchMedia reduced-motion aware), Abort → in-place "Confirm abort" + Cancel
+- [x] AgentSpawnModal: worktree preview (branch + path, OS-aware sep), per-option runner install-status suffix + below-select Runners link, per-field validation errors, Cmd/Ctrl+Enter submits, Esc closes
+- [x] AgentRunDrawer: monospace timestamps, per-tool expand toggle, sticky scroll-to-bottom + "Jump to latest ↓" pill, j/k tool-block nav, sticky footer with merge-review + continue-in-chat CTAs
+- [x] MergeReviewModal: split file-list (with +/- counts per file) + per-file MonacoDiffViewer, Accept/Reject confirm in-place, "Open in Codebase view" link via `agent-to-codebase` transfer (new variant added during consolidation)
+- [x] AutomationsView: 3 template cards (Daily standup / Weekly security audit / Hourly TODO sweep) prefill editor, trigger-type filter chips with counts; humane `humaneCountdown` ("in 3m", "tomorrow at 9:00") covered by 12 new tests
+- [x] ScheduledTaskEditorModal: live cron validation (red ring + reason), each preset shows next-3 fires inline, trigger-type radios → card buttons, Cmd/Ctrl+Enter saves
+- [x] Run history: j/k keyboard nav inside drawer; "Resume in chat" one-click on AgentRunRow
+
+### Lane C — Codebase surface
+
+**Owned files** (Lane C may edit only these):
+
+- `apps/desktop/src/renderer/views/CodebaseView.tsx`
+- `apps/desktop/src/renderer/components/CodebasePreviewPane.tsx`
+- `apps/desktop/src/renderer/components/CodebaseSearchBox.tsx`
+- `apps/desktop/src/renderer/components/FileTree.tsx`
+- `apps/desktop/src/renderer/components/FileTreeContextMenu.tsx`
+- `apps/desktop/src/renderer/components/MonacoDiffViewer.tsx`
+- `apps/desktop/src/renderer/components/monaco-diff-helpers.ts`
+- `apps/desktop/src/renderer/components/citations.ts`
+- `apps/desktop/src/renderer/components/language-from-extension.ts`
+- `apps/desktop/src/renderer/components/line-diff.ts`
+- `apps/desktop/src/renderer/views/codebase-pending-edits-derive.ts`
+
+**Focus areas**
+
+- [x] FileTree: 150ms-debounced filter input + auto-expand matching ancestors, keyboard nav (Up/Down/j/k/Right/Left/Enter/Space), inline windowing for >500 rows (no new dep), clickable pending-edit pills with aggregated count
+- [x] CodebaseSearchBox: scope chips (current dir / repo / mcp), "N results · Xms" pill, Cmd/Ctrl+F refocus, `<mark>` snippet highlighting
+- [x] CodebasePreviewPane: language pill, click-to-copy path, Open in editor (`shell:open-path` IPC added during consolidation) / Reveal in OS / Copy path; URL hash `#L42` jump on mount + hashchange; line-number gutter
+- [x] FileTreeContextMenu: Open / Edit / Share groups with dividers, ArrowUp/Down/Enter/Esc keyboard, viewport-clamped position
+- [x] MonacoDiffViewer: sticky header showing path + `+N -M`, `j/k` next/prev hunk + `a` accept / `r` reject, active-hunk outline
+- [x] Citations: tokenizer extended to accept `file:line-line` ranges (3 new test cases); cross-view hover-highlight intentionally deferred (needs Lane A→Lane C signal channel, marked as future polish)
+
+### Lane D — Settings & Onboarding
+
+**Owned files** (Lane D may edit only these — note: `ScheduledTasksPanel.tsx` and `RunnersPanel.tsx` are NOT in this lane):
+
+- `apps/desktop/src/renderer/views/SettingsView.tsx`
+- `apps/desktop/src/renderer/views/settings-sections.ts`
+- `apps/desktop/src/renderer/components/SettingsRail.tsx`
+- `apps/desktop/src/renderer/components/SettingsSectionCard.tsx`
+- `apps/desktop/src/renderer/components/OnboardingWizard.tsx`
+- `apps/desktop/src/renderer/components/OnboardingBanner.tsx`
+- `apps/desktop/src/renderer/views/ThemePanel.tsx`
+- `apps/desktop/src/renderer/views/WorkspacePanel.tsx`
+- `apps/desktop/src/renderer/views/ProvidersPanel.tsx`
+- `apps/desktop/src/renderer/views/ApprovalsPanel.tsx`
+- `apps/desktop/src/renderer/views/PluginsPanel.tsx`
+- `apps/desktop/src/renderer/views/McpServersPanel.tsx`
+- `apps/desktop/src/renderer/views/MemoryPanel.tsx`
+- `apps/desktop/src/renderer/views/UpdatesPanel.tsx`
+- `apps/desktop/src/renderer/views/TelemetryPanel.tsx`
+- `apps/desktop/src/renderer/views/CrashReportingPanel.tsx`
+- `apps/desktop/src/renderer/views/AuditLogPanel.tsx`
+- `apps/desktop/src/renderer/views/IndexingPanel.tsx`
+- `apps/desktop/src/renderer/views/SkillsPanel.tsx`
+- `apps/desktop/src/renderer/views/AccessibilityPanel.tsx`
+- `apps/desktop/src/renderer/views/RunnersPanel.tsx`
+
+**Focus areas**
+
+- [x] OnboardingWizard: progress bar + per-step "Why?" lines, inline provider error with Dismiss + "Try a different provider", Escape closes / Enter advances, SVG check draw-animation honoring `prefers-reduced-motion`, "Skip for now" no longer marks complete
+- [x] Provider connection-test: latency + discovered model count on success; HTTP status + one-line `suggestedFix` (per-provider 401/403/429/404/5xx dictionary) + inline Retry on failure
+- [x] All panels: skeleton shimmer over spinners (`.settings-skeleton`), "Saved" microstate after save (Telemetry/Crash/Memory/Runners/Skills), Retry button on Updates/Workspace/Approvals/Indexing load errors, settings deep-link `?highlight=…` / `#row=…` briefly pulses target via `.settings-anchor-highlight`
+- [x] ApprovalsPanel: per-tool tier-default line ("Default for `<tier>` tier: …"), native `title` tooltip (HoverHint's 5-word cap is too tight for tool descriptions — recorded as future polish), `data-settings-anchor="tool:<name>"`
+- [x] AuditLogPanel: rows expand to show full input/output with per-pane Copy buttons (1.2s "Copied" swap), Trigger filter chips (user/scheduled), in-place clear-log confirm (replaces `window.confirm`)
+- [x] PluginsPanel + SkillsPanel + RunnersPanel: in-place uninstall confirm, Saved flash after CLI/URL save, consistent card rhythm
+- [x] McpServersPanel: inline `.mcp-inline-spinner` on Enable/Disable/Add, expandable resources + prompts via clickable counts (tools count not clickable — needs main-process IPC change, deferred), in-place Remove confirm, Dismiss button on error banner
+
+### Lane E — Shell, design tokens, approvals, theming
+
+**Owned files** (Lane E may edit only these — Lane E is the only lane that may touch `styles.css`):
+
+- `apps/desktop/src/renderer/styles.css`
+- `apps/desktop/src/renderer/App.tsx`
+- `apps/desktop/src/renderer/index.tsx`
+- `apps/desktop/src/renderer/components/AppShell.tsx`
+- `apps/desktop/src/renderer/components/LeftColumnContextPane.tsx`
+- `apps/desktop/src/renderer/components/left-column-panes/ChatContextPane.tsx`
+- `apps/desktop/src/renderer/components/left-column-panes/AgentContextPane.tsx`
+- `apps/desktop/src/renderer/components/left-column-panes/CodebaseContextPane.tsx`
+- `apps/desktop/src/renderer/components/left-column-panes/AutomationsContextPane.tsx`
+- `apps/desktop/src/renderer/components/HoverHint.tsx`
+- `apps/desktop/src/renderer/components/ApprovalQueue.tsx`
+- `apps/desktop/src/renderer/components/ThemeApplier.tsx`
+- `apps/desktop/src/renderer/components/ModelPicker.tsx`
+- `apps/desktop/src/renderer/components/PluginPanelHost.tsx`
+
+**Focus areas**
+
+- [x] Global toast / notification primitive — `Toasts.tsx` exports `ToastProvider` + `useToast()`; queued, keyboard-dismissable (Esc), `kind`/`duration`/`action` options, `prefers-reduced-motion` aware, bottom-right region. Adopted in `App.tsx` and bridged from main-process `ui:error` IPC via `UiErrorBridge` (orchestrator consolidation).
+- [x] HoverHint: new `shortcut?: string` prop + `·` interpunct fallback that promotes the substring to inline `<kbd>` using `--kbd-bg`/`--kbd-border`/`--kbd-text` tokens; 5-word cap excludes the shortcut
+- [x] ApprovalQueue: 600px default width, per-tool colored letter chip tinted by tier (write/execute amber, network red, read accent), keyboard 1-6 maps to action buttons, "Always allow this exact command" path for `run_shell`
+- [x] LeftColumnContextPane: purposeful empty states across all four panes; Agent pane "Spawn task" navigates to `/agent?spawn=1` (AgentView wired during consolidation); Codebase pane reads `localStorage['opencodex.codebase.recent-files']` (CodebaseView writes during consolidation, honors `?file=` deep-link)
+- [x] ModelPicker: Recent group (top 3, localStorage-persisted), provider section headers, capability badges (tools/vision/cache/stream), cost-per-1M inline
+- [x] AppShell keyboard map: Cmd/Ctrl+1..5 → Chat/Agent/Codebase/Automations/Settings, Cmd/Ctrl+, → /settings, Cmd/Ctrl+\\ + Cmd/Ctrl+B retained
+- [x] Design-token gaps: added `--kbd-*`, `--toast-*`, `--meter-*`, `--chip-*`, `--citation-*`, `--diff-add/del-fg`, `--bg-pill`; light-theme overrides for `--meter-bg` and `--chip-bg`
+- [x] Reduced motion audit: file-level `@media (prefers-reduced-motion: reduce)` block zeroes `transition-duration` + `animation-duration` on `*`
+
+### Lane F — Main-process robustness (non-UI)
+
+**Owned files** (Lane F may edit any file under these trees — but **no renderer files**):
+
+- `apps/desktop/src/main/**`
+- `apps/desktop/src/preload/**`
+- `apps/desktop/src/shared/**` (Zod schemas, type contracts only — no renderer-facing component changes)
+
+**Focus areas**
+
+- [x] IPC handlers: `friendly-error.ts` maps errno (ENOENT/EACCES/EPERM/EBUSY/EEXIST/EISDIR/ENOTDIR/ENOSPC/EMFILE/ETIMEDOUT/ECONNREFUSED/ECONNRESET/ENETUNREACH/EHOSTUNREACH/EAI_AGAIN/ENOTFOUND) + SQLite (SQLITE_BUSY/LOCKED/CORRUPT/READONLY) to friendly strings. Adopted on touch in codebase/plugins/memory/skills/agent handlers
+- [x] Unhandled rejections: `process.on('unhandledRejection')` + `process.on('uncaughtException')` in `main/index.ts` with lazy `@opencodex/crash-reporting` `captureException` (no hard dep)
+- [x] Tool-error UX: routed via `toFriendlyError` helper at IPC boundaries; MCP `lastError` now stores friendly text
+- [x] Scheduler: `skipLogSeen` Set keyed by `taskId::reason` with `logSkipOnce`; cleared on `__resetForTests` + on successful start
+- [x] MCP transport: `EARLY_EXIT_THRESHOLD_MS = 500` guard — child exiting within 500ms of `connect()` jumps to 30s backoff and emits `ui:error` once; `connectStartedAt` + `toastedFailure` runtime fields
+- [x] Chat-runner retry: 429/5xx detected via message substring or provider `retryable` flag; exponential backoff with full jitter (1s/2s/4s), capped at 3 attempts, never retries 400/401/403; only retries while no text or tool_call has been streamed
+- [x] Settings store: not needed — `getSettings()` already re-parses via Zod with `.default(...)` on every field
+- [x] DB integrity: `wal_checkpoint(TRUNCATE)` on `before-quit` (try/catch + idempotency flag); `withSqliteBusyRetry` (50ms→250ms, `Atomics.wait`-based) on `setTaskRunBookkeeping` + `recordToolCall`
+- [x] New IPC: `ui:error` event channel (renderer-bound, `{source, severity, message, detailId?}`), `shell:open-path` invoke channel
+
+### Coordination notes (orchestrator-managed)
+
+- **`pnpm build` runs only when all six lanes report complete.**
+- **Cross-lane requests** (e.g., Lane A needs a new token) land here as `- [ ] (cross-lane) <description>`.
+- **Lane E reads but does not write** in other lanes' files — but Lane E may pull design-token requests in.
+- **No agent invokes another agent** — orchestrator is the only fan-out point.
+
 - [x] Community skill gallery + one-click install (Phase 8.5 follow-up) _(`skillRegistryUrl` setting (default `null`) + `skills:get-registry-url` / `skills:set-registry-url` / `skills:fetch-registry` IPC channels mirror the pattern shipped in Todo.md:151 for plugins. The fetch handler downloads the JSON, accepts both a flat array and `{entries: [...]}` envelope, Zod-validates each row against `skillRegistryEntrySchema` (`name` kebab-case + `description` + `sourceUrl` URL + optional `author` + `version`), and returns either parsed entries or a single error string. SkillsPanel grows a collapsed "Browse community skills" section: URL input + Save/Refresh, then a list of entries with per-row "Install" buttons that prompt before calling the existing `skills:import-from-url` IPC. No default registry URL — users opt in. Tests: 7 cases (`registry.test.ts`) covering flat-array parsing, envelope parsing, kebab-case rejection, missing description rejection, non-URL `sourceUrl` rejection, malformed payload rejection, and empty-array (valid) registry.)_

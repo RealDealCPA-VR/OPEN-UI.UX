@@ -86,8 +86,14 @@ export function SlashCommands({
                   else onSelectSkill(entry.skill);
                 }}
                 onMouseEnter={() => onActiveIndexChange(idx)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  width: '100%',
+                }}
               >
-                <span className="slash-commands-name">
+                <span className="slash-commands-name" style={{ flexShrink: 0 }}>
                   {name}
                   {scopeBadge && (
                     <span className="pill" style={{ marginLeft: 8 }}>
@@ -95,7 +101,23 @@ export function SlashCommands({
                     </span>
                   )}
                 </span>
-                {desc ? <span className="slash-commands-desc">{desc}</span> : null}
+                {desc ? (
+                  <span
+                    className="slash-commands-desc"
+                    style={{
+                      marginLeft: 'auto',
+                      color: 'var(--text-muted)',
+                      fontSize: 11.5,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      maxWidth: '60%',
+                    }}
+                    title={desc}
+                  >
+                    {desc}
+                  </span>
+                ) : null}
               </button>
             );
           })}

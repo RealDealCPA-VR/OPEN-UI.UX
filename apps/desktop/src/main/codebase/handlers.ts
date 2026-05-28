@@ -8,6 +8,7 @@ import { logger } from '../logger';
 import { registerInvoke } from '../ipc/registry';
 import { prepareMergeBundle } from '../agent/merge-review';
 import { listRuns } from '../agent/run-registry';
+import { toFriendlyError } from '../util/friendly-error';
 import type {
   CodebasePendingEditsResponse,
   CodebaseReadFileResponse,
@@ -196,11 +197,26 @@ export function registerCodebaseHandlers(): void {
     'codebase:read-file',
     readFileSchema,
     async (req): Promise<CodebaseReadFileResponse> => {
-      const resolved = resolveWithinWorkspace(req.workspaceRoot, req.path);
+      let resolved: string;
+      try {
+        resolved = resolveWithinWorkspace(req.workspaceRoot, req.path);
+      } catch (err) {
+        throw toFriendlyError(err);
+      }
       const cap = Math.min(req.maxBytes ?? MAX_PREVIEW_BYTES, MAX_PREVIEW_BYTES);
-      const stat = await fs.stat(resolved);
-      const sizeBytes = stat.size;
-      const buf = await fs.readFile(resolved);
+      let sizeBytes: number;
+      let buf: Buffer;
+      try {
+        const stat = await fs.stat(resolved);
+        sizeBytes = stat.size;
+        buf = await fs.readFile(resolved);
+      } catch (err) {
+        logger.warn(
+          { err: err instanceof Error ? err.message : String(err), path: req.path },
+          'codebase:read-file failed',
+        );
+        throw toFriendlyError(err);
+      }
       const truncated = buf.length > cap;
       const sliced = truncated ? buf.subarray(0, cap) : buf;
       if (looksBinary(sliced)) {
@@ -252,6 +268,18 @@ export function registerCodebaseHandlers(): void {
     try {
       const resolved = resolveWithinWorkspace(req.workspaceRoot, req.path);
       shell.showItemInFolder(resolved);
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: message };
+    }
+  });
+
+  registerInvoke('shell:open-path', showItemSchema, async (req) => {
+    try {
+      const resolved = resolveWithinWorkspace(req.workspaceRoot, req.path);
+      const err = await shell.openPath(resolved);
+      if (err) return { ok: false, error: err };
       return { ok: true };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

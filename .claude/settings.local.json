@@ -115,7 +115,8 @@
       "Bash(grep -E '\\\\.\\(ts|tsx|js|jsx|mjs|cjs\\)$')",
       "Bash(xargs -0 -I{} echo \"{}\")",
       "Bash(pnpm lint-staged *)",
-      "Bash(pnpm --filter @opencodex/desktop exec eslint --max-warnings 0 src/renderer/components/HoverHint.tsx)"
+      "Bash(pnpm --filter @opencodex/desktop exec eslint --max-warnings 0 src/renderer/components/HoverHint.tsx)",
+      "Bash(pnpm --filter @opencodex/desktop exec tsc --noEmit)"
     ],
     "additionalDirectories": ["c:\\c\\Users\\VR\\Projects\\OPEN UI.UX\\apps\\desktop"]
   }

@@ -9,6 +9,7 @@ import {
   type ToolCallAuditRow,
   type ToolCallAuditTriggerSource,
 } from '../../shared/tool-audit';
+import { withSqliteBusyRetry } from '../util/sqlite-retry';
 import { getDb } from './db';
 
 export type { ToolCallAuditDecision, ToolCallAuditRow };
@@ -54,20 +55,24 @@ export function recordToolCall(
   db: Database.Database = getDb(),
 ): string {
   const id = randomUUID();
-  db.prepare(
-    `INSERT INTO tool_calls
+  withSqliteBusyRetry(() =>
+    db
+      .prepare(
+        `INSERT INTO tool_calls
        (id, message_id, tool_name, input_json, output_json, decision, is_error, duration_ms, trigger_source)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    id,
-    input.messageId,
-    input.toolName,
-    safeStringify(input.input),
-    input.output === undefined ? null : safeStringify(input.output),
-    input.decision,
-    input.isError ? 1 : 0,
-    input.durationMs,
-    input.triggerSource ?? 'user',
+      )
+      .run(
+        id,
+        input.messageId,
+        input.toolName,
+        safeStringify(input.input),
+        input.output === undefined ? null : safeStringify(input.output),
+        input.decision,
+        input.isError ? 1 : 0,
+        input.durationMs,
+        input.triggerSource ?? 'user',
+      ),
   );
   return id;
 }

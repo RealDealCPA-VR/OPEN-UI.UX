@@ -87,7 +87,12 @@ export function UpdatesPanel({ onCheckRef }: UpdatesPanelProps = {}): JSX.Elemen
   if (loadError) {
     return (
       <div className="settings-block">
-        <p className="chat-warn">Failed to load updater status: {loadError}</p>
+        <p className="chat-warn" role="alert">
+          Failed to load updater status: {loadError}
+        </p>
+        <button type="button" className="btn" onClick={() => window.location.reload()}>
+          Retry
+        </button>
       </div>
     );
   }

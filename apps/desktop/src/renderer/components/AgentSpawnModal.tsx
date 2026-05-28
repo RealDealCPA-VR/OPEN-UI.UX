@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import type { RunnerInfo, RunnerInstallCheck } from '../../shared/ipc-types';
 import { useSelectedModel } from '../state/selected-model-context';
 
@@ -35,6 +35,7 @@ export function AgentSpawnModal({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [runnerId, setRunnerId] = useState<string>('internal');
   const [runners, setRunners] = useState<RunnerInfo[]>([]);
   const [installState, setInstallState] = useState<InstallStateMap>({});
@@ -142,8 +143,18 @@ export function AgentSpawnModal({
 
   const submit = useCallback(async () => {
     setError(null);
-    if (!task.trim() || !workspaceRoot) return;
-    if (!isExternalRunner && (!providerId || !effectiveModelId)) return;
+    const nextFieldErrors: Record<string, string> = {};
+    if (!task.trim()) nextFieldErrors.task = 'Task description is required.';
+    if (!workspaceRoot) nextFieldErrors.workspace = 'Choose a workspace folder.';
+    if (!isExternalRunner) {
+      if (!providerId) nextFieldErrors.provider = 'Select a provider.';
+      if (!effectiveModelId) nextFieldErrors.model = 'Select a model.';
+    }
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors);
+      return;
+    }
+    setFieldErrors({});
     setBusy(true);
     try {
       const res = await window.opencodex.agent.spawnFromUi({
@@ -177,8 +188,33 @@ export function AgentSpawnModal({
     workspaceRoot !== '' &&
     (isExternalRunner || (providerId !== '' && effectiveModelId !== ''));
 
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (canSubmit) void submit();
+    }
+    if (e.key === 'Escape' && !busy) {
+      e.preventDefault();
+      onClose();
+    }
+  };
+
+  const selectedRunner = runners.find((r) => r.id === runnerId);
+  const selectedRunnerStatus = selectedRunner ? installState[selectedRunner.id] : undefined;
+  const selectedRunnerInstalled =
+    selectedRunner === undefined ||
+    selectedRunner.source === 'builtin' ||
+    (selectedRunnerStatus !== undefined && selectedRunnerStatus.ok);
+
+  const showWorktreePreview = effectiveUseWorktree && workspaceRoot;
+  const branchPrefix = 'opencodex/subagent/';
+  const previewSeparator = workspaceRoot.includes('\\') ? '\\' : '/';
+  const worktreeRoot = workspaceRoot
+    ? `${workspaceRoot}${previewSeparator}.opencodex${previewSeparator}worktrees`
+    : '';
+
   return (
-    <div className="approval-modal-backdrop" role="dialog" aria-modal="true">
+    <div className="approval-modal-backdrop" role="dialog" aria-modal="true" onKeyDown={onKeyDown}>
       <div className="approval-modal agent-spawn-modal">
         <header className="approval-modal-header">
           <h2>Spawn task</h2>
@@ -192,7 +228,11 @@ export function AgentSpawnModal({
             rows={5}
             placeholder="What should the subagent do? Be specific."
             autoFocus
+            style={fieldErrors.task ? { borderColor: 'var(--danger-border)' } : undefined}
           />
+          {fieldErrors.task && (
+            <span style={{ fontSize: 12, color: 'var(--danger)' }}>{fieldErrors.task}</span>
+          )}
         </label>
 
         <label className="agent-spawn-field">
@@ -206,14 +246,34 @@ export function AgentSpawnModal({
                 const status = installState[r.id];
                 const disabled = r.source !== 'builtin' && status !== undefined && !status.ok;
                 const hint = disabled ? (status?.hint ?? 'Not installed') : undefined;
+                const inlineSuffix =
+                  r.source === 'builtin'
+                    ? ''
+                    : status === undefined
+                      ? ' — checking…'
+                      : status.ok
+                        ? ' — Installed ✓'
+                        : ' — Not installed → Open Runners';
                 return (
                   <option key={r.id} value={r.id} disabled={disabled} title={hint}>
-                    {r.displayName} ({sourceBadge}){disabled ? ' — not installed' : ''}
+                    {r.displayName} ({sourceBadge}){inlineSuffix}
                   </option>
                 );
               })
             )}
           </select>
+          {!selectedRunnerInstalled && (
+            <span style={{ fontSize: 12, color: 'var(--danger)' }}>
+              Runner not installed.{' '}
+              <a
+                href="#/settings/runners"
+                style={{ color: 'var(--accent-text)', textDecoration: 'underline' }}
+              >
+                Open Runners settings
+              </a>
+              .
+            </span>
+          )}
         </label>
 
         {isExternalRunner && (
@@ -227,7 +287,11 @@ export function AgentSpawnModal({
           <div className="agent-spawn-row">
             <label className="agent-spawn-field">
               <span>Provider</span>
-              <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+              <select
+                value={providerId}
+                onChange={(e) => setProviderId(e.target.value)}
+                style={fieldErrors.provider ? { borderColor: 'var(--danger-border)' } : undefined}
+              >
                 {providerOptions.length === 0 ? (
                   <option value="">No configured providers</option>
                 ) : (
@@ -238,6 +302,9 @@ export function AgentSpawnModal({
                   ))
                 )}
               </select>
+              {fieldErrors.provider && (
+                <span style={{ fontSize: 12, color: 'var(--danger)' }}>{fieldErrors.provider}</span>
+              )}
             </label>
 
             <label className="agent-spawn-field">
@@ -246,6 +313,7 @@ export function AgentSpawnModal({
                 value={effectiveModelId}
                 onChange={(e) => setModelId(e.target.value)}
                 disabled={modelOptions.length === 0}
+                style={fieldErrors.model ? { borderColor: 'var(--danger-border)' } : undefined}
               >
                 {modelOptions.length === 0 ? (
                   <option value="">No models available</option>
@@ -257,6 +325,9 @@ export function AgentSpawnModal({
                   ))
                 )}
               </select>
+              {fieldErrors.model && (
+                <span style={{ fontSize: 12, color: 'var(--danger)' }}>{fieldErrors.model}</span>
+              )}
             </label>
           </div>
         )}
@@ -269,6 +340,9 @@ export function AgentSpawnModal({
               Change…
             </button>
           </div>
+          {fieldErrors.workspace && (
+            <span style={{ fontSize: 12, color: 'var(--danger)' }}>{fieldErrors.workspace}</span>
+          )}
         </label>
 
         <label className="agent-spawn-toggle">
@@ -286,6 +360,31 @@ export function AgentSpawnModal({
           </span>
         </label>
 
+        {showWorktreePreview && (
+          <div
+            style={{
+              border: '1px solid var(--border-strong)',
+              borderRadius: 6,
+              padding: '8px 12px',
+              background: 'var(--bg-sunken)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+              fontSize: 12,
+            }}
+          >
+            <span style={{ color: 'var(--text-muted)', fontSize: 11, letterSpacing: '0.04em' }}>
+              WORKTREE PREVIEW
+            </span>
+            <span>
+              Branch: <code>{branchPrefix}&lt;id-prefix&gt;</code>
+            </span>
+            <span style={{ overflowWrap: 'anywhere' }}>
+              Worktree: <code>{`${worktreeRoot}${previewSeparator}<id>`}</code>
+            </span>
+          </div>
+        )}
+
         {error && <p className="approvals-save-error">{error}</p>}
 
         <div className="approval-modal-actions">
@@ -295,6 +394,7 @@ export function AgentSpawnModal({
               className="btn btn-primary"
               disabled={!canSubmit}
               onClick={() => void submit()}
+              title="Spawn task (Cmd/Ctrl+Enter)"
             >
               {busy ? 'Spawning…' : 'Spawn task'}
             </button>

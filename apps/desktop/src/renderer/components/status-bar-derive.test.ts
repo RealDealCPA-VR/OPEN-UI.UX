@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ContentBlock } from '@opencodex/core';
 import {
+  computeTokenMeterSegments,
   findRunningToolName,
   formatCostUsd,
   formatTokens,
@@ -90,5 +91,36 @@ describe('formatCostUsd', () => {
   it('returns null for non-finite cost', () => {
     expect(formatCostUsd(Number.NaN)).toBeNull();
     expect(formatCostUsd(Number.POSITIVE_INFINITY)).toBeNull();
+  });
+});
+
+describe('computeTokenMeterSegments', () => {
+  it('returns ratio as tokens / context', () => {
+    const m = computeTokenMeterSegments(1000, 4000);
+    expect(m).not.toBeNull();
+    expect(m?.tokens).toBe(1000);
+    expect(m?.context).toBe(4000);
+    expect(m?.ratio).toBe(0.25);
+  });
+
+  it('clamps ratio at 1 when tokens exceed context', () => {
+    const m = computeTokenMeterSegments(8000, 4000);
+    expect(m?.ratio).toBe(1);
+  });
+
+  it('clamps negative tokens to zero', () => {
+    const m = computeTokenMeterSegments(-100, 4000);
+    expect(m?.tokens).toBe(0);
+    expect(m?.ratio).toBe(0);
+  });
+
+  it('returns null for non-positive context', () => {
+    expect(computeTokenMeterSegments(100, 0)).toBeNull();
+    expect(computeTokenMeterSegments(100, -1)).toBeNull();
+  });
+
+  it('returns null for non-finite inputs', () => {
+    expect(computeTokenMeterSegments(Number.NaN, 4000)).toBeNull();
+    expect(computeTokenMeterSegments(100, Number.POSITIVE_INFINITY)).toBeNull();
   });
 });

@@ -1,10 +1,20 @@
 export type Block =
-  | { kind: 'heading'; level: number; text: string }
+  | { kind: 'heading'; level: number; text: string; id: string }
   | { kind: 'paragraph'; text: string }
   | { kind: 'code'; language: string | null; body: string }
   | { kind: 'list'; items: string[] }
   | { kind: 'blockquote'; text: string }
   | { kind: 'hr' };
+
+export function slugifyHeading(text: string): string {
+  return text
+    .replace(/`[^`]*`/g, '')
+    .replace(/[*_~]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
 
 export function parseMarkdown(input: string): Block[] {
   const lines = input.replace(/\r\n/g, '\n').split('\n');
@@ -40,10 +50,12 @@ export function parseMarkdown(input: string): Block[] {
 
     const heading = line.match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
+      const text = (heading[2] ?? '').trim();
       blocks.push({
         kind: 'heading',
         level: heading[1]?.length ?? 1,
-        text: (heading[2] ?? '').trim(),
+        text,
+        id: slugifyHeading(text),
       });
       i += 1;
       continue;

@@ -34,6 +34,15 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
     notion: null,
   });
   const [busy, setBusy] = useState<BusyState>({ notionTokenSaving: false, testing: null });
+  const [confirmingClearToken, setConfirmingClearToken] = useState(false);
+  const [savedFlash, setSavedFlash] = useState<string | null>(null);
+
+  const flashSaved = (key: string): void => {
+    setSavedFlash(key);
+    window.setTimeout(() => {
+      setSavedFlash((k) => (k === key ? null : k));
+    }, 1200);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -112,6 +121,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
       const updated = await window.opencodex.memory.setNotionToken(notionTokenDraft);
       setStatus(updated);
       setNotionTokenDraft('');
+      flashSaved('notionToken');
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -124,6 +134,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
     try {
       const updated = await window.opencodex.memory.clearNotionToken();
       setStatus(updated);
+      setConfirmingClearToken(false);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     }
@@ -231,17 +242,47 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
             onClick={() => void saveNotionToken()}
             disabled={busy.notionTokenSaving || notionTokenDraft.length === 0}
           >
-            Save token
+            {busy.notionTokenSaving ? 'Saving…' : 'Save token'}
           </button>
-          {status.hasNotionToken && (
-            <button
-              type="button"
-              className="memory-btn memory-btn-danger"
-              onClick={() => void clearNotionToken()}
+          {savedFlash === 'notionToken' && (
+            <span
+              aria-live="polite"
+              style={{
+                fontSize: 12,
+                color: 'var(--success, #22c55e)',
+                marginLeft: 6,
+              }}
             >
-              Clear
-            </button>
+              Saved
+            </span>
           )}
+          {status.hasNotionToken &&
+            (confirmingClearToken ? (
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', marginLeft: 6 }}>
+                <button
+                  type="button"
+                  className="memory-btn memory-btn-danger"
+                  onClick={() => void clearNotionToken()}
+                >
+                  Confirm clear
+                </button>
+                <button
+                  type="button"
+                  className="memory-btn"
+                  onClick={() => setConfirmingClearToken(false)}
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="memory-btn memory-btn-danger"
+                onClick={() => setConfirmingClearToken(true)}
+              >
+                Clear
+              </button>
+            ))}
         </label>
         <div className="memory-actions">
           <button

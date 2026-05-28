@@ -22,6 +22,60 @@ import { recordToolCall, type ToolCallAuditDecision } from '../storage/tool-audi
 import { type ApprovalManager, type ApprovalOutcome, getApprovalManager } from './approvals';
 
 const MAX_TOOL_ITERATIONS = 10;
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_BASE_MS = 1000;
+
+interface RetryableErrorInfo {
+  message: string;
+}
+
+function classifyProviderError(
+  message: string,
+  retryableHint?: boolean,
+): { isRetryable: boolean; friendly: string } {
+  const lower = message.toLowerCase();
+  const looks429 =
+    lower.includes('429') || lower.includes('rate limit') || lower.includes('too many requests');
+  const looks5xx =
+    /\b5\d\d\b/.test(lower) ||
+    lower.includes('internal server error') ||
+    lower.includes('bad gateway') ||
+    lower.includes('service unavailable') ||
+    lower.includes('gateway timeout');
+  const looksAuth =
+    lower.includes('401') ||
+    lower.includes('403') ||
+    lower.includes('unauthorized') ||
+    lower.includes('forbidden') ||
+    lower.includes('invalid api key') ||
+    lower.includes('authentication');
+  const looksBadReq = lower.includes('400') && !looks429;
+  if (looksAuth || looksBadReq) return { isRetryable: false, friendly: message };
+  const explicitlyRetryable = retryableHint === true;
+  if (explicitlyRetryable || looks429 || looks5xx) {
+    const friendly = looks429
+      ? 'The provider rate-limited the request. Retrying.'
+      : 'The provider had a temporary issue. Retrying.';
+    return { isRetryable: true, friendly };
+  }
+  return { isRetryable: false, friendly: message };
+}
+
+async function sleepWithJitter(baseMs: number, signal: AbortSignal): Promise<void> {
+  const jitter = Math.random() * baseMs;
+  const total = baseMs + jitter;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, total);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
 
 async function defaultBuildProvider(id: string): Promise<LLMProvider> {
   const mod = await import('./provider-builder');
@@ -183,33 +237,74 @@ async function runStream(args: RunStreamArgs): Promise<void> {
       const iterToolCalls: ToolCallEvent[] = [];
       let iterText = '';
       let iterStop: StopReason = 'end_turn';
+      let retryError: RetryableErrorInfo | null = null;
 
-      const iter = args.provider.chat({
-        model: args.modelId,
-        messages,
-        signal: args.signal,
-        ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
-      });
-
-      for await (const event of iter) {
-        if (args.signal.aborted) break;
-        if (event.type === 'text_delta') {
-          buffer += event.delta;
-          iterText += event.delta;
-          emit(event);
-        } else if (event.type === 'tool_call') {
-          iterToolCalls.push(event);
-          emit(event);
-        } else if (event.type === 'usage') {
-          inputTokens = (inputTokens ?? 0) + event.inputTokens;
-          outputTokens = (outputTokens ?? 0) + event.outputTokens;
-          if (event.costUsd !== undefined) costUsd = (costUsd ?? 0) + event.costUsd;
-          emit(event);
-        } else if (event.type === 'done') {
-          iterStop = event.stopReason;
-        } else {
-          emit(event);
+      const runOneAttempt = async (): Promise<void> => {
+        iterToolCalls.length = 0;
+        iterText = '';
+        iterStop = 'end_turn';
+        retryError = null;
+        const iter = args.provider.chat({
+          model: args.modelId,
+          messages,
+          signal: args.signal,
+          ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
+        });
+        for await (const event of iter) {
+          if (args.signal.aborted) break;
+          if (event.type === 'text_delta') {
+            // Don't stream partials until we know the attempt won't be retried.
+            buffer += event.delta;
+            iterText += event.delta;
+            emit(event);
+          } else if (event.type === 'tool_call') {
+            iterToolCalls.push(event);
+            emit(event);
+          } else if (event.type === 'usage') {
+            inputTokens = (inputTokens ?? 0) + event.inputTokens;
+            outputTokens = (outputTokens ?? 0) + event.outputTokens;
+            if (event.costUsd !== undefined) costUsd = (costUsd ?? 0) + event.costUsd;
+            emit(event);
+          } else if (event.type === 'done') {
+            iterStop = event.stopReason;
+          } else if (event.type === 'error') {
+            const classified = classifyProviderError(event.message, event.retryable);
+            if (classified.isRetryable && iterText.length === 0 && iterToolCalls.length === 0) {
+              retryError = { message: classified.friendly };
+            } else {
+              emit(event);
+            }
+          } else {
+            emit(event);
+          }
         }
+      };
+
+      let attempt = 0;
+      let lastFriendly = '';
+      while (true) {
+        await runOneAttempt();
+        if (args.signal.aborted) break;
+        const pending = retryError as RetryableErrorInfo | null;
+        if (!pending) break;
+        lastFriendly = pending.message;
+        attempt++;
+        if (attempt >= MAX_RETRY_ATTEMPTS) {
+          emit({
+            type: 'error',
+            message: `${lastFriendly} (gave up after ${MAX_RETRY_ATTEMPTS} attempts)`,
+            retryable: false,
+          });
+          emit({ type: 'done', stopReason: 'error' });
+          return;
+        }
+        const delay = RETRY_BASE_MS * 2 ** (attempt - 1);
+        logger.info(
+          { streamId: args.streamId, attempt, delay },
+          'chat stream retrying after retryable provider error',
+        );
+        await sleepWithJitter(delay, args.signal);
+        if (args.signal.aborted) break;
       }
 
       if (args.signal.aborted) {
@@ -217,12 +312,13 @@ async function runStream(args: RunStreamArgs): Promise<void> {
         return;
       }
 
+      const finalStop = iterStop as StopReason;
       const shouldRunTools =
-        iterToolCalls.length > 0 && iterStop === 'tool_use' && args.toolRegistry !== null;
+        iterToolCalls.length > 0 && finalStop === 'tool_use' && args.toolRegistry !== null;
 
       if (!shouldRunTools) {
         if (iterText.length > 0) allBlocks.push({ type: 'text', text: iterText });
-        emit({ type: 'done', stopReason: iterStop });
+        emit({ type: 'done', stopReason: finalStop });
         return;
       }
 

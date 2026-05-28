@@ -39,6 +39,7 @@ export interface AgentRun {
   mergeStatus: 'pending' | 'merged' | 'rejected' | null;
   triggerSource: AgentRunTriggerSource;
   scheduledTaskId: string | null;
+  budget?: number;
 }
 
 export interface AgentRunsChangedEvent {

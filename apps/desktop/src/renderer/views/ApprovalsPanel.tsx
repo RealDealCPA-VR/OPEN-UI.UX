@@ -102,10 +102,43 @@ export function ApprovalsPanel(): JSX.Element {
   }, [tools]);
 
   if (loadError) {
-    return <p className="approvals-error">Failed to load approval policies: {loadError}</p>;
+    return (
+      <div
+        className="approvals-error"
+        role="alert"
+        style={{
+          padding: 10,
+          background: 'var(--danger-bg, rgba(220,38,38,0.08))',
+          color: 'var(--danger, #dc2626)',
+          border: '1px solid var(--danger-border, rgba(220,38,38,0.3))',
+          borderRadius: 6,
+        }}
+      >
+        <div>Failed to load approval policies: {loadError}</div>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          style={{
+            marginTop: 6,
+            background: 'transparent',
+            border: '1px solid currentColor',
+            color: 'inherit',
+            borderRadius: 4,
+            padding: '2px 8px',
+            cursor: 'pointer',
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
   if (!policies || !tools) {
-    return <p className="approvals-loading">Loading…</p>;
+    return (
+      <div className="approvals-loading" aria-busy="true">
+        <SkeletonRows count={4} />
+      </div>
+    );
   }
 
   return (
@@ -151,13 +184,32 @@ export function ApprovalsPanel(): JSX.Element {
               <ul className="approvals-list">
                 {toolsByTier[tier].map((tool) => {
                   const override = policies.toolOverrides[tool.name] ?? null;
-                  const inheritLabel = `Inherit (${POLICY_LABELS[policies.tierDefaults[tier]]})`;
+                  const tierDefault = policies.tierDefaults[tier];
+                  const inheritLabel = `Inherit (${POLICY_LABELS[tierDefault]})`;
                   const value = override ?? 'inherit';
                   return (
-                    <li key={tool.name} className="approvals-row">
+                    <li
+                      key={tool.name}
+                      className="approvals-row"
+                      data-settings-anchor={`tool:${tool.name}`}
+                    >
                       <div className="approvals-row-main">
-                        <code className="approvals-tool-name">{tool.name}</code>
-                        <span className="approvals-row-desc">{tool.description}</span>
+                        <code className="approvals-tool-name" title={tool.description}>
+                          {tool.name}
+                        </code>
+                        <span className="approvals-row-desc" title={tool.description}>
+                          {tool.description}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            color: 'var(--text-muted, #98a0aa)',
+                            display: 'block',
+                            marginTop: 2,
+                          }}
+                        >
+                          Default for <code>{tier}</code> tier: {POLICY_LABELS[tierDefault]}
+                        </span>
                       </div>
                       <select
                         className="approvals-select"
@@ -187,5 +239,35 @@ export function ApprovalsPanel(): JSX.Element {
 
       {saveError && <p className="approvals-save-error">Failed to save: {saveError}</p>}
     </div>
+  );
+}
+
+function SkeletonRows({ count }: { count: number }): JSX.Element {
+  return (
+    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <li
+          key={i}
+          aria-hidden="true"
+          style={{
+            height: 36,
+            borderRadius: 6,
+            background:
+              'linear-gradient(90deg, var(--bg-elevated, rgba(255,255,255,0.05)) 0%, var(--border, rgba(255,255,255,0.08)) 50%, var(--bg-elevated, rgba(255,255,255,0.05)) 100%)',
+            backgroundSize: '200% 100%',
+            animation: 'settings-skeleton-pulse 1.4s ease-in-out infinite',
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes settings-skeleton-pulse {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          li[aria-hidden="true"] { animation: none !important; }
+        }
+      `}</style>
+    </ul>
   );
 }

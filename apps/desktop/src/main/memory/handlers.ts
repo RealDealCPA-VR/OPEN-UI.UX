@@ -1,6 +1,7 @@
 import { BrowserWindow } from 'electron';
 import { z } from 'zod';
 import { registerInvoke } from '../ipc/registry';
+import { toFriendlyError } from '../util/friendly-error';
 import {
   applyMemoryConfig,
   clearNotionToken,
@@ -18,15 +19,23 @@ import {
 
 export function registerMemoryHandlers(): void {
   registerInvoke('memory:get-status', z.void(), async () => getMemoryStatus());
-  registerInvoke('memory:set-config', setMemoryConfigRequestSchema, async (req) =>
-    applyMemoryConfig(req.config),
-  );
+  registerInvoke('memory:set-config', setMemoryConfigRequestSchema, async (req) => {
+    try {
+      return await applyMemoryConfig(req.config);
+    } catch (err) {
+      throw toFriendlyError(err);
+    }
+  });
   registerInvoke('memory:test-connection', testMemoryConnectionRequestSchema, async (req) =>
     testMemoryConnection(req.backend),
   );
-  registerInvoke('memory:set-notion-token', setNotionTokenRequestSchema, async (req) =>
-    setNotionToken(req.token),
-  );
+  registerInvoke('memory:set-notion-token', setNotionTokenRequestSchema, async (req) => {
+    try {
+      return await setNotionToken(req.token);
+    } catch (err) {
+      throw toFriendlyError(err);
+    }
+  });
   registerInvoke('memory:clear-notion-token', z.void(), async () => clearNotionToken());
   registerInvoke('memory:reload', z.void(), async () => {
     const status = await getMemoryStatus();

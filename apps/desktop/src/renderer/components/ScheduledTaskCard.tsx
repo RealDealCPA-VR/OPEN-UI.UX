@@ -1,5 +1,6 @@
 import type { ScheduledTask } from '../../shared/scheduled-tasks';
 import { describeTrigger, type TriggerType } from '../../shared/triggers';
+import { humaneCountdown } from '../views/agent-runs-derive';
 
 export interface ScheduledTaskCardProps {
   task: ScheduledTask;
@@ -70,7 +71,11 @@ export function ScheduledTaskCard(props: ScheduledTaskCardProps): JSX.Element {
             <span title={describeTrigger(task.trigger)}>
               <code>{describeTrigger(task.trigger)}</code>
             </span>
-            {task.nextRunAt && <span>Next: {task.nextRunAt}</span>}
+            {task.nextRunAt && (
+              <span title={`Next run at ${task.nextRunAt} UTC`}>
+                Next: {humaneCountdown(task.nextRunAt)}
+              </span>
+            )}
             {task.lastRunAt && <span>Last: {task.lastRunAt}</span>}
             <span>
               {task.providerId} · {task.model}

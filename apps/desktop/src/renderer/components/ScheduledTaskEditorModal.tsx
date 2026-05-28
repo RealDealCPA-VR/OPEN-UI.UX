@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import cronParser from 'cron-parser';
 import type { RunnerInfo, RunnerInstallCheck } from '../../shared/ipc-types';
 import type {
@@ -16,7 +16,7 @@ export interface PrefillFromSkill {
   prompt: string;
   allowedTools: string[];
   cron: string | null;
-  linkedSkillId: string;
+  linkedSkillId: string | null;
 }
 
 export interface ScheduledTaskEditorModalProps {
@@ -48,6 +48,57 @@ function previewNext(expr: string, count = 5): string[] {
     return out;
   } catch {
     return [];
+  }
+}
+
+function cronValidation(expr: string): { ok: true } | { ok: false; reason: string } {
+  if (!expr.trim()) return { ok: false, reason: 'empty expression' };
+  try {
+    cronParser.parseExpression(expr.trim(), { tz: 'UTC' });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function formatFireShort(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const mm = (d.getUTCMonth() + 1).toString().padStart(2, '0');
+  const dd = d.getUTCDate().toString().padStart(2, '0');
+  const hh = d.getUTCHours().toString().padStart(2, '0');
+  const mi = d.getUTCMinutes().toString().padStart(2, '0');
+  return `${mm}-${dd} ${hh}:${mi}`;
+}
+
+const TRIGGER_TYPE_DESCRIPTIONS: Record<TriggerType, { label: string; hint: string }> = {
+  manual: { label: 'Manual', hint: 'Only fires when you click Run now.' },
+  cron: { label: 'Cron', hint: 'Fires on a UTC cron schedule.' },
+  'file-change': { label: 'File change', hint: 'Fires when matching files change.' },
+  'git-hook': { label: 'Git hook', hint: 'Wraps a .git/hooks/ script.' },
+  webhook: { label: 'Webhook', hint: 'Fires from an HMAC-signed HTTP request.' },
+};
+
+const TRIGGER_TYPE_ORDER: readonly TriggerType[] = [
+  'manual',
+  'cron',
+  'file-change',
+  'git-hook',
+  'webhook',
+];
+
+function triggerTypeBadge(t: TriggerType): string {
+  switch (t) {
+    case 'manual':
+      return 'M';
+    case 'cron':
+      return 'CRON';
+    case 'file-change':
+      return 'FILE';
+    case 'git-hook':
+      return 'GIT';
+    case 'webhook':
+      return 'HOOK';
   }
 }
 
@@ -186,7 +237,16 @@ export function ScheduledTaskEditorModal({
     return previewNext(cronExpr, 5);
   }, [triggerType, cronExpr]);
 
-  const cronValid = triggerType !== 'cron' || cronPreview.length > 0;
+  const cronCheck = useMemo(() => cronValidation(cronExpr), [cronExpr]);
+  const cronValid = triggerType !== 'cron' || cronCheck.ok;
+
+  const presetPreviews = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const p of CRON_PRESETS) {
+      out[p.expr] = previewNext(p.expr, 3);
+    }
+    return out;
+  }, []);
 
   const handleBrowseWorkspace = useCallback(async () => {
     try {
@@ -327,8 +387,19 @@ export function ScheduledTaskEditorModal({
     void navigator.clipboard.writeText(webhookUrl).catch(() => undefined);
   }, [webhookUrl]);
 
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (!busy) void submit();
+    }
+    if (e.key === 'Escape' && !busy) {
+      e.preventDefault();
+      onClose();
+    }
+  };
+
   return (
-    <div className="approval-modal-backdrop" role="dialog" aria-modal="true">
+    <div className="approval-modal-backdrop" role="dialog" aria-modal="true" onKeyDown={onKeyDown}>
       <div className="approval-modal agent-spawn-modal scheduled-task-editor">
         <header className="approval-modal-header">
           <h2>{isEdit ? 'Edit scheduled task' : 'New scheduled task'}</h2>
@@ -357,56 +428,58 @@ export function ScheduledTaskEditorModal({
 
         <fieldset className="scheduled-task-trigger">
           <legend>Trigger</legend>
-          <label>
-            <input
-              type="radio"
-              name="trigger-type"
-              value="manual"
-              checked={triggerType === 'manual'}
-              onChange={() => setTriggerType('manual')}
-            />
-            Manual (Run-now only)
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="trigger-type"
-              value="cron"
-              checked={triggerType === 'cron'}
-              onChange={() => setTriggerType('cron')}
-            />
-            Cron
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="trigger-type"
-              value="file-change"
-              checked={triggerType === 'file-change'}
-              onChange={() => setTriggerType('file-change')}
-            />
-            File change
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="trigger-type"
-              value="git-hook"
-              checked={triggerType === 'git-hook'}
-              onChange={() => setTriggerType('git-hook')}
-            />
-            Git hook
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="trigger-type"
-              value="webhook"
-              checked={triggerType === 'webhook'}
-              onChange={() => setTriggerType('webhook')}
-            />
-            Webhook
-          </label>
+          <div
+            role="radiogroup"
+            aria-label="Trigger type"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+              gap: 8,
+              marginBottom: 8,
+            }}
+          >
+            {TRIGGER_TYPE_ORDER.map((t) => {
+              const meta = TRIGGER_TYPE_DESCRIPTIONS[t];
+              const active = triggerType === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setTriggerType(t)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    gap: 4,
+                    padding: '10px 12px',
+                    border: `1px solid ${active ? 'var(--accent-border)' : 'var(--border-strong)'}`,
+                    borderRadius: 6,
+                    background: active ? 'var(--accent-soft-bg)' : 'var(--bg-elevated)',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono, ui-monospace, monospace)',
+                      fontSize: 10,
+                      letterSpacing: '0.06em',
+                      color: active ? 'var(--accent-text)' : 'var(--text-muted)',
+                    }}
+                  >
+                    {triggerTypeBadge(t)}
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{meta.label}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.35 }}>
+                    {meta.hint}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
           {triggerType === 'cron' && (
             <div className="scheduled-task-cron">
               <select
@@ -416,20 +489,36 @@ export function ScheduledTaskEditorModal({
                 }}
               >
                 <option value="">— Presets —</option>
-                {CRON_PRESETS.map((p) => (
-                  <option key={p.expr} value={p.expr}>
-                    {p.label} ({p.expr})
-                  </option>
-                ))}
+                {CRON_PRESETS.map((p) => {
+                  const next = presetPreviews[p.expr] ?? [];
+                  const fireHint =
+                    next.length > 0 ? ` → ${next.map(formatFireShort).join(', ')}` : '';
+                  return (
+                    <option key={p.expr} value={p.expr}>
+                      {p.label} ({p.expr}){fireHint}
+                    </option>
+                  );
+                })}
               </select>
               <input
                 type="text"
                 value={cronExpr}
                 onChange={(e) => setCronExpr(e.target.value)}
                 placeholder="0 9 * * *"
+                aria-invalid={!cronCheck.ok}
+                style={
+                  !cronCheck.ok
+                    ? { borderColor: 'var(--danger-border)', outlineColor: 'var(--danger)' }
+                    : undefined
+                }
               />
+              {!cronCheck.ok && (
+                <span style={{ fontSize: 12, color: 'var(--danger)' }}>
+                  Invalid: {cronCheck.reason}
+                </span>
+              )}
               <div className="scheduled-task-cron-preview">
-                {cronValid ? (
+                {cronCheck.ok ? (
                   <>
                     <strong>Next 5 fires (UTC):</strong>
                     <ul>
@@ -439,7 +528,9 @@ export function ScheduledTaskEditorModal({
                     </ul>
                   </>
                 ) : (
-                  <span className="approvals-save-error">Invalid cron expression</span>
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    Fix the expression to preview fires.
+                  </span>
                 )}
               </div>
             </div>
@@ -673,6 +764,7 @@ export function ScheduledTaskEditorModal({
               className="btn btn-primary"
               disabled={busy}
               onClick={() => void submit()}
+              title={isEdit ? 'Save (Cmd/Ctrl+Enter)' : 'Create (Cmd/Ctrl+Enter)'}
             >
               {busy ? 'Saving…' : isEdit ? 'Save' : 'Create'}
             </button>

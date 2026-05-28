@@ -27,3 +27,17 @@ export function formatCostUsd(cost: number): string | null {
   if (!Number.isFinite(cost) || cost <= 0) return null;
   return `$${cost.toFixed(4)}`;
 }
+
+export interface TokenMeter {
+  tokens: number;
+  context: number;
+  ratio: number;
+}
+
+export function computeTokenMeterSegments(tokens: number, context: number): TokenMeter | null {
+  if (!Number.isFinite(tokens) || !Number.isFinite(context)) return null;
+  if (context <= 0) return null;
+  const clamped = Math.max(0, tokens);
+  const ratio = Math.min(1, clamped / context);
+  return { tokens: clamped, context, ratio };
+}

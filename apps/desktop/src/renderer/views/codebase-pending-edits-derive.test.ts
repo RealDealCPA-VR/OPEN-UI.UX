@@ -58,13 +58,25 @@ describe('runsWithPendingEdits', () => {
 });
 
 describe('annotationMapFromPending', () => {
-  it('dedupes paths from multiple runs', () => {
+  it('aggregates multiple entries for the same path with a count', () => {
     const out = annotationMapFromPending([
       { runId: 'r1', path: 'src/a.ts', branch: 'b' },
       { runId: 'r2', path: 'src/a.ts', branch: 'c' },
       { runId: 'r1', path: 'src/b.ts', branch: 'b' },
     ]);
-    expect(out).toEqual({ 'src/a.ts': 'pending', 'src/b.ts': 'pending' });
+    expect(out).toEqual({
+      'src/a.ts': { status: 'pending', count: 2, runIds: ['r1', 'r2'] },
+      'src/b.ts': { status: 'pending', count: 1, runIds: ['r1'] },
+    });
+  });
+
+  it('does not duplicate the same runId in runIds', () => {
+    const out = annotationMapFromPending([
+      { runId: 'r1', path: 'src/a.ts', branch: 'b' },
+      { runId: 'r1', path: 'src/a.ts', branch: 'b' },
+    ]);
+    expect(out['src/a.ts']?.runIds).toEqual(['r1']);
+    expect(out['src/a.ts']?.count).toBe(2);
   });
   it('returns empty for empty input', () => {
     expect(annotationMapFromPending([])).toEqual({});

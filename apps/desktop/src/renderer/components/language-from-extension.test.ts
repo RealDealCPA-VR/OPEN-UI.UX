@@ -16,6 +16,10 @@ describe('languageFromPath', () => {
     expect(languageFromPath('foo.go')).toBe('go');
     expect(languageFromPath('foo.rs')).toBe('rust');
     expect(languageFromPath('schema.sql')).toBe('sql');
+    expect(languageFromPath('app/Main.kt')).toBe('kotlin');
+    expect(languageFromPath('build.gradle.kts')).toBe('kotlin');
+    expect(languageFromPath('lib/widget.dart')).toBe('dart');
+    expect(languageFromPath('app/AppDelegate.swift')).toBe('swift');
   });
 
   it('is case-insensitive on the extension', () => {

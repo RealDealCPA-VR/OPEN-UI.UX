@@ -15,6 +15,8 @@ import type {
 import { logger } from '../logger';
 import { getMcpServers, setMcpServers } from '../storage/settings';
 import { getToolRegistry } from '../tools/registry';
+import { friendlyErrorMessage } from '../util/friendly-error';
+import { emitUiError } from '../util/ui-error';
 import { adaptMcpTool, mcpToolName } from './tool-adapter';
 
 interface RuntimeState {
@@ -30,6 +32,8 @@ interface RuntimeState {
   connectedAt?: string;
   reconnectTimer?: NodeJS.Timeout;
   registeredTools: string[];
+  connectStartedAt?: number;
+  toastedFailure?: boolean;
 }
 
 export type ConnectedListener = (serverId: string) => void;
@@ -42,6 +46,7 @@ const listeners = new Set<StateListener>();
 
 const RECONNECT_BASE_MS = 1_500;
 const RECONNECT_MAX_MS = 30_000;
+const EARLY_EXIT_THRESHOLD_MS = 500;
 
 function emit(): void {
   const state = readState();
@@ -185,17 +190,35 @@ async function connectServer(server: McpServerEntry, attempt = 0): Promise<void>
 
   r.status = 'connecting';
   r.lastError = undefined;
+  r.connectStartedAt = Date.now();
   emit();
 
   const client = new McpClient(server.id, server.config as McpServerConfig);
   client.onClose(() => {
     const current = ensureRuntime(server.id);
     if (current.client !== client) return;
+    const startedAt = current.connectStartedAt ?? Date.now();
+    const ranForMs = Date.now() - startedAt;
     current.status = 'disconnected';
     current.client = null;
     unregisterServerTools(server.id);
     emit();
-    if (server.enabled) scheduleReconnect(server, attempt + 1);
+    if (!server.enabled) return;
+    // If the child died within the first 500ms, it almost certainly never
+    // really connected (bad binary, missing dependency). Skip the fast 1.5s
+    // retry and jump straight to the max backoff, and toast the user once.
+    const earlyExit = ranForMs < EARLY_EXIT_THRESHOLD_MS;
+    if (earlyExit && !current.toastedFailure) {
+      current.toastedFailure = true;
+      const detail = current.lastError ? `: ${current.lastError}` : '';
+      emitUiError({
+        source: 'mcp',
+        severity: 'error',
+        message: `MCP server "${server.displayName}" failed to start${detail}`,
+        detailId: server.id,
+      });
+    }
+    scheduleReconnect(server, attempt + 1, earlyExit);
   });
 
   try {
@@ -204,6 +227,7 @@ async function connectServer(server: McpServerEntry, attempt = 0): Promise<void>
     r.status = 'connected';
     r.serverInfo = client.info?.serverInfo;
     r.connectedAt = new Date().toISOString();
+    r.toastedFailure = false;
     await refreshCounts(server.id, client);
     emit();
     for (const l of connectedListeners) {
@@ -216,16 +240,27 @@ async function connectServer(server: McpServerEntry, attempt = 0): Promise<void>
   } catch (err) {
     r.status = 'error';
     r.client = null;
-    r.lastError = err instanceof Error ? err.message : String(err);
+    r.lastError = friendlyErrorMessage(err);
     logger.warn({ err, serverId: server.id }, 'mcp connect failed');
+    if (!r.toastedFailure) {
+      r.toastedFailure = true;
+      emitUiError({
+        source: 'mcp',
+        severity: 'error',
+        message: `MCP server "${server.displayName}" could not connect: ${r.lastError}`,
+        detailId: server.id,
+      });
+    }
     emit();
-    if (server.enabled) scheduleReconnect(server, attempt + 1);
+    if (server.enabled) scheduleReconnect(server, attempt + 1, false);
   }
 }
 
-function scheduleReconnect(server: McpServerEntry, attempt: number): void {
+function scheduleReconnect(server: McpServerEntry, attempt: number, earlyExit: boolean): void {
   const r = ensureRuntime(server.id);
-  const delay = Math.min(RECONNECT_BASE_MS * 2 ** Math.min(attempt, 6), RECONNECT_MAX_MS);
+  const delay = earlyExit
+    ? RECONNECT_MAX_MS
+    : Math.min(RECONNECT_BASE_MS * 2 ** Math.min(attempt, 6), RECONNECT_MAX_MS);
   r.reconnectTimer = setTimeout(() => {
     void connectServer(server, attempt);
   }, delay);

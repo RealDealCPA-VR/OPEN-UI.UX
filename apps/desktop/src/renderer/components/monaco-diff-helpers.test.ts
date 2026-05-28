@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyHunkDecisions,
+  countLineDelta,
   extractHunksFromLineChanges,
   formatHunkRange,
   summarizeHunks,
@@ -106,6 +107,54 @@ describe('summarizeHunks', () => {
       },
     ];
     expect(summarizeHunks(hunks)).toBe('1 hunk: +1 added');
+  });
+});
+
+describe('countLineDelta', () => {
+  it('returns zero for empty hunks', () => {
+    expect(countLineDelta([])).toEqual({ added: 0, removed: 0 });
+  });
+
+  it('counts an insertion as added only', () => {
+    const hunks: MonacoDiffHunk[] = [
+      {
+        index: 0,
+        originalStartLine: 3,
+        originalEndLine: 2,
+        modifiedStartLine: 3,
+        modifiedEndLine: 5,
+        kind: 'add',
+      },
+    ];
+    expect(countLineDelta(hunks)).toEqual({ added: 3, removed: 0 });
+  });
+
+  it('counts a deletion as removed only', () => {
+    const hunks: MonacoDiffHunk[] = [
+      {
+        index: 0,
+        originalStartLine: 3,
+        originalEndLine: 5,
+        modifiedStartLine: 3,
+        modifiedEndLine: 2,
+        kind: 'remove',
+      },
+    ];
+    expect(countLineDelta(hunks)).toEqual({ added: 0, removed: 3 });
+  });
+
+  it('counts a modification as both', () => {
+    const hunks: MonacoDiffHunk[] = [
+      {
+        index: 0,
+        originalStartLine: 3,
+        originalEndLine: 4,
+        modifiedStartLine: 3,
+        modifiedEndLine: 6,
+        kind: 'modify',
+      },
+    ];
+    expect(countLineDelta(hunks)).toEqual({ added: 4, removed: 2 });
   });
 });
 

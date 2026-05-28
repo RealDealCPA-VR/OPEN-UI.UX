@@ -13,6 +13,10 @@ OpenCodex is a from-scratch, MIT-licensed reimagining of the Codex desktop exper
 - **MCP-native** — every MCP server you connect becomes a tool/resource source automatically.
 - **Plugins** — third-party tools, providers, and UI panels. Plugin SDK ships with v1.
 
+## Using OpenCodex
+
+The **[User Manual](./MANUAL.md)** is a guided tour of every screen, concept, keyboard shortcut, and workflow. Start there if you've just installed OpenCodex and want to understand what's in front of you.
+
 ## Status
 
 Pre-v0.1, actively scaffolding. See [Todo.md](./Todo.md) for the master backlog and [HANDOFF.md](./HANDOFF.md) for current session state.

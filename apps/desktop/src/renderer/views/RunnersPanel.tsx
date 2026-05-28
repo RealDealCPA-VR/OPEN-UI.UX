@@ -17,6 +17,7 @@ export function RunnersPanel(): JSX.Element {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [recheckingId, setRecheckingId] = useState<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
 
   const recheckRunner = useCallback(async (runnerId: string): Promise<void> => {
     try {
@@ -80,6 +81,10 @@ export function RunnersPanel(): JSX.Element {
       try {
         await window.opencodex.settings.setRunnerCliPath(runnerId, value === '' ? null : value);
         await recheckRunner(runnerId);
+        setSavedId(runnerId);
+        window.setTimeout(() => {
+          setSavedId((id) => (id === runnerId ? null : id));
+        }, 1200);
       } catch (err) {
         setActionError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -172,6 +177,18 @@ export function RunnersPanel(): JSX.Element {
                       >
                         {savingId === runner.id ? 'Saving…' : 'Save'}
                       </button>
+                      {savedId === runner.id && (
+                        <span
+                          aria-live="polite"
+                          style={{
+                            fontSize: 12,
+                            color: 'var(--success, #22c55e)',
+                            alignSelf: 'center',
+                          }}
+                        >
+                          Saved
+                        </span>
+                      )}
                     </div>
                   </label>
                 )}

@@ -1,7 +1,13 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type { ToolResultBlock, ToolUseBlock } from '@opencodex/core';
 import { buildShellTranscript } from '../../shared/shell-output';
-import { formatRerunPrompt, formatToolArguments, formatToolOutput } from './tool-block-grouping';
+import { HoverHint } from './HoverHint';
+import {
+  isReadOnlyTool,
+  formatRerunPrompt,
+  formatToolArguments,
+  formatToolOutput,
+} from './tool-block-grouping';
 import { ToolResultPreview, asRunShellResult } from './tool-result-preview';
 
 const EmbeddedTerminal = lazy(() =>
@@ -23,12 +29,33 @@ export function ToolCallCard({
   use,
   result,
   streamId,
-  defaultExpanded = false,
+  defaultExpanded,
   onRerun,
 }: ToolCallCardProps): JSX.Element {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-  const [terminalOpen, setTerminalOpen] = useState(false);
   const status: Status = result === null ? 'pending' : result.isError ? 'error' : 'done';
+  const collapseByDefault = status === 'done' && isReadOnlyTool(use.name);
+  const initialExpanded =
+    defaultExpanded !== undefined
+      ? defaultExpanded
+      : status === 'error'
+        ? true
+        : !collapseByDefault;
+  const [expanded, setExpanded] = useState(initialExpanded);
+  const userToggledRef = useRef(false);
+  const lastStatusRef = useRef<Status>(status);
+  useEffect(() => {
+    if (lastStatusRef.current === status) return;
+    lastStatusRef.current = status;
+    if (userToggledRef.current) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (status === 'error') setExpanded(true);
+    else if (status === 'done' && isReadOnlyTool(use.name)) setExpanded(false);
+  }, [status, use.name]);
+  const handleToggle = (): void => {
+    userToggledRef.current = true;
+    setExpanded((v) => !v);
+  };
+  const [terminalOpen, setTerminalOpen] = useState(false);
   const argsText = formatToolArguments(use.arguments);
   const outputText = result ? formatToolOutput(result.output) : '';
   const isShell = use.name === 'run_shell';
@@ -41,7 +68,7 @@ export function ToolCallCard({
         <button
           type="button"
           className="tool-card-head-toggle"
-          onClick={() => setExpanded((v) => !v)}
+          onClick={handleToggle}
           aria-expanded={expanded}
         >
           <span className="tool-card-chevron" aria-hidden="true">
@@ -63,20 +90,19 @@ export function ToolCallCard({
           </button>
         ) : null}
         {onRerun ? (
-          <button
-            type="button"
-            className="tool-card-rerun"
-            onClick={() => onRerun(formatRerunPrompt(use.name, use.arguments))}
-            disabled={status === 'pending'}
-            aria-label={`Re-run ${use.name}`}
-            title={
-              status === 'pending'
-                ? 'Re-run available once this call finishes'
-                : 'Prefill the composer with this tool call'
-            }
+          <HoverHint
+            hint={status === 'pending' ? 'Wait for call to finish' : 'Prefill composer with call'}
           >
-            Re-run
-          </button>
+            <button
+              type="button"
+              className="tool-card-rerun"
+              onClick={() => onRerun(formatRerunPrompt(use.name, use.arguments))}
+              disabled={status === 'pending'}
+              aria-label={`Re-run ${use.name}`}
+            >
+              Re-run
+            </button>
+          </HoverHint>
         ) : null}
       </div>
       {expanded ? (

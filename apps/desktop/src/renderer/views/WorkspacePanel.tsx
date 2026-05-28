@@ -6,6 +6,7 @@ export function WorkspacePanel(): JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
+  const [confirmingRemove, setConfirmingRemove] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +61,7 @@ export function WorkspacePanel(): JSX.Element {
     try {
       const next = await window.opencodex.workspace.remove({ path });
       setState(next);
+      setConfirmingRemove((cur) => (cur === path ? null : cur));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -81,7 +83,35 @@ export function WorkspacePanel(): JSX.Element {
   }, []);
 
   if (loadError) {
-    return <p className="workspace-error">Failed to load workspace state: {loadError}</p>;
+    return (
+      <div
+        role="alert"
+        style={{
+          padding: 10,
+          background: 'var(--danger-bg, rgba(220,38,38,0.08))',
+          color: 'var(--danger, #dc2626)',
+          border: '1px solid var(--danger-border, rgba(220,38,38,0.3))',
+          borderRadius: 6,
+        }}
+      >
+        <div>Failed to load workspace state: {loadError}</div>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          style={{
+            marginTop: 6,
+            background: 'transparent',
+            border: '1px solid currentColor',
+            color: 'inherit',
+            borderRadius: 4,
+            padding: '2px 8px',
+            cursor: 'pointer',
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
   if (!state) {
     return <p className="workspace-loading">Loading…</p>;
@@ -137,6 +167,7 @@ export function WorkspacePanel(): JSX.Element {
             {recent.map((path) => {
               const setKey = `set:${path}`;
               const removeKey = `remove:${path}`;
+              const confirming = confirmingRemove === path;
               return (
                 <li key={path} className="workspace-row">
                   <code className="workspace-path">{path}</code>
@@ -149,14 +180,34 @@ export function WorkspacePanel(): JSX.Element {
                     >
                       Open
                     </button>
-                    <button
-                      type="button"
-                      className="workspace-btn workspace-btn-danger"
-                      onClick={() => void handleRemove(path)}
-                      disabled={pending === removeKey}
-                    >
-                      Remove
-                    </button>
+                    {confirming ? (
+                      <>
+                        <button
+                          type="button"
+                          className="workspace-btn workspace-btn-danger"
+                          onClick={() => void handleRemove(path)}
+                          disabled={pending === removeKey}
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          type="button"
+                          className="workspace-btn"
+                          onClick={() => setConfirmingRemove(null)}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="workspace-btn workspace-btn-danger"
+                        onClick={() => setConfirmingRemove(path)}
+                        disabled={pending === removeKey}
+                      >
+                        Remove
+                      </button>
+                    )}
                   </div>
                 </li>
               );

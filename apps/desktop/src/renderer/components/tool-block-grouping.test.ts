@@ -5,6 +5,7 @@ import {
   formatToolArguments,
   formatToolOutput,
   groupContentBlocks,
+  isReadOnlyTool,
 } from './tool-block-grouping';
 
 describe('groupContentBlocks', () => {
@@ -128,5 +129,22 @@ describe('formatRerunPrompt', () => {
 
   it('passes string args through verbatim', () => {
     expect(formatRerunPrompt('grep', 'pattern')).toBe('Re-run this tool call: grep(pattern)');
+  });
+});
+
+describe('isReadOnlyTool', () => {
+  it('treats read-style tools as read-only', () => {
+    expect(isReadOnlyTool('read_file')).toBe(true);
+    expect(isReadOnlyTool('list_dir')).toBe(true);
+    expect(isReadOnlyTool('glob')).toBe(true);
+    expect(isReadOnlyTool('grep')).toBe(true);
+    expect(isReadOnlyTool('web_fetch')).toBe(true);
+  });
+
+  it('treats mutating or unknown tools as not read-only', () => {
+    expect(isReadOnlyTool('write_file')).toBe(false);
+    expect(isReadOnlyTool('edit_file')).toBe(false);
+    expect(isReadOnlyTool('run_shell')).toBe(false);
+    expect(isReadOnlyTool('custom_thing')).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { OnboardingBanner } from '../components/OnboardingBanner';
 import { SettingsRail } from '../components/SettingsRail';
 import { SettingsSectionCard } from '../components/SettingsSectionCard';
@@ -7,6 +7,7 @@ import { AccessibilityPanel } from './AccessibilityPanel';
 import { ApprovalsPanel } from './ApprovalsPanel';
 import { AuditLogPanel } from './AuditLogPanel';
 import { CrashReportingPanel } from './CrashReportingPanel';
+import { HelpPanel } from './HelpPanel';
 import { IndexingPanel } from './IndexingPanel';
 import { McpServersPanel } from './McpServersPanel';
 import { MemoryPanel } from './MemoryPanel';
@@ -29,6 +30,7 @@ import { WorkspacePanel } from './WorkspacePanel';
 
 export function SettingsView(): JSX.Element {
   const navigate = useNavigate();
+  const location = useLocation();
   const { section: sectionParam } = useParams<{ section?: string }>();
   const [query, setQuery] = useState('');
 
@@ -45,6 +47,36 @@ export function SettingsView(): JSX.Element {
     }
   }, [sectionParam, currentSection.slug, navigate]);
 
+  // Deep-link anchor: read ?highlight=<anchor> or #row=<anchor>, briefly
+  // outline the matching [data-settings-anchor] element after the panel mounts.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const fromQuery = params.get('highlight');
+    const fromHash = location.hash.startsWith('#row=')
+      ? decodeURIComponent(location.hash.slice('#row='.length))
+      : null;
+    const anchor = fromQuery ?? fromHash;
+    if (!anchor) return;
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      if (cancelled) return;
+      const el = document.querySelector<HTMLElement>(
+        `[data-settings-anchor="${CSS.escape(anchor)}"]`,
+      );
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('settings-anchor-highlight');
+      const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const ms = prefersReduced ? 0 : 1600;
+      const t = window.setTimeout(() => el.classList.remove('settings-anchor-highlight'), ms);
+      return () => window.clearTimeout(t);
+    }, 60);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [location.search, location.hash, currentSection.slug]);
+
   const filtered = useMemo(() => filterSettingsSections(SETTINGS_SECTIONS, query), [query]);
 
   const handleSelect = useCallback(
@@ -56,6 +88,7 @@ export function SettingsView(): JSX.Element {
 
   return (
     <section className="view settings-view settings-view-two-pane">
+      <style>{ANCHOR_HIGHLIGHT_CSS}</style>
       <SettingsRail
         sections={filtered}
         activeSlug={currentSection.slug}
@@ -70,6 +103,21 @@ export function SettingsView(): JSX.Element {
     </section>
   );
 }
+
+const ANCHOR_HIGHLIGHT_CSS = `
+  .settings-anchor-highlight {
+    animation: settings-anchor-pulse 1.6s ease-out 1;
+    border-radius: 6px;
+  }
+  @keyframes settings-anchor-pulse {
+    0%   { box-shadow: 0 0 0 0 var(--accent-soft, rgba(99,102,241,0.45)); }
+    20%  { box-shadow: 0 0 0 4px var(--accent-soft, rgba(99,102,241,0.45)); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .settings-anchor-highlight { animation: none; outline: 2px solid var(--accent, #6366f1); outline-offset: 2px; }
+  }
+`;
 
 function SettingsSectionBody({ section }: { section: SettingsSection }): JSX.Element {
   switch (section.slug) {
@@ -159,6 +207,12 @@ function SettingsSectionBody({ section }: { section: SettingsSection }): JSX.Ele
       return (
         <SettingsSectionCard title={section.title} description={section.description}>
           <AccessibilityPanel />
+        </SettingsSectionCard>
+      );
+    case 'help':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <HelpPanel />
         </SettingsSectionCard>
       );
     default:

@@ -4,6 +4,7 @@ import type { ScheduledTask } from '../../shared/scheduled-tasks';
 import { FileChangeWatcherRegistry } from './file-watcher';
 import { fireScheduledTask } from './runner';
 import { getTask, listTasks as listTasksFromStore, setTaskRunBookkeeping } from './store';
+import { withSqliteBusyRetry } from '../util/sqlite-retry';
 
 type TaskListProvider = () => readonly ScheduledTask[];
 type Notifier = (event: {
@@ -27,6 +28,14 @@ let fireImpl: typeof fireScheduledTask = fireScheduledTask;
 let notifyImpl: Notifier = () => undefined;
 const runningTasks = new Set<string>();
 const fileWatcherRegistry = new FileChangeWatcherRegistry();
+const skipLogSeen = new Set<string>();
+
+function logSkipOnce(taskId: string, reason: string, message: string): void {
+  const key = `${taskId}::${reason}`;
+  if (skipLogSeen.has(key)) return;
+  skipLogSeen.add(key);
+  logger.info({ taskId, reason }, message);
+}
 
 /**
  * Compute the next-fire UTC date for a task's trigger.
@@ -108,9 +117,18 @@ function scheduleNext(): void {
   }
   const delay = Math.max(0, Math.min(due.whenMs - now.getTime(), MAX_SETTIMEOUT_MS));
   // Persist next_run_at on every reschedule so the UI sees a fresh ETA.
-  setTaskRunBookkeeping(due.task.id, {
-    nextRunAt: new Date(due.whenMs).toISOString().slice(0, 19).replace('T', ' '),
-  });
+  try {
+    withSqliteBusyRetry(() =>
+      setTaskRunBookkeeping(due.task.id, {
+        nextRunAt: new Date(due.whenMs).toISOString().slice(0, 19).replace('T', ' '),
+      }),
+    );
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err), taskId: due.task.id },
+      'scheduler: setTaskRunBookkeeping failed; continuing',
+    );
+  }
   timer = setTimeout(() => {
     timer = null;
     void tick(due.task.id);
@@ -126,14 +144,16 @@ async function tick(taskId: string): Promise<void> {
     return;
   }
   if (runningTasks.has(taskId)) {
-    logger.info(
-      { taskId },
+    logSkipOnce(
+      taskId,
+      'concurrent-run',
       'scheduler: tick fired while task already running; skipping and advancing',
     );
     scheduleNext();
     return;
   }
   runningTasks.add(taskId);
+  skipLogSeen.delete(`${taskId}::concurrent-run`);
   try {
     const res = await fireImpl(fresh);
     notifyImpl({ taskId, agentRunId: res.agentRunId, status: res.status });
@@ -181,9 +201,10 @@ export function rescheduleNow(): void {
 export async function fireTaskById(taskId: string): Promise<void> {
   if (!running) return;
   if (runningTasks.has(taskId)) {
-    logger.info({ taskId }, 'scheduler: fireTaskById skipped (already running)');
+    logSkipOnce(taskId, 'fire-by-id-busy', 'scheduler: fireTaskById skipped (already running)');
     return;
   }
+  skipLogSeen.delete(`${taskId}::fire-by-id-busy`);
   const fresh = getTask(taskId);
   if (!fresh || !fresh.enabled) return;
   runningTasks.add(taskId);
@@ -232,7 +253,10 @@ async function runCatchup(): Promise<void> {
     // task.nextRunAt is stored as ISO-ish without TZ; treat as UTC.
     const next = parseStoredTs(task.nextRunAt);
     if (!next || next.getTime() > now.getTime()) continue;
-    if (runningTasks.has(task.id)) continue;
+    if (runningTasks.has(task.id)) {
+      logSkipOnce(task.id, 'catchup-busy', 'scheduler: catch-up skipped (already running)');
+      continue;
+    }
     runningTasks.add(task.id);
     void (async () => {
       try {
@@ -265,6 +289,7 @@ export function __resetForTests(): void {
   running = false;
   clearTimer();
   runningTasks.clear();
+  skipLogSeen.clear();
   void fileWatcherRegistry.stopAll();
   listTasksImpl = () => listTasksFromStore();
   fireImpl = fireScheduledTask;

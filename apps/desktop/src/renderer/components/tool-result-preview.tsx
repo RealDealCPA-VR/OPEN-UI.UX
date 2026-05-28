@@ -1,5 +1,21 @@
+import type { CSSProperties } from 'react';
 import type { ToolResultBlock, ToolUseBlock } from '@opencodex/core';
+import { pushTransfer } from '../state/transfer';
 import { formatToolOutput } from './tool-block-grouping';
+
+function openInCodebase(file: string): void {
+  pushTransfer({ kind: 'chat-to-codebase', filePaths: [file], workspaceRoot: '' });
+}
+
+const fileLinkStyle: CSSProperties = {
+  background: 'transparent',
+  border: 0,
+  padding: 0,
+  font: 'inherit',
+  color: 'var(--accent)',
+  cursor: 'pointer',
+  textDecoration: 'underline',
+};
 
 const MAX_GREP_ROWS = 200;
 const MAX_READ_LINES = 500;
@@ -152,9 +168,17 @@ function GrepResultPreview({ matches }: { matches: GrepMatchShape[] }): JSX.Elem
       <ul className="tool-result-grep-list">
         {visible.map((m, i) => (
           <li key={i} className="tool-result-grep-row">
-            <code className="tool-result-grep-loc">
-              {m.file}:{m.line}
-            </code>
+            <button
+              type="button"
+              className="tool-result-grep-loc"
+              onClick={() => openInCodebase(m.file)}
+              title={`Open ${m.file}:${m.line} in Codebase`}
+              style={fileLinkStyle}
+            >
+              <code>
+                {m.file}:{m.line}
+              </code>
+            </button>
             <code className="tool-result-grep-text">{m.text}</code>
           </li>
         ))}
@@ -294,7 +318,14 @@ function GlobResultPreview({ paths }: { paths: string[] }): JSX.Element {
       <ul className="tool-result-path-list">
         {visible.map((p, i) => (
           <li key={`${p}-${i}`}>
-            <code>{p}</code>
+            <button
+              type="button"
+              onClick={() => openInCodebase(p)}
+              title={`Open ${p} in Codebase`}
+              style={fileLinkStyle}
+            >
+              <code>{p}</code>
+            </button>
           </li>
         ))}
       </ul>

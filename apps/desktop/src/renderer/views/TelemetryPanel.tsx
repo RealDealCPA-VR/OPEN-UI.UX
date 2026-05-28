@@ -9,6 +9,14 @@ export function TelemetryPanel(): JSX.Element {
 
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const [hostDraft, setHostDraft] = useState('');
+  const [savedFlash, setSavedFlash] = useState<string | null>(null);
+
+  const flashSaved = (key: string): void => {
+    setSavedFlash(key);
+    window.setTimeout(() => {
+      setSavedFlash((k) => (k === key ? null : k));
+    }, 1200);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +60,7 @@ export function TelemetryPanel(): JSX.Element {
     try {
       const next = await window.opencodex.telemetry.setConfig({ apiKey: apiKeyDraft });
       setConfig(next);
+      flashSaved('apiKey');
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -68,6 +77,7 @@ export function TelemetryPanel(): JSX.Element {
         host: trimmed.length === 0 ? null : trimmed,
       });
       setConfig(next);
+      flashSaved('host');
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -131,6 +141,11 @@ export function TelemetryPanel(): JSX.Element {
           >
             Save
           </button>
+          {savedFlash === 'apiKey' && (
+            <span aria-live="polite" style={{ fontSize: 12, color: 'var(--success, #22c55e)' }}>
+              Saved
+            </span>
+          )}
         </div>
       </div>
 
@@ -156,6 +171,11 @@ export function TelemetryPanel(): JSX.Element {
           >
             Save
           </button>
+          {savedFlash === 'host' && (
+            <span aria-live="polite" style={{ fontSize: 12, color: 'var(--success, #22c55e)' }}>
+              Saved
+            </span>
+          )}
         </div>
         <p className="settings-block-hint">Leave blank to use the PostHog default cloud host.</p>
       </div>

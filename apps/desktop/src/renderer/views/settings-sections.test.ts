@@ -100,4 +100,16 @@ describe('SETTINGS_SECTIONS', () => {
       expect(slugs).toContain(expected);
     }
   });
+
+  it('every section has a non-empty title and description', () => {
+    for (const s of SETTINGS_SECTIONS) {
+      expect(s.title.length).toBeGreaterThan(0);
+      expect(s.description.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('search query matches sections by title fragment', () => {
+    const out = filterSettingsSections(SETTINGS_SECTIONS, 'audit');
+    expect(out.some((s) => s.slug === 'audit-log')).toBe(true);
+  });
 });

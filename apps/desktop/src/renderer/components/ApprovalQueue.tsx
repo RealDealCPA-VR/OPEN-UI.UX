@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ApprovalDecision,
   ApprovalRequest,
@@ -6,6 +6,18 @@ import type {
   FilePreviewResult,
 } from '../../shared/approvals';
 import { diffLines, type DiffResult } from './line-diff';
+
+const sessionCommandAllowlist = new Map<string, true>();
+
+function extractShellCommand(req: ApprovalRequest): string | null {
+  if (req.toolName !== 'run_shell') return null;
+  const args = asRunShellArgs(req.arguments);
+  return args ? args.command : null;
+}
+
+function toolIconLetter(toolName: string): string {
+  return (toolName[0] ?? '?').toUpperCase();
+}
 
 const MonacoDiffViewer = lazy(async () => {
   const mod = await import('./MonacoDiffViewer');
@@ -17,6 +29,15 @@ export function ApprovalQueue(): JSX.Element | null {
 
   useEffect(() => {
     return window.opencodex.approvals.onRequest((req) => {
+      const cmd = extractShellCommand(req);
+      if (cmd !== null && sessionCommandAllowlist.has(cmd)) {
+        void window.opencodex.approvals.respond({
+          requestId: req.requestId,
+          decision: 'allow',
+          scope: 'session',
+        });
+        return;
+      }
       setQueue((prev) => [...prev, req]);
     });
   }, []);
@@ -36,18 +57,64 @@ export function ApprovalQueue(): JSX.Element | null {
     [],
   );
 
-  if (queue.length === 0) return null;
-  const current = queue[0];
+  const allowExactCommand = useCallback(
+    (request: ApprovalRequest) => {
+      const cmd = extractShellCommand(request);
+      if (cmd !== null) sessionCommandAllowlist.set(cmd, true);
+      void respond(request, 'allow', 'session');
+    },
+    [respond],
+  );
+
+  const current = queue[0] ?? null;
+  const buttonsRef = useRef<HTMLButtonElement[]>([]);
+
+  useEffect(() => {
+    if (!current) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+      }
+      const idx = '123456'.indexOf(e.key);
+      if (idx === -1) return;
+      const btn = buttonsRef.current[idx];
+      if (btn && !btn.disabled) {
+        e.preventDefault();
+        btn.click();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [current]);
+
   if (!current) return null;
+
+  const shellCommand = extractShellCommand(current);
+
+  const registerBtn = (slot: number) => (el: HTMLButtonElement | null) => {
+    // eslint-disable-next-line react-hooks/refs
+    if (el) buttonsRef.current[slot] = el;
+  };
 
   return (
     <div className="approval-modal-backdrop" role="dialog" aria-modal="true">
       <div className="approval-modal">
         <header className="approval-modal-header">
-          <span className={`approval-modal-tier tool-tier tool-tier-${current.permissionTier}`}>
-            {current.permissionTier}
+          <span
+            className={`approval-tool-icon approval-tool-icon-${current.permissionTier}`}
+            aria-hidden="true"
+          >
+            {toolIconLetter(current.toolName)}
           </span>
-          <h2>{current.toolName}</h2>
+          <div className="approval-modal-header-text">
+            <span className={`approval-modal-tier tool-tier tool-tier-${current.permissionTier}`}>
+              {current.permissionTier}
+            </span>
+            <h2>{current.toolName}</h2>
+          </div>
         </header>
         <p className="approval-modal-description">{current.toolDescription}</p>
         <ApprovalPreview request={current} />
@@ -58,19 +125,39 @@ export function ApprovalQueue(): JSX.Element | null {
         )}
         <div className="approval-modal-actions">
           <div className="approval-modal-action-group">
-            <button onClick={() => void respond(current, 'allow', 'once')}>Allow once</button>
-            <button onClick={() => void respond(current, 'allow', 'session')}>
-              Allow for session
+            <button ref={registerBtn(0)} onClick={() => void respond(current, 'allow', 'once')}>
+              <span className="approval-kbd">1</span>Allow once
             </button>
-            <button onClick={() => void respond(current, 'allow', 'always')}>Allow always</button>
+            <button ref={registerBtn(1)} onClick={() => void respond(current, 'allow', 'session')}>
+              <span className="approval-kbd">2</span>Allow for session
+            </button>
+            <button ref={registerBtn(2)} onClick={() => void respond(current, 'allow', 'always')}>
+              <span className="approval-kbd">3</span>Allow always
+            </button>
           </div>
           <div className="approval-modal-action-group">
-            <button onClick={() => void respond(current, 'deny', 'once')}>Deny once</button>
-            <button onClick={() => void respond(current, 'deny', 'session')}>
-              Deny for session
+            <button ref={registerBtn(3)} onClick={() => void respond(current, 'deny', 'once')}>
+              <span className="approval-kbd">4</span>Deny once
             </button>
-            <button onClick={() => void respond(current, 'deny', 'always')}>Deny always</button>
+            <button ref={registerBtn(4)} onClick={() => void respond(current, 'deny', 'session')}>
+              <span className="approval-kbd">5</span>Deny for session
+            </button>
+            <button ref={registerBtn(5)} onClick={() => void respond(current, 'deny', 'always')}>
+              <span className="approval-kbd">6</span>Deny always
+            </button>
           </div>
+          {shellCommand !== null ? (
+            <div className="approval-modal-action-group approval-modal-action-extra">
+              <button
+                type="button"
+                className="approval-modal-extra-btn"
+                onClick={() => allowExactCommand(current)}
+                title={shellCommand}
+              >
+                Always allow this exact command
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

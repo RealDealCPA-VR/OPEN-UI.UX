@@ -73,7 +73,20 @@ export function AgentRunRow({
               {run.runnerId}
             </span>
           )}
-          <span className={statusPillClass(run.status)}>{statusLabel(run.status)}</span>
+          <span
+            className={statusPillClass(run.status)}
+            style={
+              run.status === 'failed'
+                ? {
+                    background: 'var(--danger-bg)',
+                    borderColor: 'var(--danger-border)',
+                    color: 'var(--danger)',
+                  }
+                : undefined
+            }
+          >
+            {statusLabel(run.status)}
+          </span>
           <span className="audit-row-duration">
             {formatTokens(run.inputTokens)} in · {formatTokens(run.outputTokens)} out
           </span>
@@ -154,8 +167,13 @@ export function AgentRunRow({
                 </button>
               )}
               {showContinue && (
-                <button type="button" className="audit-clear-button" onClick={handleContinue}>
-                  Continue in chat
+                <button
+                  type="button"
+                  className="audit-clear-button"
+                  onClick={handleContinue}
+                  title="Push this run's context into the chat composer"
+                >
+                  Resume in chat
                 </button>
               )}
             </div>

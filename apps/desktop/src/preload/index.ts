@@ -6,6 +6,7 @@ import type {
   AgentSpawnFromUiRequest,
   AgentSpawnFromUiResponse,
   GitIsRepoResponse,
+  ShellOpenPathResponse,
   ShellShowItemResponse,
 } from '../shared/agent-spawn';
 import type {
@@ -133,6 +134,7 @@ import type {
   RunnerInstallCheck,
   RunnersChangedEvent,
 } from '../shared/ipc-types';
+import type { UiErrorEvent } from '../shared/ui-errors';
 
 type DeepLinkListener = (url: string) => void;
 type ChatEventListener = (payload: ChatStreamEvent) => void;
@@ -416,6 +418,8 @@ const git = {
 const shellBridge = {
   showItemInFolder: (workspaceRoot: string, path: string): Promise<ShellShowItemResponse> =>
     ipcRenderer.invoke('shell:show-item-in-folder', { workspaceRoot, path }),
+  openPath: (workspaceRoot: string, path: string): Promise<ShellOpenPathResponse> =>
+    ipcRenderer.invoke('shell:open-path', { workspaceRoot, path }),
 };
 
 type TelemetryConfigChangedListener = (payload: TelemetryConfigChangedEvent) => void;
@@ -553,6 +557,16 @@ const memory = {
   },
 };
 
+type UiErrorListener = (payload: UiErrorEvent) => void;
+
+const ui = {
+  onError: (listener: UiErrorListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: UiErrorEvent): void => listener(payload);
+    ipcRenderer.on('ui:error', wrapped);
+    return () => ipcRenderer.off('ui:error', wrapped);
+  },
+};
+
 const api = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
   onDeepLink: (listener: DeepLinkListener): (() => void) => {
@@ -560,6 +574,7 @@ const api = {
     ipcRenderer.on('app:deep-link', wrapped);
     return () => ipcRenderer.off('app:deep-link', wrapped);
   },
+  ui,
   providers,
   selectedModel,
   conversations,
