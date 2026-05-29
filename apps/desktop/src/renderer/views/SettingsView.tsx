@@ -33,14 +33,28 @@ import { UpdatesPanel } from './UpdatesPanel';
 import { WorkspacePanel } from './WorkspacePanel';
 
 export function SettingsView(): JSX.Element {
+  const defaultSection =
+    findSectionBySlug(SETTINGS_SECTIONS, DEFAULT_SETTINGS_SLUG) ?? SETTINGS_SECTIONS[0];
+  if (!defaultSection) {
+    return (
+      <div role="alert" style={{ padding: 24 }}>
+        <h1 style={{ marginTop: 0 }}>Settings unavailable</h1>
+        <p>
+          No settings sections are registered. This indicates a build configuration problem — please
+          reinstall OpenCodex or contact support.
+        </p>
+      </div>
+    );
+  }
+  return <SettingsViewBody defaultSection={defaultSection} />;
+}
+
+function SettingsViewBody({ defaultSection }: { defaultSection: SettingsSection }): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const { section: sectionParam } = useParams<{ section?: string }>();
   const [query, setQuery] = useState('');
 
-  const defaultSection =
-    findSectionBySlug(SETTINGS_SECTIONS, DEFAULT_SETTINGS_SLUG) ?? SETTINGS_SECTIONS[0];
-  if (!defaultSection) throw new Error('SETTINGS_SECTIONS must have at least one entry');
   const currentSection: SettingsSection =
     findSectionBySlug(SETTINGS_SECTIONS, sectionParam ?? DEFAULT_SETTINGS_SLUG) ?? defaultSection;
 
@@ -62,6 +76,7 @@ export function SettingsView(): JSX.Element {
     const anchor = fromQuery ?? fromHash;
     if (!anchor) return;
     let cancelled = false;
+    let innerHandle: number | null = null;
     const handle = window.setTimeout(() => {
       if (cancelled) return;
       const el = document.querySelector<HTMLElement>(
@@ -72,12 +87,12 @@ export function SettingsView(): JSX.Element {
       el.classList.add('settings-anchor-highlight');
       const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const ms = prefersReduced ? 0 : 1600;
-      const t = window.setTimeout(() => el.classList.remove('settings-anchor-highlight'), ms);
-      return () => window.clearTimeout(t);
+      innerHandle = window.setTimeout(() => el.classList.remove('settings-anchor-highlight'), ms);
     }, 60);
     return () => {
       cancelled = true;
       window.clearTimeout(handle);
+      if (innerHandle !== null) window.clearTimeout(innerHandle);
     };
   }, [location.search, location.hash, currentSection.slug]);
 
@@ -91,8 +106,11 @@ export function SettingsView(): JSX.Element {
   );
 
   return (
-    <section className="view settings-view settings-view-two-pane">
+    <section className="view settings-view settings-view-two-pane" aria-labelledby="settings-h1">
       <style>{ANCHOR_HIGHLIGHT_CSS}</style>
+      <h1 id="settings-h1" className="sr-only">
+        Settings
+      </h1>
       <SettingsRail
         sections={filtered}
         activeSlug={currentSection.slug}

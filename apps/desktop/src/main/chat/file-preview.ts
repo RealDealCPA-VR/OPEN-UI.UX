@@ -10,7 +10,7 @@ export async function readFilePreview(
 ): Promise<FilePreviewResult> {
   let resolved: string;
   try {
-    resolved = resolveWithinWorkspace(workspaceRoot, requestedPath);
+    resolved = await resolveWithinWorkspace(workspaceRoot, requestedPath);
   } catch (err) {
     if (err instanceof PathEscapesWorkspaceError) {
       return { exists: false, content: '', truncated: false, sizeBytes: 0 };

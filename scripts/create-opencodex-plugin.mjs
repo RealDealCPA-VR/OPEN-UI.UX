@@ -111,6 +111,7 @@ async function main() {
   mkdirSync(join(targetDir, 'src'));
 
   const camel = toIdentifier(name);
+  const pascal = camel.length > 0 ? camel[0].toUpperCase() + camel.slice(1) : camel;
   const displayName = name
     .split('-')
     .map((p) => (p.length > 0 ? p[0].toUpperCase() + p.slice(1) : p))
@@ -124,7 +125,7 @@ async function main() {
     license: 'MIT',
     entry: 'dist/index.js',
     engines: { opencodex: '^0.1.0' },
-    permissions: ['workspace.read', 'agent.runner', 'ui.panel'],
+    permissions: [],
     contributions: {
       tools: [toolId],
       runners: [{ id: runnerId, displayName: `${displayName} Runner` }],
@@ -133,6 +134,9 @@ async function main() {
   };
 
   writeFileSync(join(targetDir, 'opencodex.plugin.json'), JSON.stringify(manifest, null, 2) + '\n');
+
+  const insideMonorepo = existsSync(resolve(process.cwd(), 'pnpm-workspace.yaml'));
+  const opencodexDepRange = insideMonorepo ? 'workspace:*' : '*';
 
   const pkg = {
     name: `@opencodex-plugin/${name}`,
@@ -146,8 +150,8 @@ async function main() {
       clean: 'rimraf dist',
     },
     dependencies: {
-      '@opencodex/core': '^0.1.0',
-      '@opencodex/plugin-sdk': '^0.1.0',
+      '@opencodex/core': opencodexDepRange,
+      '@opencodex/plugin-sdk': opencodexDepRange,
       zod: '^3.22.0',
     },
     devDependencies: {
@@ -186,7 +190,12 @@ export default defineConfig({
 
   const indexTs = `import { z } from 'zod';
 import { definePlugin } from '@opencodex/plugin-sdk';
-import { defineTool, type SubagentRunner } from '@opencodex/core';
+import {
+  defineTool,
+  type ChatEvent,
+  type SubagentRunOptions,
+  type SubagentRunner,
+} from '@opencodex/core';
 
 const ${camel}Input = z.object({
   message: z.string().optional(),
@@ -202,20 +211,21 @@ const ${camel}Tool = defineTool({
   },
 });
 
+async function* run${pascal}(opts: SubagentRunOptions): AsyncIterable<ChatEvent> {
+  if (opts.signal?.aborted) {
+    yield { type: 'done', stopReason: 'cancelled' };
+    return;
+  }
+  yield { type: 'text_delta', delta: \`stub runner received: \${opts.task}\` };
+  yield { type: 'usage', inputTokens: 0, outputTokens: 0 };
+  yield { type: 'done', stopReason: 'end_turn' };
+}
+
 const ${camel}Runner: SubagentRunner = {
   id: '${runnerId}',
   displayName: '${displayName} Runner',
-  streaming: false,
-  async run(_input) {
-    return {
-      result: { kind: 'final-text', text: 'stub runner output' },
-      tokensInput: 0,
-      tokensOutput: 0,
-      iterations: 0,
-      stopReason: 'final-text',
-      toolEvents: [],
-    };
-  },
+  streaming: true,
+  run: run${pascal},
 };
 
 export default definePlugin({
@@ -242,6 +252,7 @@ describe('${name}', () => {
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'none'; connect-src 'none'; frame-ancestors 'self';" />
     <title>${displayName}</title>
     <style>
       body { font-family: system-ui, sans-serif; padding: 1rem; }
@@ -276,6 +287,35 @@ pnpm test
 ## Install in OpenCodex
 
 In the OpenCodex Plugins panel, choose **Sideload from folder…** and select this directory.
+
+## Permissions
+
+The scaffold ships with \`permissions: []\` — the minimum needed for the host
+to accept the manifest. Each capability requires explicit consent from the
+user, and OpenCodex refuses to register contributions the manifest does not
+claim. Add only the permissions you actually use:
+
+| Permission        | Required to                                            |
+| ----------------- | ------------------------------------------------------ |
+| \`workspace.read\`  | Register tools with \`permissionTier: 'read'\`           |
+| \`workspace.write\` | Register tools with \`permissionTier: 'write'\`          |
+| \`shell.execute\`   | Register tools with \`permissionTier: 'execute'\`        |
+| \`network.fetch\`   | Register tools with \`permissionTier: 'network'\`        |
+| \`agent.runner\`    | Register a \`SubagentRunner\` contribution              |
+| \`ui.panel\`        | Surface a contributed UI panel (e.g. \`panel.html\`)     |
+| \`settings.read\`   | Call \`host.getSetting(key)\`                            |
+| \`settings.write\`  | Call \`host.setSetting(key, value)\`                     |
+
+The generated entry registers a \`read\` tool plus a runner, so you will
+typically want \`["workspace.read", "agent.runner"]\` — and \`"ui.panel"\` if
+you keep the panel contribution.
+
+## UI panel trust model
+
+\`panel.html\` is loaded inside a renderer iframe. The scaffold ships a strict
+CSP \`<meta>\` tag (no script-src, no remote network) so a freshly created
+plugin cannot exfiltrate data even before the host-side sandboxing lands —
+relax it deliberately when you add JavaScript.
 `;
   writeFileSync(join(targetDir, 'README.md'), readme);
 

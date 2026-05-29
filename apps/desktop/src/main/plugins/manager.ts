@@ -3,8 +3,13 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join, resolve as resolvePath } from 'node:path';
 import {
+  EngineMismatchError,
+  assertPluginProvider,
+  assertPluginRunner,
+  assertPluginTool,
   loadPluginModule,
   readManifest,
+  satisfiesEngineRange,
   verifyManifest,
   type Permission,
   type Plugin,
@@ -24,6 +29,19 @@ import {
 } from '../storage/settings';
 import { getToolRegistry } from '../tools/registry';
 
+export const HOST_PLUGIN_ENGINE_VERSION = '0.1.0';
+
+interface RegisteredProvider {
+  id: string;
+  displayName: string;
+  factory: ProviderFactory;
+}
+
+interface RegisteredSlashCommand {
+  name: string;
+  handler: (args: string) => Promise<void>;
+}
+
 interface RuntimeState {
   manifest: PluginManifest;
   installPath: string;
@@ -33,8 +51,8 @@ interface RuntimeState {
   lastError?: string;
   plugin?: Plugin;
   registeredTools: string[];
-  registeredProviders: string[];
-  registeredCommands: string[];
+  registeredProviders: RegisteredProvider[];
+  registeredCommands: RegisteredSlashCommand[];
   registeredRunners: string[];
 }
 
@@ -109,6 +127,17 @@ function checkPermission(id: string, required: Permission): void {
   }
 }
 
+// Map a tool's permissionTier to the plugin manifest permission required to
+// register it. A plugin without the matching permission is rejected at
+// register time — without this, registerTool was an open gate while
+// registerRunner already enforced `agent.runner`.
+const TIER_TO_PERMISSION: Record<Tool['permissionTier'], Permission> = {
+  read: 'workspace.read',
+  write: 'workspace.write',
+  execute: 'shell.execute',
+  network: 'network.fetch',
+};
+
 function buildHost(id: string): PluginHost {
   return {
     pluginId: id,
@@ -116,6 +145,9 @@ function buildHost(id: string): PluginHost {
     registerTool(tool: Tool) {
       const r = runtime.get(id);
       if (!r) return;
+      assertPluginTool(tool);
+      const requiredPerm = TIER_TO_PERMISSION[tool.permissionTier];
+      checkPermission(id, requiredPerm);
       const registry = getToolRegistry();
       const name = `plugin__${id}__${tool.name}`;
       if (registry.has(name)) {
@@ -128,17 +160,28 @@ function buildHost(id: string): PluginHost {
     registerProvider(provider: ProviderFactory) {
       const r = runtime.get(id);
       if (!r) return;
-      // Providers from plugins are tracked but not auto-registered into the global provider registry
-      // (that requires more wiring; for now we just record the intent).
-      r.registeredProviders.push(provider.id);
+      assertPluginProvider(provider);
+      if (r.registeredProviders.some((p) => p.id === provider.id)) {
+        logger.warn(
+          { pluginId: id, providerId: provider.id },
+          'plugin provider id collision; ignoring duplicate registration',
+        );
+        return;
+      }
+      r.registeredProviders.push({
+        id: provider.id,
+        displayName: provider.displayName,
+        factory: provider,
+      });
       logger.info(
         { pluginId: id, providerId: provider.id },
-        'plugin provider registered (tracked)',
+        'plugin provider registered (tracked, not yet auto-wired into the global provider registry)',
       );
     },
     registerRunner(runner: SubagentRunner) {
       const r = runtime.get(id);
       if (!r) return;
+      assertPluginRunner(runner);
       checkPermission(id, 'agent.runner');
       const name = `plugin__${id}__${runner.id}`;
       if (runnerRegistry.has(name)) {
@@ -154,11 +197,27 @@ function buildHost(id: string): PluginHost {
       runnerRegistry.register(wrapper);
       r.registeredRunners.push(name);
     },
-    registerSlashCommand(name) {
+    registerSlashCommand(name, handler) {
       const r = runtime.get(id);
       if (!r) return;
-      r.registeredCommands.push(name);
-      logger.info({ pluginId: id, commandName: name }, 'plugin slash command registered (tracked)');
+      if (typeof name !== 'string' || name.length === 0) {
+        throw new Error('plugin slash command name must be a non-empty string');
+      }
+      if (typeof handler !== 'function') {
+        throw new Error(`plugin slash command "${name}" handler must be a function`);
+      }
+      if (r.registeredCommands.some((c) => c.name === name)) {
+        logger.warn(
+          { pluginId: id, commandName: name },
+          'plugin slash command name collision; ignoring duplicate registration',
+        );
+        return;
+      }
+      r.registeredCommands.push({ name, handler });
+      logger.info(
+        { pluginId: id, commandName: name },
+        'plugin slash command registered (tracked, dispatcher wiring is a planned follow-up)',
+      );
     },
     async getSetting(_key) {
       checkPermission(id, 'settings.read');
@@ -168,6 +227,18 @@ function buildHost(id: string): PluginHost {
       checkPermission(id, 'settings.write');
     },
   };
+}
+
+export function getPluginProviderFactories(id: string): RegisteredProvider[] {
+  const r = runtime.get(id);
+  if (!r) return [];
+  return [...r.registeredProviders];
+}
+
+export function getPluginSlashCommands(id: string): RegisteredSlashCommand[] {
+  const r = runtime.get(id);
+  if (!r) return [];
+  return [...r.registeredCommands];
 }
 
 async function activatePlugin(id: string): Promise<void> {
@@ -250,7 +321,23 @@ async function readSignature(installPath: string): Promise<string | null> {
 }
 
 export interface InstallPluginOptions {
+  // Allow installing a plugin whose manifest has no valid signature against
+  // a trusted publisher key. MUST be set explicitly by the caller after
+  // securing user consent — the installer no longer silently proceeds for
+  // unsigned plugins. Until plugin sandboxing lands (see security-model.md →
+  // Plugin sandbox), this flag is the operator's last line of defense against
+  // running arbitrary code with full main-process privileges.
   acceptUnsigned?: boolean;
+}
+
+export class UnsignedPluginRefusedError extends Error {
+  constructor(public readonly pluginName: string) {
+    super(
+      `Refusing to install unsigned plugin "${pluginName}": no valid signature against any trusted publisher key. ` +
+        'Pass acceptUnsigned: true after securing explicit user consent.',
+    );
+    this.name = 'UnsignedPluginRefusedError';
+  }
 }
 
 export async function installPluginFromPath(
@@ -258,6 +345,13 @@ export async function installPluginFromPath(
   options: InstallPluginOptions = {},
 ): Promise<PluginListItem[]> {
   const manifest = await readManifest(installPath);
+  if (!satisfiesEngineRange(HOST_PLUGIN_ENGINE_VERSION, manifest.engines.opencodex)) {
+    throw new EngineMismatchError(
+      manifest.name,
+      manifest.engines.opencodex,
+      HOST_PLUGIN_ENGINE_VERSION,
+    );
+  }
   const signature = await readSignature(installPath);
   const trusted = getTrustedPublisherKeys();
   let signed = false;
@@ -277,8 +371,9 @@ export async function installPluginFromPath(
   if (!signed && !options.acceptUnsigned) {
     logger.warn(
       { pluginName: manifest.name },
-      'installing unsigned plugin — caller did not pass acceptUnsigned',
+      'refusing to install unsigned plugin without explicit acceptUnsigned consent',
     );
+    throw new UnsignedPluginRefusedError(manifest.name);
   }
   appendPluginConsent({
     pluginName: manifest.name,
@@ -288,7 +383,7 @@ export async function installPluginFromPath(
     installedAt: new Date().toISOString(),
     userAcceptedUnsigned: !signed,
   });
-  const id = `${manifest.name}-${randomUUID().slice(0, 8)}`;
+  const id = `${manifest.name}-${randomUUID()}`;
   runtime.set(id, {
     manifest,
     installPath,

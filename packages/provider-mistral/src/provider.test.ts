@@ -75,7 +75,8 @@ describe('mistralProvider', () => {
 
     expect(events).toContainEqual({ type: 'text_delta', delta: 'Hello' });
     expect(events).toContainEqual({ type: 'text_delta', delta: ' there' });
-    expect(events).toContainEqual({ type: 'usage', inputTokens: 4, outputTokens: 2 });
+    const usage = events.find((e) => e.type === 'usage');
+    expect(usage).toMatchObject({ type: 'usage', inputTokens: 4, outputTokens: 2 });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'end_turn' });
 
     expect(calls).toHaveLength(1);
@@ -85,6 +86,32 @@ describe('mistralProvider', () => {
     expect(body.stream).toBe(true);
     expect(body.model).toBe('mistral-large-latest');
     expect(body.stream_options).toBeUndefined();
+  });
+
+  it('coalesces multiple mid-stream usage events into a single emit', async () => {
+    const stream = [
+      'data: {"id":"x","choices":[{"index":0,"delta":{"role":"assistant","content":"Hi"},"finish_reason":null}],"usage":{"prompt_tokens":1,"completion_tokens":1}}',
+      '',
+      'data: {"id":"x","choices":[{"index":0,"delta":{"content":"!"},"finish_reason":null}],"usage":{"prompt_tokens":3,"completion_tokens":2}}',
+      '',
+      'data: {"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":3}}',
+      '',
+      'data: [DONE]',
+      '',
+      '',
+    ].join('\n');
+    stubFetch(() => streamResponse(stream));
+
+    const provider = mistralProvider.create({ apiKey: 'mst' });
+    const events = await collect(
+      provider.chat({
+        model: 'mistral-large-latest',
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    );
+    const usages = events.filter((e) => e.type === 'usage');
+    expect(usages).toHaveLength(1);
+    expect(usages[0]).toMatchObject({ inputTokens: 5, outputTokens: 3 });
   });
 
   it('handles a tool_call delivered in one chunk without an index field', async () => {
@@ -154,7 +181,8 @@ describe('mistralProvider', () => {
       name: 'grep',
       arguments: { q: 'foo' },
     });
-    expect(events).toContainEqual({ type: 'usage', inputTokens: 12, outputTokens: 7 });
+    const usage = events.find((e) => e.type === 'usage');
+    expect(usage).toMatchObject({ type: 'usage', inputTokens: 12, outputTokens: 7 });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'tool_use' });
   });
 

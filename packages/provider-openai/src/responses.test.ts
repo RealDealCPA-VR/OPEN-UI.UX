@@ -208,6 +208,28 @@ describe('responsesStream (OpenAI Responses API)', () => {
     ]);
   });
 
+  it('coerces a role:tool message with string content into a function_call_output item', () => {
+    const body = buildResponsesRequestBody(
+      {
+        model: 'gpt-5',
+        messages: [
+          { role: 'user', content: 'hi' },
+          {
+            role: 'assistant',
+            content: [{ type: 'tool_use', id: 'call_99', name: 'grep', arguments: {} }],
+          },
+          { role: 'tool', content: 'plain string output from tool' },
+        ],
+      },
+      { stream: true },
+    );
+    expect(body.input).toContainEqual({
+      type: 'function_call_output',
+      call_id: 'call_99',
+      output: 'plain string output from tool',
+    });
+  });
+
   it('forwards tools as flat Responses-API function tools', () => {
     const body = buildResponsesRequestBody(
       {

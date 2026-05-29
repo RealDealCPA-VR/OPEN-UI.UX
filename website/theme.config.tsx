@@ -1,17 +1,24 @@
 import React from 'react';
+import { useRouter } from 'next/router';
 import type { DocsThemeConfig } from 'nextra-theme-docs';
 
 const config: DocsThemeConfig = {
-  logo: <span style={{ fontWeight: 600 }}>OpenCodex</span>,
+  logo: <span style={{ fontWeight: 600 }}>opencodex-docs</span>,
   project: {
     link: 'https://github.com/TODO-org/TODO-repo',
   },
-  docsRepositoryBase: 'https://github.com/TODO-org/TODO-repo/tree/main/website',
+  docsRepositoryBase: 'https://github.com/TODO-org/TODO-repo/blob/main/website',
   footer: {
-    text: 'OpenCodex — MIT-licensed open-source desktop coding agent.',
+    text: 'opencodex-docs — MIT-licensed open-source desktop coding agent.',
   },
   useNextSeoProps() {
-    return { titleTemplate: '%s — OpenCodex' };
+    const { asPath } = useRouter();
+    const isLanding = asPath === '/' || asPath === '/index';
+    return {
+      titleTemplate: isLanding ? 'opencodex-docs' : '%s — opencodex-docs',
+      description:
+        'opencodex-docs — Mission Control for AI coding agents. Local-first, MIT-licensed, provider-agnostic Electron desktop app.',
+    };
   },
 };
 

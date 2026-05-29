@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@opencodex/core": "workspace:*",
+    "@opencodex/memory-utils": "workspace:*",
     "zod": "^3.22.0"
   },
   "devDependencies": {

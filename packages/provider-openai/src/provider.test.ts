@@ -74,7 +74,8 @@ describe('openAIProvider', () => {
 
     expect(events).toContainEqual({ type: 'text_delta', delta: 'Hello' });
     expect(events).toContainEqual({ type: 'text_delta', delta: ' there' });
-    expect(events).toContainEqual({ type: 'usage', inputTokens: 3, outputTokens: 2 });
+    const usage = events.find((e) => e.type === 'usage');
+    expect(usage).toMatchObject({ type: 'usage', inputTokens: 3, outputTokens: 2 });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'end_turn' });
 
     expect(calls).toHaveLength(1);
@@ -181,7 +182,8 @@ describe('openAIProvider', () => {
       name: 'grep',
       arguments: { q: 'foo' },
     });
-    expect(events).toContainEqual({
+    const usage = events.find((e) => e.type === 'usage');
+    expect(usage).toMatchObject({
       type: 'usage',
       inputTokens: 12,
       outputTokens: 7,

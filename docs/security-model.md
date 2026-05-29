@@ -152,16 +152,18 @@ This catches `../../etc/passwd`, absolute paths, and symlink-relative tricks. Ev
 
 ## Plugin sandbox
 
-Status: **planned for v0.1**. The SDK contracts are settled (`packages/plugin-sdk/src/`); the loader is not yet wired into `apps/desktop`.
+> ⚠️ **Current state (v1):** plugins execute **with full Electron main-process privileges**. The loader does `await import(file://<plugin>)` directly into the main process (`packages/plugin-sdk/src/loader.ts:51`, `apps/desktop/src/main/plugins/manager.ts:186`). A plugin's module-level code can `require('node:child_process')`, read the keychain via `keytar`, attach to `ipcMain`, etc. The manifest `permissions[]` array only gates the `PluginHost` helper calls a plugin chooses to make — it does **not** restrict raw Node API access. **Only install plugins you trust to run arbitrary code on your machine.**
 
-Designed posture:
+Designed posture (target for v0.1 hardening; tracked in `Todo.md` Phase 15.2):
 
-- Plugin entry module runs in a Node `vm` context with a curated global surface — no `process`, no unrestricted `require`, no direct `fs` / `net`.
-- Manifest-declared `permissions[]` (see `manifest.ts:3`) gate which `PluginHost` methods actually function. A plugin without `workspace.write` cannot register a `permissionTier: 'write'` tool, and even if it tried, the host would reject the registration.
+- Move plugin execution into Electron `utilityProcess.fork()` with `MessagePortMain` RPC so the plugin runs in its own OS process and V8 isolate.
+- Enforce manifest `permissions[]` at the Node syscall layer via Node 20's `--permission` flags (`--allow-fs-read`, `--allow-fs-write`, `--allow-child-process`, `--allow-net`) scoped to the workspace + permitted hosts.
+- macOS: scope with `sandbox-exec`. Windows: Job Object + restricted token. Linux: seccomp-bpf or at minimum `prctl(PR_SET_NO_NEW_PRIVS)` + `setrlimit`.
+- `installPluginFromPath` hard-fails on unsigned plugins by default; `acceptUnsigned: true` requires an explicit consent dialog and persists the consent record.
 - On install the user reviews and grants permissions; revoke = remove the entry from the manifest grant set on disk, which the loader re-checks on activation.
-- UI panels (when wired) render in sandboxed iframes; `postMessage` is the only bridge. No Node access in panel JS.
+- UI panels (when wired) render in iframes with a strict CSP; `postMessage` is the only bridge. No Node access in panel JS.
 
-Fallback if VM-context isolation proves leaky: each plugin in its own Electron `utilityProcess`. The `PluginHost` surface was designed so this swap is invisible to plugin authors.
+Do **not** use `node:vm` as a security boundary — sandbox escapes via `this.constructor.constructor('return process')()` are well-known and trivial. The right primitive for main-process JS isolation is `utilityProcess`/`worker_threads` + Node's `--permission` model, not `vm`.
 
 ## MCP server trust boundaries
 

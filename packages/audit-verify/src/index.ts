@@ -1,5 +1,8 @@
 import { createPublicKey, verify } from 'node:crypto';
 import { z } from 'zod';
+import { canonicalJsonBytes } from './canonical.js';
+
+export { canonicalJson, canonicalJsonBytes } from './canonical.js';
 
 export const AUDIT_BUNDLE_FORMAT = 'opencodex-audit-v1' as const;
 
@@ -47,22 +50,8 @@ export interface VerifyResult {
   generatedAt?: string;
 }
 
-/**
- * Compute the canonical bytes that get signed for a bundle.
- * Serialization MUST be byte-identical on both signer and verifier sides.
- * We use JSON.stringify with sorted top-level keys; entries already preserve
- * insertion order which is fine because they are inside `bundle`.
- */
 export function canonicalizeBundle(bundle: AuditBundle): Buffer {
-  // Stable key order is enforced via explicit construction.
-  const stable = {
-    format: bundle.format,
-    generatedAt: bundle.generatedAt,
-    deviceId: bundle.deviceId,
-    publicKey: bundle.publicKey,
-    entries: bundle.entries,
-  };
-  return Buffer.from(JSON.stringify(stable), 'utf8');
+  return canonicalJsonBytes(bundle);
 }
 
 export interface VerifyOptions {
@@ -82,12 +71,7 @@ export function verifyAuditBundle(
   } catch (err) {
     return { ok: false, reason: `bad public key: ${(err as Error).message}` };
   }
-  let sigBuf: Buffer;
-  try {
-    sigBuf = Buffer.from(signature, 'base64');
-  } catch (err) {
-    return { ok: false, reason: `bad signature encoding: ${(err as Error).message}` };
-  }
+  const sigBuf = Buffer.from(signature, 'base64');
   const payload = canonicalizeBundle(bundle);
   const ok = verify(null, payload, keyObject, sigBuf);
   if (!ok) {

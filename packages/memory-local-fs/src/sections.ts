@@ -6,12 +6,14 @@ export interface MemorySection {
 }
 
 const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
+const FENCE_RE = /^(\s{0,3})(`{3,}|~{3,})/;
 
 export function parseSections(raw: string): MemorySection[] {
   const lines = raw.split(/\r?\n/);
   const sections: MemorySection[] = [];
   let current: MemorySection | null = null;
   let preambleBuffer: string[] = [];
+  let fence: string | null = null;
 
   const flush = (): void => {
     if (current) {
@@ -23,8 +25,18 @@ export function parseSections(raw: string): MemorySection[] {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? '';
-    const match = HEADING_RE.exec(line);
-    if (match) {
+    const fenceMatch = FENCE_RE.exec(line);
+    if (fenceMatch) {
+      const marker = fenceMatch[2] ?? '';
+      if (fence === null) {
+        fence = marker[0] ?? null;
+      } else if (marker[0] === fence && marker.length >= 3) {
+        fence = null;
+      }
+    }
+
+    const headingMatch = fence === null ? HEADING_RE.exec(line) : null;
+    if (headingMatch) {
       if (current === null && preambleBuffer.length > 0) {
         const body = preambleBuffer.join('\n').replace(/\s+$/, '');
         if (body.length > 0) {
@@ -34,8 +46,8 @@ export function parseSections(raw: string): MemorySection[] {
       }
       flush();
       current = {
-        heading: (match[2] ?? '').trim(),
-        level: (match[1] ?? '#').length,
+        heading: (headingMatch[2] ?? '').trim(),
+        level: (headingMatch[1] ?? '#').length,
         body: '',
         startLine: i,
       };

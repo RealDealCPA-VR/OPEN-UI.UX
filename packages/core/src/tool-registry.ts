@@ -1,4 +1,5 @@
 import {
+  ToolCancelledError,
   ToolInputError,
   ToolNotFoundError,
   type PermissionTier,
@@ -45,6 +46,9 @@ export class ToolRegistry {
   async execute(name: string, input: unknown, ctx: ToolContext): Promise<unknown> {
     const tool = this.tools.get(name);
     if (!tool) throw new ToolNotFoundError(name);
+    if (ctx.signal.aborted) {
+      throw new ToolCancelledError(name, ctx.signal.reason);
+    }
     const parsed = tool.inputZod.safeParse(input);
     if (!parsed.success) throw new ToolInputError(name, parsed.error.issues);
     return tool.execute(parsed.data, ctx);

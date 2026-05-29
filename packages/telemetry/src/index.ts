@@ -1,9 +1,14 @@
+import { createHmac, randomBytes } from 'node:crypto';
 import { z } from 'zod';
 
 export const telemetryConfigSchema = z.object({
   enabled: z.boolean(),
   apiKey: z.string().default(''),
   host: z.string().url().nullable().optional(),
+  salt: z.string().optional(),
+  allowedHosts: z.array(z.string()).optional(),
+  maxQueueSize: z.number().int().min(1).max(100_000).optional(),
+  loadRetryTtlMs: z.number().int().min(0).optional(),
 });
 
 export type TelemetryConfig = z.infer<typeof telemetryConfigSchema>;
@@ -12,7 +17,7 @@ export type TelemetryEventProps = Record<string, string | number | boolean | nul
 
 export interface TelemetryClient {
   readonly enabled: boolean;
-  track(event: string, props?: TelemetryEventProps): void;
+  track(event: string, props?: TelemetryEventProps, distinctId?: string): void;
   identify(distinctId: string, traits?: TelemetryEventProps): void;
   shutdown(): Promise<void>;
 }
@@ -23,6 +28,11 @@ const NOOP_CLIENT: TelemetryClient = {
   identify: () => {},
   shutdown: async () => {},
 };
+
+const DEFAULT_HOST = 'https://us.i.posthog.com';
+const DEFAULT_MAX_QUEUE_SIZE = 500;
+const DEFAULT_LOAD_RETRY_TTL_MS = 5 * 60_000;
+const DEFAULT_ALLOWED_HOSTS = ['posthog.com', 'i.posthog.com', 'us.i.posthog.com'];
 
 interface PostHogLike {
   capture(args: { distinctId: string; event: string; properties: TelemetryEventProps }): void;
@@ -43,47 +53,89 @@ function extractCtor(mod: unknown): PostHogConstructor | null {
   return candidate as PostHogConstructor;
 }
 
-/**
- * Create a telemetry client.
- *
- * - Returns a no-op client immediately if the config is null, disabled, or has no apiKey.
- * - When enabled, the underlying PostHog SDK is loaded lazily on first track/identify
- *   call. Until that point the queued events are buffered; lookups that fail
- *   (e.g. posthog-node not installed) silently fall back to no-op.
- */
+function isHostAllowed(hostUrl: string, allowedHosts: string[]): boolean {
+  try {
+    const parsed = new URL(hostUrl);
+    const host = parsed.hostname.toLowerCase();
+    return allowedHosts.some((allowed) => {
+      const a = allowed.toLowerCase().trim();
+      if (a.length === 0) return false;
+      if (a === host) return true;
+      return host.endsWith(`.${a}`);
+    });
+  } catch {
+    return false;
+  }
+}
+
 export function createTelemetry(config: TelemetryConfig | null | undefined): TelemetryClient {
   if (!config) return NOOP_CLIENT;
-  if (!config.enabled) return NOOP_CLIENT;
-  if (!config.apiKey || config.apiKey.trim() === '') return NOOP_CLIENT;
-  const resolvedConfig: TelemetryConfig = config;
+  const parsed = telemetryConfigSchema.safeParse(config);
+  if (!parsed.success) return NOOP_CLIENT;
+  const resolvedConfig = parsed.data;
+  if (!resolvedConfig.enabled) return NOOP_CLIENT;
+  if (!resolvedConfig.apiKey || resolvedConfig.apiKey.trim() === '') return NOOP_CLIENT;
+
+  const host = resolvedConfig.host ?? DEFAULT_HOST;
+  const allowedHosts = resolvedConfig.allowedHosts ?? DEFAULT_ALLOWED_HOSTS;
+  if (!isHostAllowed(host, allowedHosts)) return NOOP_CLIENT;
+
+  const maxQueueSize = resolvedConfig.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE;
+  const loadRetryTtlMs = resolvedConfig.loadRetryTtlMs ?? DEFAULT_LOAD_RETRY_TTL_MS;
 
   type QueueItem =
-    | { kind: 'track'; event: string; props: TelemetryEventProps }
+    | { kind: 'track'; event: string; props: TelemetryEventProps; distinctId: string }
     | { kind: 'identify'; distinctId: string; traits: TelemetryEventProps };
 
   const queue: QueueItem[] = [];
+  let droppedEvents = 0;
   let resolved: PostHogLike | null = null;
   let loading: Promise<PostHogLike | null> | null = null;
+  let lastLoadFailureAt: number | null = null;
   let disposed = false;
+
+  function enqueue(item: QueueItem): void {
+    if (queue.length >= maxQueueSize) {
+      queue.shift();
+      droppedEvents += 1;
+    }
+    queue.push(item);
+  }
+
+  function shouldAttemptLoad(): boolean {
+    if (resolved) return false;
+    if (disposed) return false;
+    if (loading) return false;
+    if (lastLoadFailureAt === null) return true;
+    return Date.now() - lastLoadFailureAt >= loadRetryTtlMs;
+  }
 
   async function load(): Promise<PostHogLike | null> {
     if (resolved) return resolved;
     if (loading) return loading;
+    if (!shouldAttemptLoad()) return null;
     loading = (async () => {
       try {
         const mod: unknown = await import('posthog-node');
         const Ctor = extractCtor(mod);
-        if (!Ctor) return null;
+        if (!Ctor) {
+          lastLoadFailureAt = Date.now();
+          return null;
+        }
         const client = new Ctor(resolvedConfig.apiKey, {
-          host: resolvedConfig.host ?? 'https://us.i.posthog.com',
+          host,
           flushAt: 20,
           flushInterval: 10_000,
         });
         resolved = client;
+        lastLoadFailureAt = null;
         drainQueue(client);
         return client;
       } catch {
+        lastLoadFailureAt = Date.now();
         return null;
+      } finally {
+        loading = null;
       }
     })();
     return loading;
@@ -96,7 +148,7 @@ export function createTelemetry(config: TelemetryConfig | null | undefined): Tel
       try {
         if (item.kind === 'track') {
           client.capture({
-            distinctId: 'anonymous',
+            distinctId: item.distinctId,
             event: item.event,
             properties: item.props,
           });
@@ -111,19 +163,20 @@ export function createTelemetry(config: TelemetryConfig | null | undefined): Tel
 
   return {
     enabled: true,
-    track(event, props) {
+    track(event, props, distinctId) {
       if (disposed) return;
       const properties = props ?? {};
+      const id = distinctId ?? 'anonymous';
       if (resolved) {
         try {
-          resolved.capture({ distinctId: 'anonymous', event, properties });
+          resolved.capture({ distinctId: id, event, properties });
         } catch {
           // swallow
         }
         return;
       }
-      queue.push({ kind: 'track', event, props: properties });
-      void load();
+      enqueue({ kind: 'track', event, props: properties, distinctId: id });
+      if (shouldAttemptLoad()) void load();
     },
     identify(distinctId, traits) {
       if (disposed) return;
@@ -136,12 +189,12 @@ export function createTelemetry(config: TelemetryConfig | null | undefined): Tel
         }
         return;
       }
-      queue.push({ kind: 'identify', distinctId, traits: props });
-      void load();
+      enqueue({ kind: 'identify', distinctId, traits: props });
+      if (shouldAttemptLoad()) void load();
     },
     async shutdown() {
       disposed = true;
-      const client = resolved ?? (await load());
+      const client = resolved;
       if (client) {
         try {
           await client.shutdown();
@@ -149,18 +202,18 @@ export function createTelemetry(config: TelemetryConfig | null | undefined): Tel
           // ignore
         }
       }
+      void droppedEvents;
     },
   };
 }
 
-/**
- * Stable, anonymized hash of a string. Used to avoid sending raw provider/model
- * IDs that could be cross-referenced against the user. Output is hex.
- */
-export function anonymizeId(input: string): string {
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    hash = (hash * 31 + input.charCodeAt(i)) | 0;
+export function anonymizeId(input: string, salt: string): string {
+  if (typeof salt !== 'string' || salt.length === 0) {
+    throw new Error('anonymizeId requires a non-empty per-install salt');
   }
-  return (hash >>> 0).toString(16);
+  return createHmac('sha256', salt).update(input, 'utf8').digest('hex');
+}
+
+export function generateInstallSalt(): string {
+  return randomBytes(32).toString('hex');
 }

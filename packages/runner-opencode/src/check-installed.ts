@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
+import type { SubagentRunnerInstallCheck } from '@opencodex/core';
 
 const execFileAsync = promisify(execFile);
 
@@ -14,11 +15,7 @@ const CLI_NAME = 'opencode';
 
 const VERSION_RE = /(\d+\.\d+\.\d+(?:[-+][\w.]+)?)/;
 
-export interface InstallCheck {
-  ok: boolean;
-  version?: string;
-  hint?: string;
-}
+export type InstallCheck = SubagentRunnerInstallCheck;
 
 function isTimeoutError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false;
@@ -47,11 +44,33 @@ export async function checkInstalled(cliPath?: string): Promise<InstallCheck> {
 
 function fallbackCandidates(): string[] {
   if (process.platform === 'win32') {
-    return [`C:\\Program Files\\${CLI_NAME}\\${CLI_NAME}.exe`];
+    const list: string[] = [];
+    const localAppData = process.env.LOCALAPPDATA;
+    const appData = process.env.APPDATA;
+    const userProfile = process.env.USERPROFILE;
+    const exts = ['exe', 'cmd', 'bat'];
+    for (const ext of exts) {
+      list.push(`C:\\Program Files\\${CLI_NAME}\\${CLI_NAME}.${ext}`);
+      if (localAppData) {
+        list.push(`${localAppData}\\Programs\\${CLI_NAME}\\${CLI_NAME}.${ext}`);
+        list.push(`${localAppData}\\${CLI_NAME}\\${CLI_NAME}.${ext}`);
+      }
+      if (userProfile) {
+        list.push(`${userProfile}\\scoop\\shims\\${CLI_NAME}.${ext}`);
+      }
+      if (appData) {
+        list.push(`${appData}\\npm\\${CLI_NAME}.${ext}`);
+      }
+    }
+    return list;
   }
   const home = process.env.HOME ?? '';
   const list = [`/opt/homebrew/bin/${CLI_NAME}`, `/usr/local/bin/${CLI_NAME}`];
-  if (home) list.push(`${home}/.cargo/bin/${CLI_NAME}`);
+  if (home) {
+    list.push(`${home}/.cargo/bin/${CLI_NAME}`);
+    list.push(`${home}/.local/bin/${CLI_NAME}`);
+    list.push(`${home}/.npm-global/bin/${CLI_NAME}`);
+  }
   return list;
 }
 

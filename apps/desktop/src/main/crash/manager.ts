@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron';
-import { initCrash, type CrashClient } from '@opencodex/crash-reporting';
+import { closeCrash, initCrash, type CrashClient } from '@opencodex/crash-reporting';
 import { logger } from '../logger';
 import {
   getCrashReportingSettings,
@@ -13,10 +13,9 @@ let currentConfig: CrashReportingConfig | null = null;
 
 function resolveConfig(): CrashReportingConfig {
   const stored = getCrashReportingSettings();
-  const dsn = process.env['OPENCODEX_SENTRY_DSN']?.trim() || stored.dsn;
   return {
     enabled: stored.enabled,
-    dsn,
+    dsn: stored.dsn,
     environment: stored.environment,
   };
 }
@@ -34,20 +33,39 @@ export function getCrashReportingConfig(): CrashReportingConfig {
   return resolveConfig();
 }
 
-export async function initCrashReporting(): Promise<void> {
-  currentConfig = resolveConfig();
+async function installClient(config: CrashReportingConfig): Promise<CrashClient | null> {
+  const stored = getCrashReportingSettings();
   try {
-    client = await initCrash({
-      enabled: currentConfig.enabled,
-      dsn: currentConfig.dsn,
-      environment: currentConfig.environment,
+    const next = await initCrash({
+      enabled: config.enabled,
+      dsn: config.dsn,
+      environment: config.environment,
       release: app.getVersion(),
+      ...(stored.allowedHosts.length > 0 ? { allowedHosts: stored.allowedHosts } : {}),
     });
-    if (client.enabled) {
-      logger.info('crash reporting enabled');
-    }
+    return next;
   } catch (err) {
     logger.warn({ err }, 'failed to init crash reporting');
+    return null;
+  }
+}
+
+async function teardownClient(): Promise<void> {
+  if (!client) return;
+  client = null;
+  try {
+    await closeCrash();
+  } catch (err) {
+    logger.warn({ err }, 'failed to close crash reporting');
+  }
+}
+
+export async function initCrashReporting(): Promise<void> {
+  currentConfig = resolveConfig();
+  const next = await installClient(currentConfig);
+  client = next;
+  if (next?.enabled) {
+    logger.info('crash reporting enabled');
   }
 }
 
@@ -55,26 +73,31 @@ export async function updateCrashReportingConfig(
   patch: Partial<CrashReportingSettings>,
 ): Promise<CrashReportingConfig> {
   const next = setCrashReportingSettings(patch);
-  currentConfig = {
+  const nextConfig: CrashReportingConfig = {
     enabled: next.enabled,
-    dsn: process.env['OPENCODEX_SENTRY_DSN']?.trim() || next.dsn,
+    dsn: next.dsn,
     environment: next.environment,
   };
-  // We do not re-init on toggle within the same process — Sentry's main client
-  // cannot be cleanly torn down. The new config takes effect on next launch.
-  // For first-time enable, we install live so the user gets coverage from this moment.
-  if (currentConfig.enabled && !client?.enabled) {
-    try {
-      client = await initCrash({
-        enabled: currentConfig.enabled,
-        dsn: currentConfig.dsn,
-        environment: currentConfig.environment,
-        release: app.getVersion(),
-      });
-    } catch (err) {
-      logger.warn({ err }, 'failed to enable crash reporting');
-    }
+
+  const wasEnabled = client?.enabled === true;
+  const willBeEnabled = nextConfig.enabled && nextConfig.dsn.trim().length > 0;
+
+  if (wasEnabled && !willBeEnabled) {
+    await teardownClient();
+  } else if (!wasEnabled && willBeEnabled) {
+    const installed = await installClient(nextConfig);
+    client = installed;
+  } else if (wasEnabled && willBeEnabled) {
+    await teardownClient();
+    const installed = await installClient(nextConfig);
+    client = installed;
   }
+
+  currentConfig = nextConfig;
   broadcastConfig();
   return currentConfig;
+}
+
+export async function shutdownCrashReporting(): Promise<void> {
+  await teardownClient();
 }

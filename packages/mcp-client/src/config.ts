@@ -12,12 +12,14 @@ export const SseServerConfigSchema = z.object({
   kind: z.literal('sse'),
   url: z.string().url(),
   headers: z.record(z.string()).optional(),
+  hostAllowlist: z.array(z.string()).optional(),
 });
 
 export const HttpServerConfigSchema = z.object({
   kind: z.literal('http'),
   url: z.string().url(),
   headers: z.record(z.string()).optional(),
+  hostAllowlist: z.array(z.string()).optional(),
 });
 
 export const McpServerConfigSchema = z.discriminatedUnion('kind', [

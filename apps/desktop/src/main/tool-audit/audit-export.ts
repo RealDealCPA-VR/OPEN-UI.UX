@@ -8,6 +8,7 @@ import {
   canonicalizeBundle,
 } from '@opencodex/audit-verify';
 import { getDb } from '../storage/db';
+import { SQLITE_LIKE_ESCAPE_CLAUSE, wrapContains } from '../storage/like-escape';
 import { getOrCreateAuditSigningKey, signAuditPayload } from './audit-signing';
 import { getSettings, updateSettings } from '../storage/settings';
 import type {
@@ -78,8 +79,20 @@ function collectEntries(
   if (req.errorState === 'error') filters.push(`tc.is_error = 1`);
   else if (req.errorState === 'success') filters.push(`tc.is_error = 0`);
   if (req.runnerIds && req.runnerIds.length > 0) {
-    filters.push(`tc.runner_id IN (${req.runnerIds.map(() => '?').join(', ')})`);
-    params.push(...req.runnerIds);
+    // Mirror the sentinel handling in queryToolCalls so an "OpenCodex" filter
+    // catches rows where runner_id is NULL/''/'internal'.
+    const opencodexSentinels = new Set(['__opencodex__', 'internal']);
+    const externalIds = req.runnerIds.filter((id) => !opencodexSentinels.has(id));
+    const includeOpencodex = req.runnerIds.some((id) => opencodexSentinels.has(id));
+    const parts: string[] = [];
+    if (externalIds.length > 0) {
+      parts.push(`tc.runner_id IN (${externalIds.map(() => '?').join(', ')})`);
+      params.push(...externalIds);
+    }
+    if (includeOpencodex) {
+      parts.push(`(tc.runner_id IS NULL OR tc.runner_id = '' OR tc.runner_id = 'internal')`);
+    }
+    if (parts.length > 0) filters.push(`(${parts.join(' OR ')})`);
   }
   if (req.triggerSource) {
     filters.push(`tc.trigger_source = ?`);
@@ -94,9 +107,8 @@ function collectEntries(
     params.push(req.to);
   }
   if (req.filePath) {
-    // Naive but useful: match the file path inside the input JSON.
-    filters.push(`tc.input_json LIKE ?`);
-    params.push(`%${escapeLikeFragment(req.filePath)}%`);
+    filters.push(`tc.input_json LIKE ? ${SQLITE_LIKE_ESCAPE_CLAUSE}`);
+    params.push(wrapContains(req.filePath));
   }
 
   const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
@@ -139,10 +151,6 @@ function parseJsonOrRaw(raw: string): unknown {
   } catch {
     return raw;
   }
-}
-
-function escapeLikeFragment(s: string): string {
-  return s.replace(/[\\%_]/g, (m) => `\\${m}`);
 }
 
 /** Pull a best-effort file path out of a tool input payload. */

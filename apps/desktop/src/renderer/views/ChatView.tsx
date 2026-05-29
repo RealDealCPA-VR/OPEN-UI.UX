@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AddToMemoryButton } from '../components/AddToMemoryButton';
+import { ChatBudgetOverride } from '../components/ChatBudgetOverride';
 import { CloudProviderTip } from '../components/CloudProviderTip';
 import { ModelPicker } from '../components/ModelPicker';
 import { ProviderSwitchButton } from '../components/ProviderSwitchButton';
@@ -598,7 +599,10 @@ function ChatPane({
     }
   };
 
-  const handleRerun = (prompt: string): void => {
+  // Stable ref so memoized <MessageBubble /> children don't re-render on every
+  // streaming text_delta. Without this, ChatPane's re-render on each delta
+  // would invalidate the memo via prop identity change.
+  const handleRerun = useCallback((prompt: string): void => {
     setInput(prompt);
     const el = inputRef.current;
     if (el) {
@@ -606,7 +610,7 @@ function ChatPane({
       const len = prompt.length;
       el.setSelectionRange(len, len);
     }
-  };
+  }, []);
 
   const visibleMessages = chat.draft
     ? chat.messages.filter((m) => m.id !== chat.draft?.messageId)
@@ -669,6 +673,7 @@ function ChatPane({
       <header className="chat-header">
         <div className="chat-header-title">{modelName}</div>
         <UsageSummary usage={chat.usage} />
+        <ChatBudgetOverride conversationId={chat.activeId} disabled={chat.streaming} />
         <ProviderSwitchButton
           conversationId={chat.activeId}
           disabled={chat.streaming}
@@ -1133,13 +1138,12 @@ function ExportMenu({
   );
 }
 
-function MessageBubble({
-  message,
-  onRerun,
-}: {
+interface MessageBubbleProps {
   message: StoredMessage;
   onRerun: (prompt: string) => void;
-}): JSX.Element {
+}
+
+function MessageBubbleInner({ message, onRerun }: MessageBubbleProps): JSX.Element {
   const hasBlocks = message.contentBlocks !== null && message.contentBlocks.length > 0;
   const memoryHeading = useMemo(
     () => `Chat ${new Date(message.createdAt).toISOString().slice(0, 10)}`,
@@ -1173,6 +1177,31 @@ function MessageBubble({
     </article>
   );
 }
+
+// Stored messages are immutable once persisted, so a shallow id+content
+// comparator is sufficient — and load-bearing during streaming so the
+// per-delta state update on the active draft doesn't re-render the entire
+// finalized history above it.
+export function messageBubblePropsEqual(
+  prev: MessageBubbleProps,
+  next: MessageBubbleProps,
+): boolean {
+  if (prev.onRerun !== next.onRerun) return false;
+  const a = prev.message;
+  const b = next.message;
+  return (
+    a.id === b.id &&
+    a.content === b.content &&
+    a.role === b.role &&
+    a.contentBlocks === b.contentBlocks &&
+    a.inputTokens === b.inputTokens &&
+    a.outputTokens === b.outputTokens &&
+    a.costUsd === b.costUsd &&
+    a.createdAt === b.createdAt
+  );
+}
+
+const MessageBubble = memo(MessageBubbleInner, messageBubblePropsEqual);
 
 function DraftBubble({
   draft,

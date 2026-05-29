@@ -227,4 +227,33 @@ describe('buildChatRequestBody', () => {
     );
     expect(body.tools).toBeUndefined();
   });
+
+  it('maps toolChoice strings to Anthropic shape', () => {
+    expect(
+      buildChatRequestBody(
+        { model: 'claude-sonnet-4-6', messages: [], toolChoice: 'auto' },
+        { stream: false },
+      ).tool_choice,
+    ).toEqual({ type: 'auto' });
+    expect(
+      buildChatRequestBody(
+        { model: 'claude-sonnet-4-6', messages: [], toolChoice: 'required' },
+        { stream: false },
+      ).tool_choice,
+    ).toEqual({ type: 'any' });
+    expect(
+      buildChatRequestBody(
+        { model: 'claude-sonnet-4-6', messages: [], toolChoice: 'none' },
+        { stream: false },
+      ).tool_choice,
+    ).toEqual({ type: 'none' });
+  });
+
+  it('maps named toolChoice to tool-type selector', () => {
+    const body = buildChatRequestBody(
+      { model: 'claude-sonnet-4-6', messages: [], toolChoice: { name: 'read_file' } },
+      { stream: false },
+    );
+    expect(body.tool_choice).toEqual({ type: 'tool', name: 'read_file' });
+  });
 });

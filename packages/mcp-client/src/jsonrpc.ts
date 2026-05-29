@@ -44,18 +44,27 @@ export class JsonRpcError extends Error {
   }
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export function isResponse(message: unknown): message is JsonRpcResponse {
+  if (!isPlainObject(message)) return false;
+  if ('method' in message) return false;
+  if (!('result' in message) && !('error' in message)) return false;
   return jsonRpcResponseSchema.safeParse(message).success;
 }
 
 export function isNotification(message: unknown): message is JsonRpcNotification {
-  if (typeof message !== 'object' || message === null) return false;
+  if (!isPlainObject(message)) return false;
   if ('id' in message) return false;
+  if ('result' in message || 'error' in message) return false;
   return jsonRpcNotificationSchema.safeParse(message).success;
 }
 
 export function isRequest(message: unknown): message is JsonRpcRequest {
-  if (typeof message !== 'object' || message === null) return false;
+  if (!isPlainObject(message)) return false;
   if (!('id' in message)) return false;
+  if ('result' in message || 'error' in message) return false;
   return jsonRpcRequestSchema.safeParse(message).success;
 }

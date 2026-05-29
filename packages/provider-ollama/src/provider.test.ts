@@ -97,7 +97,7 @@ describe('ollamaProvider', () => {
       name: 'grep',
       arguments: { q: 'foo' },
     });
-    expect(toolCall && 'id' in toolCall && toolCall.id).toMatch(/^call_\d+_grep$/);
+    expect(toolCall && 'id' in toolCall && toolCall.id).toMatch(/^call_[0-9a-f-]{36}$/);
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'tool_use' });
   });
 

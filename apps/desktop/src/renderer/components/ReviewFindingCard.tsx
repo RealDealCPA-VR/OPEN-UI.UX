@@ -110,6 +110,71 @@ export function ReviewFindingCard({
           ))}
         </ul>
       )}
+      {(finding.auditPrompt || finding.auditRetrievedContext.length > 0) && (
+        <details className="review-finding-audit" style={{ fontSize: 12 }}>
+          <summary
+            style={{
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              userSelect: 'none',
+            }}
+          >
+            Show prompt &amp; retrieved context
+          </summary>
+          {finding.auditRetrievedContext.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  marginBottom: 4,
+                }}
+              >
+                Retrieved context
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-muted)' }}>
+                {finding.auditRetrievedContext.map((snippet, i) => (
+                  <li key={`${finding.id}-audit-ctx-${i}`} style={{ marginBottom: 2 }}>
+                    <code style={{ whiteSpace: 'pre-wrap' }}>{snippet}</code>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {finding.auditPrompt && (
+            <div style={{ marginTop: 6 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  marginBottom: 4,
+                }}
+              >
+                LLM prompt
+              </div>
+              <pre
+                aria-label="Audit prompt"
+                style={{
+                  margin: 0,
+                  background: 'var(--bg-sunken)',
+                  color: 'var(--text-pre, var(--text-primary))',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm, 6px)',
+                  padding: 8,
+                  fontSize: 11,
+                  maxHeight: 240,
+                  overflow: 'auto',
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                {finding.auditPrompt}
+              </pre>
+            </div>
+          )}
+        </details>
+      )}
       <footer style={{ display: 'flex', gap: 8 }}>
         {onOpenInCodebase && (
           <button type="button" className="btn" onClick={onOpenInCodebase} style={{ fontSize: 12 }}>

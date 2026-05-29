@@ -55,6 +55,10 @@ export interface GenerateFindingsResult {
   findings: ReviewFinding[];
   rawText: string;
   warning: string | null;
+  /** The exact system+user prompt sent to the LLM. Stamped onto each finding's `auditPrompt`. */
+  auditPrompt: string;
+  /** Extra material we put in front of the LLM (currently the reviewer notes). */
+  auditRetrievedContext: string[];
 }
 
 export interface GenerateFindingsOptions {
@@ -99,10 +103,16 @@ export async function generateFindings(
   options: GenerateFindingsOptions,
 ): Promise<GenerateFindingsResult> {
   const system = options.systemPrompt ?? REVIEW_SYSTEM_PROMPT;
+  const userPrompt = buildUserPrompt(options.diff, options.extraContext);
   const messages: Message[] = [
     { role: 'system', content: system },
-    { role: 'user', content: buildUserPrompt(options.diff, options.extraContext) },
+    { role: 'user', content: userPrompt },
   ];
+  const auditPrompt = `SYSTEM:\n${system}\n\nUSER:\n${userPrompt}`;
+  const auditRetrievedContext: string[] =
+    options.extraContext && options.extraContext.trim().length > 0
+      ? [options.extraContext.trim()]
+      : [];
 
   let buffer = '';
   let stopReason: string | null = null;
@@ -128,6 +138,8 @@ export async function generateFindings(
       findings: [],
       rawText: buffer,
       warning: `Provider did not return JSON (stopReason=${stopReason ?? 'unknown'})`,
+      auditPrompt,
+      auditRetrievedContext,
     };
   }
 
@@ -139,6 +151,8 @@ export async function generateFindings(
       findings: [],
       rawText: buffer,
       warning: `Failed to parse findings JSON: ${err instanceof Error ? err.message : String(err)}`,
+      auditPrompt,
+      auditRetrievedContext,
     };
   }
 
@@ -154,8 +168,10 @@ export async function generateFindings(
       suggestedFix: f.suggestedFix ?? null,
       retrievedContext: f.retrievedContext ?? [],
       prompt: f.prompt ?? null,
+      auditPrompt,
+      auditRetrievedContext,
     }),
   );
 
-  return { findings, rawText: buffer, warning: null };
+  return { findings, rawText: buffer, warning: null, auditPrompt, auditRetrievedContext };
 }

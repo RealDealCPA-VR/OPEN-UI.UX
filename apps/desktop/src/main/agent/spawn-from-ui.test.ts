@@ -150,6 +150,12 @@ describe('spawnFromUiAsync — runner wiring', () => {
   });
 
   it('abort signal terminates the runner iterator and marks the run failed', async () => {
+    // External runner needs a git workspace — mock the check.
+    // spawn-from-ui calls isGitRepo twice (once up-front and once via
+    // bootstrapWorktreeOrSkip — duplicate check tracked separately in 15.x),
+    // so both need to succeed.
+    const { isGitRepo } = await import('./worktrees');
+    vi.mocked(isGitRepo).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
     let abortObserved = false;
     registerForTest(
       makeFakeRunner('slow', {
@@ -179,6 +185,10 @@ describe('spawnFromUiAsync — runner wiring', () => {
     const run = listAgentRuns().find((r) => r.id === runId);
     expect(run).toBeDefined();
     expect(abortObserved).toBe(true);
-    expect(run!.status).toBe('failed');
+    // 15.5 distinguished cancellation from failure — the stopReason is
+    // 'cancelled' (a clean user-driven termination), so status is 'completed'
+    // rather than 'failed'.
+    expect(run!.stopReason).toBe('cancelled');
+    expect(run!.status).toBe('completed');
   });
 });

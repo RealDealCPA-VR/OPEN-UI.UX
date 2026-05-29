@@ -110,16 +110,21 @@ describe('probeRunnerAuth', () => {
   });
 
   it('re-spawns after cache TTL of 60s elapses', async () => {
-    vi.useFakeTimers();
-    setExec({ stdout: 'echo\n' });
-    await probeRunnerAuth('claude-code');
-    const after1 = spawnCount();
-    vi.advanceTimersByTime(61_000);
-    setExec({ stdout: 'echo\n' });
-    const promise = probeRunnerAuth('claude-code');
-    await vi.runAllTimersAsync();
-    await promise;
-    expect(spawnCount()).toBeGreaterThan(after1);
+    // Fake `Date` so the cache TTL check advances, but leave `setImmediate`
+    // real — the execFileMock above uses it to deliver fake results
+    // asynchronously, and faking it would deadlock the awaited probe call.
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    try {
+      setExec({ stdout: 'echo\n' });
+      await probeRunnerAuth('claude-code');
+      const after1 = spawnCount();
+      vi.advanceTimersByTime(61_000);
+      setExec({ stdout: 'echo\n' });
+      await probeRunnerAuth('claude-code');
+      expect(spawnCount()).toBeGreaterThan(after1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('surfaces a friendly hint when the probe times out', async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentRun } from '../../shared/agent-runs';
 import type { WorktreePreviewResponse } from '../../shared/agent-tree';
 import {
@@ -95,6 +95,13 @@ function AgentTreeRow({ node, now, paused, onSelectRun }: AgentTreeRowProps): JS
   const [preview, setPreview] = useState<WorktreePreviewResponse | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const isPaused = paused.has(node.run.id);
 
   const subtree = useMemo(() => aggregateSubtreeCost(node), [node]);
@@ -125,12 +132,14 @@ function AgentTreeRow({ node, now, paused, onSelectRun }: AgentTreeRowProps): JS
     setPreviewError(null);
     try {
       const r = await b.getWorktreePreview(node.run.id);
+      if (!mountedRef.current) return;
       setPreview(r);
       if (r.error) setPreviewError(r.error);
     } catch (err) {
+      if (!mountedRef.current) return;
       setPreviewError(err instanceof Error ? err.message : String(err));
     } finally {
-      setPreviewLoading(false);
+      if (mountedRef.current) setPreviewLoading(false);
     }
   }, [node.run.id]);
 

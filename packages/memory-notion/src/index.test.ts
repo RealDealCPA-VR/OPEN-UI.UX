@@ -231,23 +231,311 @@ describe('NotionMemory.createPage', () => {
     const body = JSON.parse(String(calls[0]?.init?.body ?? '{}')) as Record<string, unknown>;
     expect(body['parent']).toEqual({ type: 'page_id', page_id: 'parent-1' });
     const children = body['children'] as unknown[];
-    expect(children).toHaveLength(2);
+    expect(children).toHaveLength(1);
+    const properties = body['properties'] as Record<string, unknown>;
+    expect(properties['title']).toBeDefined();
+  });
+
+  it('omits children when no body content is provided', async () => {
+    const { fetchImpl, calls } = makeMockFetch([
+      () =>
+        jsonResponse({
+          object: 'page',
+          id: 'np-2',
+          url: 'https://notion.so/np-2',
+          properties: {},
+        }),
+    ]);
+    const mem = new NotionMemory({ token: 't', fetchImpl });
+    await mem.createPage('parent-1', 'Title only');
+    const body = JSON.parse(String(calls[0]?.init?.body ?? '{}')) as Record<string, unknown>;
+    expect(body['children']).toBeUndefined();
   });
 });
 
 describe('NotionApiError mapping', () => {
-  it('throws NotionApiError on non-2xx', async () => {
+  it('throws NotionApiError on non-2xx after retries are exhausted', async () => {
     const { fetchImpl } = makeMockFetch([
       () =>
         new Response(
           JSON.stringify({ object: 'error', code: 'rate_limited', message: 'slow down' }),
-          {
-            status: 429,
-          },
+          { status: 429 },
+        ),
+      () =>
+        new Response(
+          JSON.stringify({ object: 'error', code: 'rate_limited', message: 'slow down' }),
+          { status: 429 },
+        ),
+      () =>
+        new Response(
+          JSON.stringify({ object: 'error', code: 'rate_limited', message: 'slow down' }),
+          { status: 429 },
+        ),
+      () =>
+        new Response(
+          JSON.stringify({ object: 'error', code: 'rate_limited', message: 'slow down' }),
+          { status: 429 },
         ),
     ]);
-    const mem = new NotionMemory({ token: 't', fetchImpl });
+    const mem = new NotionMemory({
+      token: 't',
+      fetchImpl,
+      clientOptions: { sleepImpl: async () => undefined },
+    });
     await expect(mem.search('x')).rejects.toBeInstanceOf(NotionApiError);
+  });
+});
+
+describe('NotionClient retry behavior', () => {
+  it('retries on 429 and succeeds on subsequent attempt', async () => {
+    let calls = 0;
+    const { fetchImpl } = makeMockFetch([
+      () => {
+        calls++;
+        return new Response(
+          JSON.stringify({ object: 'error', code: 'rate_limited', message: 'slow down' }),
+          {
+            status: 429,
+            headers: { 'retry-after': '0' },
+          },
+        );
+      },
+      () => {
+        calls++;
+        return jsonResponse({ object: 'list', results: [], next_cursor: null });
+      },
+    ]);
+    const mem = new NotionMemory({
+      token: 't',
+      fetchImpl,
+      clientOptions: { sleepImpl: async () => undefined },
+    });
+    const r = await mem.search('q');
+    expect(r).toEqual([]);
+    expect(calls).toBe(2);
+  });
+
+  it('retries on 5xx errors', async () => {
+    let calls = 0;
+    const { fetchImpl } = makeMockFetch([
+      () => {
+        calls++;
+        return new Response('boom', { status: 503 });
+      },
+      () => {
+        calls++;
+        return jsonResponse({ object: 'list', results: [], next_cursor: null });
+      },
+    ]);
+    const mem = new NotionMemory({
+      token: 't',
+      fetchImpl,
+      clientOptions: { sleepImpl: async () => undefined },
+    });
+    await mem.search('q');
+    expect(calls).toBe(2);
+  });
+
+  it('does not retry on 4xx errors other than 429', async () => {
+    let calls = 0;
+    const { fetchImpl } = makeMockFetch([
+      () => {
+        calls++;
+        return new Response(
+          JSON.stringify({ object: 'error', code: 'validation_error', message: 'bad' }),
+          { status: 400 },
+        );
+      },
+    ]);
+    const mem = new NotionMemory({
+      token: 't',
+      fetchImpl,
+      clientOptions: { sleepImpl: async () => undefined },
+    });
+    await expect(mem.search('q')).rejects.toBeInstanceOf(NotionApiError);
+    expect(calls).toBe(1);
+  });
+});
+
+describe('NotionMemory.search pagination', () => {
+  it('follows next_cursor until exhausted', async () => {
+    const { fetchImpl, calls } = makeMockFetch([
+      () =>
+        jsonResponse({
+          object: 'list',
+          results: [
+            {
+              object: 'page',
+              id: 'p1',
+              properties: {
+                Name: {
+                  type: 'title',
+                  title: [{ type: 'text', plain_text: 'one', text: { content: 'one' } }],
+                },
+              },
+            },
+          ],
+          next_cursor: 'cursor-2',
+          has_more: true,
+        }),
+      () =>
+        jsonResponse({
+          object: 'list',
+          results: [
+            {
+              object: 'page',
+              id: 'p2',
+              properties: {
+                Name: {
+                  type: 'title',
+                  title: [{ type: 'text', plain_text: 'two', text: { content: 'two' } }],
+                },
+              },
+            },
+          ],
+          next_cursor: null,
+          has_more: false,
+        }),
+    ]);
+    const mem = new NotionMemory({ token: 't', fetchImpl });
+    const hits = await mem.search('q');
+    expect(hits.map((h) => h.id)).toEqual(['p1', 'p2']);
+    const secondBody = JSON.parse(String(calls[1]?.init?.body ?? '{}')) as Record<string, unknown>;
+    expect(secondBody['start_cursor']).toBe('cursor-2');
+  });
+
+  it('stops at maxResults', async () => {
+    const { fetchImpl } = makeMockFetch([
+      () =>
+        jsonResponse({
+          object: 'list',
+          results: [
+            {
+              object: 'page',
+              id: 'p1',
+              properties: {
+                Name: {
+                  type: 'title',
+                  title: [{ type: 'text', plain_text: 'a', text: { content: 'a' } }],
+                },
+              },
+            },
+            {
+              object: 'page',
+              id: 'p2',
+              properties: {
+                Name: {
+                  type: 'title',
+                  title: [{ type: 'text', plain_text: 'b', text: { content: 'b' } }],
+                },
+              },
+            },
+          ],
+          next_cursor: 'c2',
+          has_more: true,
+        }),
+    ]);
+    const mem = new NotionMemory({ token: 't', fetchImpl });
+    const hits = await mem.search('q', undefined, { maxResults: 1 });
+    expect(hits).toHaveLength(1);
+  });
+});
+
+describe('NotionMemory.readPage pagination', () => {
+  it('paginates block children', async () => {
+    const { fetchImpl, calls } = makeMockFetch([
+      () =>
+        jsonResponse({
+          object: 'page',
+          id: 'p1',
+          properties: {
+            Name: {
+              type: 'title',
+              title: [{ type: 'text', plain_text: 'P', text: { content: 'P' } }],
+            },
+          },
+        }),
+      () =>
+        jsonResponse({
+          object: 'list',
+          results: [
+            {
+              object: 'block',
+              id: 'b1',
+              type: 'paragraph',
+              paragraph: {
+                rich_text: [{ type: 'text', plain_text: 'one', text: { content: 'one' } }],
+              },
+            },
+          ],
+          next_cursor: 'c-next',
+          has_more: true,
+        }),
+      () =>
+        jsonResponse({
+          object: 'list',
+          results: [
+            {
+              object: 'block',
+              id: 'b2',
+              type: 'paragraph',
+              paragraph: {
+                rich_text: [{ type: 'text', plain_text: 'two', text: { content: 'two' } }],
+              },
+            },
+          ],
+          next_cursor: null,
+          has_more: false,
+        }),
+    ]);
+    const mem = new NotionMemory({ token: 't', fetchImpl });
+    const r = await mem.readPage('p1');
+    expect(r.content).toContain('one');
+    expect(r.content).toContain('two');
+    expect(calls[2]?.url).toContain('start_cursor=c-next');
+  });
+});
+
+describe('NotionMemory.readPage property summarization', () => {
+  it('summarizes number, date range, people, relation, formula', async () => {
+    const { fetchImpl } = makeMockFetch([
+      () =>
+        jsonResponse({
+          object: 'page',
+          id: 'p1',
+          properties: {
+            Count: { type: 'number', number: 42 },
+            When: { type: 'date', date: { start: '2025-01-01', end: '2025-01-31' } },
+            Owners: {
+              type: 'people',
+              people: [
+                { id: 'u1', name: 'Alice' },
+                { id: 'u2', name: 'Bob' },
+              ],
+            },
+            Linked: {
+              type: 'relation',
+              relation: [{ id: 'rel-1' }, { id: 'rel-2' }],
+            },
+            Calc: { type: 'formula', formula: { type: 'string', string: 'computed' } },
+            Status: { type: 'status', status: { name: 'In progress' } },
+            Email: { type: 'email', email: 'a@b.c' },
+            Unknown: { type: 'mystery', mystery: { foo: 'bar' } },
+          },
+        }),
+      () => jsonResponse({ object: 'list', results: [], next_cursor: null }),
+    ]);
+    const mem = new NotionMemory({ token: 't', fetchImpl });
+    const r = await mem.readPage('p1');
+    expect(r.properties['Count']).toBe('42');
+    expect(r.properties['When']).toBe('2025-01-01..2025-01-31');
+    expect(r.properties['Owners']).toBe('Alice, Bob');
+    expect(r.properties['Linked']).toBe('rel-1, rel-2');
+    expect(r.properties['Calc']).toBe('computed');
+    expect(r.properties['Status']).toBe('In progress');
+    expect(r.properties['Email']).toBe('a@b.c');
+    expect(r.properties['Unknown']).toBeDefined();
+    expect(r.properties['Unknown']).toContain('mystery');
   });
 });
 

@@ -1,5 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import type { ChatEvent, StopReason } from '@opencodex/core';
+import { computeCostUsd } from '@opencodex/core';
 import type { ChatChunk } from './response-schemas';
+import { findModel } from './models';
 
 function mapStopReason(reason: string | undefined, sawToolCall: boolean): StopReason {
   if (sawToolCall) return 'tool_use';
@@ -13,10 +16,14 @@ function mapStopReason(reason: string | undefined, sawToolCall: boolean): StopRe
   }
 }
 
+export interface StreamChunksOptions {
+  model?: string;
+}
+
 export async function* streamChunksToEvents(
   chunks: AsyncIterable<ChatChunk>,
+  opts: StreamChunksOptions = {},
 ): AsyncGenerator<ChatEvent, void, void> {
-  let toolCounter = 0;
   let sawToolCall = false;
   let doneReason: string | undefined;
   let promptTokens: number | undefined;
@@ -41,11 +48,10 @@ export async function* streamChunksToEvents(
         } else {
           args = raw;
         }
-        toolCounter += 1;
         sawToolCall = true;
         yield {
           type: 'tool_call',
-          id: `call_${toolCounter}_${name}`,
+          id: `call_${randomUUID()}`,
           name,
           arguments: args,
         };
@@ -59,10 +65,17 @@ export async function* streamChunksToEvents(
   }
 
   if (promptTokens !== undefined || completionTokens !== undefined) {
+    const pricing = opts.model ? findModel(opts.model)?.pricing : undefined;
+    const cost = computeCostUsd({
+      inputTokens: promptTokens ?? 0,
+      outputTokens: completionTokens ?? 0,
+      ...(pricing ? { pricing } : {}),
+    });
     yield {
       type: 'usage',
       inputTokens: promptTokens ?? 0,
       outputTokens: completionTokens ?? 0,
+      ...(cost !== undefined ? { costUsd: cost } : {}),
     };
   }
 

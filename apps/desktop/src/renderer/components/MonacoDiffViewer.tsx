@@ -32,6 +32,8 @@ const DiffEditor = lazy(async () => {
   return { default: DE };
 });
 
+export type DiffLayout = 'side-by-side' | 'unified';
+
 export interface MonacoDiffViewerProps {
   originalText: string;
   modifiedText: string;
@@ -42,6 +44,8 @@ export interface MonacoDiffViewerProps {
   onReject?: () => void;
   onAcceptHunk?: (hunkIndex: number, hunk: MonacoDiffHunk) => void;
   onRejectHunk?: (hunkIndex: number, hunk: MonacoDiffHunk) => void;
+  initialLayout?: DiffLayout;
+  showLayoutToggle?: boolean;
 }
 
 export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
@@ -55,12 +59,15 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
     onReject,
     onAcceptHunk,
     onRejectHunk,
+    initialLayout = 'side-by-side',
+    showLayoutToggle = true,
   } = props;
 
   const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [hunks, setHunks] = useState<MonacoDiffHunk[]>([]);
   const [activeHunkIdx, setActiveHunkIdx] = useState(0);
+  const [layout, setLayout] = useState<DiffLayout>(initialLayout);
 
   const refreshHunks = useCallback(() => {
     const ed = editorRef.current;
@@ -207,6 +214,61 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
       <div className="monaco-diff-viewer-toolbar">
         <span className="monaco-diff-viewer-summary">{summarizeHunks(hunks)}</span>
         <div className="monaco-diff-viewer-toolbar-actions">
+          {showLayoutToggle ? (
+            <div
+              className="monaco-diff-viewer-layout-toggle"
+              role="group"
+              aria-label="Diff layout"
+              style={{
+                display: 'inline-flex',
+                gap: 0,
+                marginRight: 8,
+                border: '1px solid var(--border, #333)',
+                borderRadius: 4,
+                overflow: 'hidden',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setLayout('side-by-side')}
+                aria-pressed={layout === 'side-by-side'}
+                title="Side-by-side view"
+                style={{
+                  padding: '2px 8px',
+                  fontSize: 11,
+                  background:
+                    layout === 'side-by-side'
+                      ? 'var(--bg-selected, #2c2c2c)'
+                      : 'var(--bg-elevated, #1e1e1e)',
+                  color: 'var(--text-primary, #ddd)',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                Split
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayout('unified')}
+                aria-pressed={layout === 'unified'}
+                title="Unified (inline) view"
+                style={{
+                  padding: '2px 8px',
+                  fontSize: 11,
+                  background:
+                    layout === 'unified'
+                      ? 'var(--bg-selected, #2c2c2c)'
+                      : 'var(--bg-elevated, #1e1e1e)',
+                  color: 'var(--text-primary, #ddd)',
+                  border: 'none',
+                  borderLeft: '1px solid var(--border, #333)',
+                  cursor: 'pointer',
+                }}
+              >
+                Unified
+              </button>
+            </div>
+          ) : null}
           {hunks.length > 0 && (onAcceptHunk || onRejectHunk) ? (
             <span
               className="monaco-diff-viewer-keys"
@@ -242,7 +304,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
             language={language}
             options={{
               readOnly: true,
-              renderSideBySide: true,
+              renderSideBySide: layout === 'side-by-side',
               automaticLayout: true,
               scrollBeyondLastLine: false,
               minimap: { enabled: false },

@@ -1,11 +1,15 @@
-import Store from 'electron-store';
 import { z } from 'zod';
+import { lazyElectronStore } from './lazy-electron-store';
 import { type ApprovalPolicies, DEFAULT_TIER_POLICIES } from '../../shared/approvals';
 import { mcpServerEntrySchema, type McpServerEntry } from '../../shared/mcp';
 import { DEFAULT_MEMORY_CONFIG, memoryConfigSchema, type MemoryConfig } from '../../shared/memory';
 import { PermissionSchema } from '@opencodex/plugin-sdk';
 import type { ProviderTestResult } from '../../shared/provider-config';
-import type { SelectedModel } from '../../shared/selected-model';
+import {
+  DEFAULT_SELECTED_MODEL_STORE,
+  type SelectedModel,
+  type SelectedModelStore,
+} from '../../shared/selected-model';
 import type { ThemePreference } from '../../shared/theme';
 import { applyRemove, applySetActive, type WorkspaceState } from '../../shared/workspace';
 
@@ -30,6 +34,12 @@ const selectedModelSchema: z.ZodType<SelectedModel> = z.object({
   modelId: z.string().min(1),
 });
 
+const selectedModelStoreSchema = z.object({
+  global: selectedModelSchema.nullable().default(null),
+  byConversation: z.record(selectedModelSchema).default({}),
+  byWorkspace: z.record(selectedModelSchema).default({}),
+}) satisfies z.ZodType<unknown, z.ZodTypeDef, unknown>;
+
 const approvalPolicySchema = z.enum(['auto', 'prompt', 'deny']);
 
 const approvalPoliciesSchema = z.object({
@@ -50,6 +60,7 @@ const SettingsSchema = z.object({
   activeWorkspace: z.string().nullable().default(null),
   providers: z.record(providerEntrySchema).default({}),
   selectedModel: selectedModelSchema.nullable().default(null),
+  selectedModels: selectedModelStoreSchema.default(DEFAULT_SELECTED_MODEL_STORE),
   approvals: approvalPoliciesSchema.default({
     tierDefaults: DEFAULT_TIER_POLICIES,
     toolOverrides: {},
@@ -60,6 +71,7 @@ const SettingsSchema = z.object({
   auditWormEnabled: z.boolean().default(false),
   mcpServers: z.array(mcpServerEntrySchema).default([]),
   onboardingComplete: z.boolean().default(false),
+  onboardingSteps: z.record(z.unknown()).default({}),
   plugins: z
     .array(
       z.object({
@@ -96,9 +108,12 @@ const SettingsSchema = z.object({
   telemetryEnabled: z.boolean().default(false),
   telemetryApiKey: z.string().default(''),
   telemetryHost: z.string().url().nullable().default(null),
+  telemetryInstallSalt: z.string().default(''),
+  telemetryAllowedHosts: z.array(z.string()).default([]),
   crashReportingEnabled: z.boolean().default(false),
   crashReportingDsn: z.string().default(''),
   crashReportingEnvironment: z.string().default('production'),
+  crashReportingAllowedHosts: z.array(z.string()).default([]),
   autoCheckForUpdates: z.boolean().default(false),
   schedulerEnabledInDev: z.boolean().default(false),
   schedulerListenerPort: z.number().int().min(1).max(65535).nullable().default(null),
@@ -134,7 +149,7 @@ export type Settings = z.infer<typeof SettingsSchema>;
 
 const defaults = SettingsSchema.parse({});
 
-export const settingsStore = new Store<Settings>({
+export const settingsStore = lazyElectronStore<Settings>({
   name: 'settings',
   defaults,
 });
@@ -178,8 +193,72 @@ export function getSelectedModel(): SelectedModel | null {
 }
 
 export function setSelectedModel(sel: SelectedModel | null): SelectedModel | null {
-  const next = updateSettings({ selectedModel: sel });
+  const settings = getSettings();
+  const nextStore: SelectedModelStore = { ...settings.selectedModels, global: sel };
+  const next = updateSettings({ selectedModel: sel, selectedModels: nextStore });
   return next.selectedModel;
+}
+
+export function getSelectedModelStore(): SelectedModelStore {
+  const s = getSettings();
+  if (s.selectedModels.global === null && s.selectedModel !== null) {
+    return { ...s.selectedModels, global: s.selectedModel };
+  }
+  return s.selectedModels;
+}
+
+export function setSelectedModelForScope(
+  scope: 'global' | 'workspace' | 'conversation',
+  sel: SelectedModel | null,
+  scopeKey?: string,
+): SelectedModelStore {
+  const current = getSelectedModelStore();
+  let next: SelectedModelStore;
+  if (scope === 'global') {
+    next = { ...current, global: sel };
+  } else if (scope === 'workspace') {
+    if (!scopeKey) throw new Error('setSelectedModelForScope(workspace): scopeKey required');
+    const byWorkspace = { ...current.byWorkspace };
+    if (sel === null) delete byWorkspace[scopeKey];
+    else byWorkspace[scopeKey] = sel;
+    next = { ...current, byWorkspace };
+  } else {
+    if (!scopeKey) throw new Error('setSelectedModelForScope(conversation): scopeKey required');
+    const byConversation = { ...current.byConversation };
+    if (sel === null) delete byConversation[scopeKey];
+    else byConversation[scopeKey] = sel;
+    next = { ...current, byConversation };
+  }
+  const update: Partial<Settings> = { selectedModels: next };
+  if (scope === 'global') update.selectedModel = sel;
+  const settings = updateSettings(update);
+  return settings.selectedModels;
+}
+
+export function clearSelectedModelEverywhere(predicate: (sel: SelectedModel) => boolean): {
+  removed: number;
+  store: SelectedModelStore;
+} {
+  const current = getSelectedModelStore();
+  let removed = 0;
+  const next: SelectedModelStore = {
+    global: current.global && predicate(current.global) ? (removed++, null) : current.global,
+    byConversation: {},
+    byWorkspace: {},
+  };
+  for (const [k, v] of Object.entries(current.byConversation)) {
+    if (predicate(v)) removed++;
+    else next.byConversation[k] = v;
+  }
+  for (const [k, v] of Object.entries(current.byWorkspace)) {
+    if (predicate(v)) removed++;
+    else next.byWorkspace[k] = v;
+  }
+  if (removed === 0) return { removed: 0, store: current };
+  const update: Partial<Settings> = { selectedModels: next };
+  if (current.global !== next.global) update.selectedModel = next.global;
+  const settings = updateSettings(update);
+  return { removed, store: settings.selectedModels };
 }
 
 export function getApprovalPolicies(): ApprovalPolicies {
@@ -264,6 +343,26 @@ export function setOnboardingComplete(value: boolean): boolean {
   return next.onboardingComplete;
 }
 
+export function getOnboardingSteps(): Record<string, unknown> {
+  return getSettings().onboardingSteps;
+}
+
+export function getOnboardingStep(stepName: string): unknown {
+  const steps = getSettings().onboardingSteps;
+  return Object.prototype.hasOwnProperty.call(steps, stepName) ? steps[stepName] : null;
+}
+
+export function setOnboardingStep(stepName: string, value: unknown): Record<string, unknown> {
+  const current = getSettings().onboardingSteps;
+  const next = updateSettings({ onboardingSteps: { ...current, [stepName]: value } });
+  return next.onboardingSteps;
+}
+
+export function clearOnboardingSteps(): Record<string, unknown> {
+  const next = updateSettings({ onboardingSteps: {} });
+  return next.onboardingSteps;
+}
+
 export type StoredPluginEntry = Settings['plugins'][number];
 
 export function getStoredPlugins(): StoredPluginEntry[] {
@@ -332,6 +431,7 @@ export interface TelemetrySettings {
   enabled: boolean;
   apiKey: string;
   host: string | null;
+  allowedHosts: string[];
 }
 
 export function getTelemetrySettings(): TelemetrySettings {
@@ -340,6 +440,7 @@ export function getTelemetrySettings(): TelemetrySettings {
     enabled: s.telemetryEnabled,
     apiKey: s.telemetryApiKey,
     host: s.telemetryHost,
+    allowedHosts: s.telemetryAllowedHosts,
   };
 }
 
@@ -348,18 +449,30 @@ export function setTelemetrySettings(patch: Partial<TelemetrySettings>): Telemet
   if (patch.enabled !== undefined) update.telemetryEnabled = patch.enabled;
   if (patch.apiKey !== undefined) update.telemetryApiKey = patch.apiKey;
   if (patch.host !== undefined) update.telemetryHost = patch.host;
+  if (patch.allowedHosts !== undefined) update.telemetryAllowedHosts = patch.allowedHosts;
   const next = updateSettings(update);
   return {
     enabled: next.telemetryEnabled,
     apiKey: next.telemetryApiKey,
     host: next.telemetryHost,
+    allowedHosts: next.telemetryAllowedHosts,
   };
+}
+
+export function getTelemetryInstallSalt(): string {
+  return getSettings().telemetryInstallSalt;
+}
+
+export function setTelemetryInstallSalt(salt: string): string {
+  const next = updateSettings({ telemetryInstallSalt: salt });
+  return next.telemetryInstallSalt;
 }
 
 export interface CrashReportingSettings {
   enabled: boolean;
   dsn: string;
   environment: string;
+  allowedHosts: string[];
 }
 
 export function getCrashReportingSettings(): CrashReportingSettings {
@@ -368,6 +481,7 @@ export function getCrashReportingSettings(): CrashReportingSettings {
     enabled: s.crashReportingEnabled,
     dsn: s.crashReportingDsn,
     environment: s.crashReportingEnvironment,
+    allowedHosts: s.crashReportingAllowedHosts,
   };
 }
 
@@ -378,11 +492,13 @@ export function setCrashReportingSettings(
   if (patch.enabled !== undefined) update.crashReportingEnabled = patch.enabled;
   if (patch.dsn !== undefined) update.crashReportingDsn = patch.dsn;
   if (patch.environment !== undefined) update.crashReportingEnvironment = patch.environment;
+  if (patch.allowedHosts !== undefined) update.crashReportingAllowedHosts = patch.allowedHosts;
   const next = updateSettings(update);
   return {
     enabled: next.crashReportingEnabled,
     dsn: next.crashReportingDsn,
     environment: next.crashReportingEnvironment,
+    allowedHosts: next.crashReportingAllowedHosts,
   };
 }
 

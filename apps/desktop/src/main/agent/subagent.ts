@@ -48,6 +48,7 @@ export interface SubagentResult {
     | 'tool_use'
     | 'max_tokens'
     | 'budget_exceeded'
+    | 'cancelled'
     | 'error'
     | 'unauthorized_tool'
     | 'runner_error'

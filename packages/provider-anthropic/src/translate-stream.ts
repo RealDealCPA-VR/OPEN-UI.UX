@@ -1,5 +1,7 @@
 import type { ChatEvent, StopReason } from '@opencodex/core';
+import { computeCostUsd } from '@opencodex/core';
 import type { AnthropicStopReason, AnthropicUsage, StreamEvent } from './response-schemas';
+import { findModel } from './models';
 
 interface PendingToolUse {
   id: string;
@@ -22,8 +24,13 @@ function mapStopReason(reason: AnthropicStopReason | null | undefined): StopReas
   }
 }
 
+export interface StreamEventsOptions {
+  model?: string;
+}
+
 export async function* streamEventsToChatEvents(
   events: AsyncIterable<StreamEvent>,
+  opts: StreamEventsOptions = {},
 ): AsyncGenerator<ChatEvent, void, void> {
   const toolBlocks = new Map<number, PendingToolUse>();
   let inputTokens = 0;
@@ -95,11 +102,19 @@ export async function* streamEventsToChatEvents(
   }
 
   if (inputTokens > 0 || outputTokens > 0) {
+    const pricing = opts.model ? findModel(opts.model)?.pricing : undefined;
+    const cost = computeCostUsd({
+      inputTokens,
+      outputTokens,
+      ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+      ...(pricing ? { pricing } : {}),
+    });
     yield {
       type: 'usage',
       inputTokens,
       outputTokens,
       ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+      ...(cost !== undefined ? { costUsd: cost } : {}),
     };
   }
   yield { type: 'done', stopReason: mapStopReason(stopReason) };

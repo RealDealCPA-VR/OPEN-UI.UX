@@ -8,6 +8,7 @@ import type {
   ModelCapabilities,
   ProviderFactory,
 } from '@opencodex/core';
+import { assertValidApiKey, sanitizeErrorDetail } from '@opencodex/core';
 
 const DEFAULT_BASE_URL = 'https://api.voyageai.com/v1';
 
@@ -64,15 +65,26 @@ const VOYAGE_MODELS: ModelCapabilities[] = [
   },
 ];
 
+/**
+ * Voyage AI is an embeddings-only provider. The chat() method on this class
+ * exists only to satisfy the LLMProvider interface; calling it always throws
+ * with a clear "embeddings-only" message. Consumers should route Voyage models
+ * via the embed() endpoint exclusively.
+ */
 class VoyageProvider implements LLMProvider {
   readonly id = 'voyage';
   readonly displayName = 'Voyage AI';
 
-  constructor(private readonly config: VoyageConfig) {}
+  constructor(private readonly config: VoyageConfig) {
+    assertValidApiKey(config.apiKey, 'Voyage');
+  }
 
   // eslint-disable-next-line require-yield
   async *chat(_req: ChatRequest): AsyncIterable<ChatEvent> {
-    throw new Error('Voyage AI is embeddings-only — no chat endpoint');
+    throw new Error(
+      'Voyage AI is embeddings-only — no chat endpoint. ' +
+        'Use embed() instead, or route chat requests to a different provider.',
+    );
   }
 
   async embed(req: EmbedRequest): Promise<EmbedResult> {
@@ -116,7 +128,7 @@ class VoyageProvider implements LLMProvider {
 
 async function safeReadText(response: Response): Promise<string> {
   try {
-    return await response.text();
+    return sanitizeErrorDetail(await response.text());
   } catch {
     return '<unreadable body>';
   }

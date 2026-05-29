@@ -28,6 +28,11 @@ const usageSchema = z.object({
   prompt_tokens: z.number().int().nonnegative(),
   completion_tokens: z.number().int().nonnegative(),
   total_tokens: z.number().int().nonnegative().optional(),
+  prompt_tokens_details: z
+    .object({
+      cached_tokens: z.number().int().nonnegative().optional(),
+    })
+    .optional(),
 });
 
 export const chatChunkSchema = z.object({

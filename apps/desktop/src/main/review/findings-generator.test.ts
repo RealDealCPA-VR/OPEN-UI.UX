@@ -81,6 +81,63 @@ describe('generateFindings', () => {
     expect(typeof result.findings[0]?.id).toBe('string');
   });
 
+  it('stamps auditPrompt + auditRetrievedContext onto every finding', async () => {
+    const payload = JSON.stringify({
+      findings: [
+        {
+          filePath: 'src/x.ts',
+          startLine: 1,
+          endLine: 1,
+          severity: 'bug',
+          title: 'A',
+          rationale: 'B',
+        },
+        {
+          filePath: 'src/y.ts',
+          startLine: 2,
+          endLine: 2,
+          severity: 'smell',
+          title: 'C',
+          rationale: 'D',
+        },
+      ],
+    });
+    const provider = providerEmitting([
+      { type: 'text_delta', delta: payload },
+      { type: 'done', stopReason: 'end_turn' },
+    ]);
+    const result = await generateFindings({
+      diff: fakeDiff(),
+      provider,
+      modelId: 'fake-model',
+      extraContext: 'Focus on the auth boundary.',
+    });
+    expect(result.findings).toHaveLength(2);
+    expect(result.auditPrompt).toContain('SYSTEM:');
+    expect(result.auditPrompt).toContain('USER:');
+    expect(result.auditPrompt).toContain('Focus on the auth boundary.');
+    expect(result.auditRetrievedContext).toEqual(['Focus on the auth boundary.']);
+    for (const f of result.findings) {
+      expect(f.auditPrompt).toBe(result.auditPrompt);
+      expect(f.auditRetrievedContext).toEqual(['Focus on the auth boundary.']);
+    }
+  });
+
+  it('audit fields are present even when the provider returns nothing parseable', async () => {
+    const provider = providerEmitting([
+      { type: 'text_delta', delta: 'no json' },
+      { type: 'done', stopReason: 'end_turn' },
+    ]);
+    const result = await generateFindings({
+      diff: fakeDiff(),
+      provider,
+      modelId: 'fake-model',
+    });
+    expect(result.findings).toEqual([]);
+    expect(result.auditPrompt).toContain('SYSTEM:');
+    expect(result.auditRetrievedContext).toEqual([]);
+  });
+
   it('returns warning when provider returns non-JSON', async () => {
     const provider = providerEmitting([
       { type: 'text_delta', delta: 'I refuse.' },

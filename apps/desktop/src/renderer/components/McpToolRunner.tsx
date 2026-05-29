@@ -32,6 +32,24 @@ export function McpToolRunner(): JSX.Element | null {
   }, [state.open]);
 
   useEffect(() => {
+    const onOpenWithTool = (e: Event): void => {
+      const ce = e as CustomEvent<{ serverId?: unknown; toolName?: unknown }>;
+      const detail = ce.detail;
+      if (!detail) return;
+      const serverId = typeof detail.serverId === 'string' ? detail.serverId : null;
+      const toolName = typeof detail.toolName === 'string' ? detail.toolName : null;
+      if (!serverId || !toolName) return;
+      setSelectedServerId(serverId);
+      setSelectedTool(toolName);
+      setResult(null);
+      setArgsJson('{}');
+      setState({ open: true });
+    };
+    window.addEventListener('mcp:open-tool-runner', onOpenWithTool);
+    return () => window.removeEventListener('mcp:open-tool-runner', onOpenWithTool);
+  }, []);
+
+  useEffect(() => {
     if (!state.open) return;
     let cancelled = false;
     queueMicrotask(() => {

@@ -14,6 +14,16 @@ export const networkPolicySchema = z.object({
   allowlist: z.array(allowlistEntrySchema),
 });
 
+/**
+ * Network egress policy.
+ *
+ * IMPORTANT: an empty `allowlist` (`[]`) with `localOnlyMode: false` means
+ * "allow all hosts" — legacy behaviour preserved so existing users don't get
+ * silently locked out of every cloud provider after upgrade. Callers that
+ * want a deny-by-default posture must set `localOnlyMode: true` or populate
+ * the allowlist. The main process logs a warning at startup when this
+ * permissive mode is in effect (see `main/index.ts`).
+ */
 export type NetworkPolicy = z.infer<typeof networkPolicySchema>;
 
 export const setLocalOnlyModeRequestSchema = z.object({

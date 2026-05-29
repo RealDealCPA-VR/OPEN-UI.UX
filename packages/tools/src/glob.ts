@@ -28,7 +28,7 @@ export const globTool = defineTool({
   permissionTier: 'read',
   async execute({ pattern, cwd, maxResults }, ctx): Promise<string[]> {
     const base = cwd
-      ? resolveWithinWorkspace(ctx.workspaceRoot, cwd)
+      ? await resolveWithinWorkspace(ctx.workspaceRoot, cwd)
       : path.resolve(ctx.workspaceRoot);
     const regex = globToRegExp(pattern);
     const limit = maxResults ?? 1000;

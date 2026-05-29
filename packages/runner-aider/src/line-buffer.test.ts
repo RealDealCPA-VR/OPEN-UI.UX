@@ -43,4 +43,12 @@ describe('LineBuffer', () => {
     expect(buf.push('two')).toEqual([]);
     expect(buf.flush()).toEqual(['one two']);
   });
+
+  it('caps buffered bytes when no newline arrives (OOM guard)', () => {
+    const buf = new LineBuffer(16);
+    const out = buf.push('x'.repeat(64));
+    expect(out.length).toBe(1);
+    expect(out[0]?.endsWith('[truncated]')).toBe(true);
+    expect(buf.flush()).toEqual([]);
+  });
 });

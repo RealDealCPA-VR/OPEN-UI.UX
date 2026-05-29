@@ -25,8 +25,8 @@ Each row links a `file:line` to the literal token the maintainer must replace. T
 
 ## `website/theme.config.tsx`
 
-- [ ] `website/theme.config.tsx:7` — current: `https://github.com/TODO-org/TODO-repo` → replace with: `<TBD org/repo>`
-- [ ] `website/theme.config.tsx:9` — current: `https://github.com/TODO-org/TODO-repo/tree/main/website` → replace with: `<TBD org/repo>`
+- [ ] `website/theme.config.tsx:8` — current: `https://github.com/TODO-org/TODO-repo` → replace with: `<TBD org/repo>`
+- [ ] `website/theme.config.tsx:10` — current: `https://github.com/TODO-org/TODO-repo/blob/main/website` → replace with: `<TBD org/repo>` (must remain `/blob/<branch>/website` shape so Nextra's "Edit on GitHub" links resolve to actual file URLs)
 
 ## `website/pages/guides/accessibility.mdx`
 
@@ -58,8 +58,12 @@ Each row links a `file:line` to the literal token the maintainer must replace. T
 
 ## `website/pages/index.mdx`
 
-- [ ] `website/pages/index.mdx:30` — current: `https://github.com/TODO-org/TODO-repo` → replace with: `<TBD org/repo>`
+- [ ] `website/pages/index.mdx:46` — current: `https://github.com/TODO-org/TODO-repo` → replace with: `<TBD org/repo>` (line moved from 30 after the Mission Control positioning rewrite added a hero image, blockquote, and the "Provider-agnostic as a feature, not a footnote" section above the License line)
 
-## Also worth a look
+## `RELEASE_NOTES_TEMPLATE.md`
 
-`RELEASE_NOTES_TEMPLATE.md:88` references `https://opencodex.dev` as the canonical documentation URL. If that domain is not yours (or is not registered yet), list it here and decide on a real docs URL before tagging v0.1.
+- [ ] `RELEASE_NOTES_TEMPLATE.md:88` — current: `https://TODO-set-domain` → replace with: `<TBD canonical docs URL>` (the prior `https://opencodex.dev` literal was speculative and has been replaced with the standard `TODO-set-domain` sentinel so `pnpm check-placeholders` catches it).
+
+## `website/public/hero-subagent-tree.svg`
+
+- [ ] `website/public/hero-subagent-tree.svg` — current: hand-drawn SVG mock with watermark "Placeholder — TODO: replace with a real screenshot…" → replace with: a real PNG/WebP screenshot of the AgentRunDrawer subagent tree view (`apps/desktop/src/renderer/components/AgentRunDrawer.tsx`) at ~1280×720, dark theme, showing a root run that fanned out into 3–4 worker subagents in their own worktrees with at least one in each status (running / awaiting merge / approval pending). The README, MANUAL "Mission Control" section, and `website/pages/index.mdx` all reference this asset as the hero — keep the filename stable so the references don't break, or update all three callers.

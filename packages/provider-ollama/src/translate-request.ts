@@ -34,6 +34,7 @@ export interface OllamaChatRequestBody {
   tools?: OllamaTool[];
   options?: OllamaChatOptions;
   keep_alive?: string | number;
+  format?: 'json' | Record<string, unknown>;
 }
 
 export function translateMessages(messages: Message[]): OllamaMessage[] {
@@ -125,5 +126,12 @@ export function buildChatRequestBody(
   const tools = translateTools(req.tools);
   if (tools) body.tools = tools;
   if (opts.keepAlive !== undefined) body.keep_alive = opts.keepAlive;
+  if (req.responseFormat !== undefined) {
+    if (req.responseFormat.type === 'json_object') {
+      body.format = 'json';
+    } else if (req.responseFormat.type === 'json_schema') {
+      body.format = req.responseFormat.schema as Record<string, unknown>;
+    }
+  }
   return body;
 }

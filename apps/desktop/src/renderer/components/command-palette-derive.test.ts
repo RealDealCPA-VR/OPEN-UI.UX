@@ -132,4 +132,64 @@ describe('flattenForKeyboardNav', () => {
     const flat = flattenForKeyboardNav(entries);
     expect(flat.map((e) => e.category)).toEqual(['message', 'file', 'skill']);
   });
+
+  it('places mcp-tool entries after skills in keyboard nav order', () => {
+    const entries = mergePaletteResults(
+      [messageHit({ messageId: 'm1' })],
+      [],
+      [skill({ id: 's1' })],
+      '',
+      {
+        mcpTools: [{ serverId: 'fs', serverDisplayName: 'Filesystem', toolName: 'read_file' }],
+      },
+    );
+    const flat = flattenForKeyboardNav(entries);
+    expect(flat.map((e) => e.category)).toEqual(['message', 'skill', 'mcp-tool']);
+  });
+});
+
+describe('mergePaletteResults — MCP tools', () => {
+  it('produces an mcp-tool entry per tool when query is empty', () => {
+    const entries = mergePaletteResults([], [], [], '', {
+      mcpTools: [
+        {
+          serverId: 'fs',
+          serverDisplayName: 'Filesystem',
+          toolName: 'read_file',
+          description: 'Read a file from disk',
+        },
+        { serverId: 'gh', serverDisplayName: 'GitHub', toolName: 'create_issue' },
+      ],
+    });
+    expect(entries).toHaveLength(2);
+    expect(entries[0]?.category).toBe('mcp-tool');
+    expect(entries[0]?.id).toBe('mcp-tool:fs:read_file');
+    expect(entries[0]?.title).toBe('Run read_file');
+    expect(entries[0]?.subtitle).toBe('Read a file from disk');
+    expect(entries[0]?.detail).toBe('Filesystem');
+  });
+
+  it('filters mcp tools by query across name, server, and description', () => {
+    const tools = [
+      { serverId: 'fs', serverDisplayName: 'Filesystem', toolName: 'read_file' },
+      { serverId: 'gh', serverDisplayName: 'GitHub', toolName: 'create_issue' },
+    ];
+    expect(
+      mergePaletteResults([], [], [], 'github', { mcpTools: tools }).filter(
+        (e) => e.category === 'mcp-tool',
+      ),
+    ).toHaveLength(1);
+    expect(
+      mergePaletteResults([], [], [], 'read', { mcpTools: tools }).filter(
+        (e) => e.category === 'mcp-tool',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('falls back to a generic subtitle when no tool description is provided', () => {
+    const entries = mergePaletteResults([], [], [], '', {
+      mcpTools: [{ serverId: 'fs', serverDisplayName: 'Filesystem', toolName: 'glob' }],
+    });
+    expect(entries[0]?.subtitle).toBe('MCP tool on Filesystem');
+  });
 });

@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MonacoDiffViewer } from './MonacoDiffViewer';
 import type { HunkProvenance, MonacoDiffHunk } from './monaco-diff-helpers';
 import { DraftPrModal } from './DraftPrModal';
 import { MergeConflictResolver } from './MergeConflictResolver';
+import type { AppliedDiff } from '../../shared/replay';
 
 interface MergeReviewModalProps {
   runId: string;
+  conversationId: string;
+  workspaceRoot: string;
   onClose: () => void;
   onResolved: () => void;
 }
@@ -112,6 +115,59 @@ interface RegenerateState {
   error: string | null;
 }
 
+interface WhyDetails {
+  promptSnapshot: string | null;
+  toolCallSummary: string | null;
+  ragCitations: string[];
+  providerId: string | null;
+  modelId: string | null;
+  costUsd: number | null;
+  tokensInput: number | null;
+  tokensOutput: number | null;
+  appliedAt: string | null;
+}
+
+export function parseRagCitations(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((c) => {
+          if (typeof c === 'string') return c;
+          if (c && typeof c === 'object') {
+            const obj = c as Record<string, unknown>;
+            const file = typeof obj['filePath'] === 'string' ? obj['filePath'] : null;
+            const start = typeof obj['startLine'] === 'number' ? obj['startLine'] : null;
+            const end = typeof obj['endLine'] === 'number' ? obj['endLine'] : null;
+            if (file && start !== null && end !== null) return `${file}:${start}-${end}`;
+            if (file && start !== null) return `${file}:${start}`;
+            if (file) return file;
+          }
+          return null;
+        })
+        .filter((s): s is string => s !== null);
+    }
+  } catch {
+    // fall through
+  }
+  return [];
+}
+
+function appliedDiffToWhy(d: AppliedDiff): WhyDetails {
+  return {
+    promptSnapshot: d.promptSnapshot,
+    toolCallSummary: d.toolCallId ?? null,
+    ragCitations: parseRagCitations(d.ragCitationsJson),
+    providerId: d.providerId,
+    modelId: d.modelId,
+    costUsd: d.costUsd,
+    tokensInput: d.tokensInput,
+    tokensOutput: d.tokensOutput,
+    appliedAt: d.appliedAt,
+  };
+}
+
 function snippetFromText(text: string, startLine: number, endLine: number): string {
   if (endLine < startLine) return '';
   const lines = text.split('\n');
@@ -122,6 +178,8 @@ function snippetFromText(text: string, startLine: number, endLine: number): stri
 
 export function MergeReviewModal({
   runId,
+  conversationId,
+  workspaceRoot,
   onClose,
   onResolved,
 }: MergeReviewModalProps): JSX.Element {
@@ -133,10 +191,16 @@ export function MergeReviewModal({
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
   const [whyOpenFor, setWhyOpenFor] = useState<number | null>(null);
   const [provenance] = useState<Record<string, HunkProvenance[]>>({});
+  const [appliedDiffsByFile, setAppliedDiffsByFile] = useState<Record<string, AppliedDiff[]>>({});
+  // Local in-modal override of modified text per file, set when the user
+  // accepts a regenerated hunk suggestion. Does NOT touch disk — final
+  // commit is governed by acceptMerge of the worktree branch.
+  const [modifiedOverrides, setModifiedOverrides] = useState<Record<string, string>>({});
   const [regenerate, setRegenerate] = useState<RegenerateState | null>(null);
   const [showDraftPr, setShowDraftPr] = useState(false);
   const [showConflicts, setShowConflicts] = useState(false);
   const [conflictError, setConflictError] = useState<string | null>(null);
+  const modalRootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -154,6 +218,31 @@ export function MergeReviewModal({
       cancelled = true;
     };
   }, [runId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await window.opencodex.replay.listAppliedDiffs({
+          conversationId,
+          limit: 200,
+        });
+        if (cancelled) return;
+        const byFile: Record<string, AppliedDiff[]> = {};
+        for (const row of res.rows) {
+          const existing = byFile[row.filePath];
+          if (existing) existing.push(row);
+          else byFile[row.filePath] = [row];
+        }
+        setAppliedDiffsByFile(byFile);
+      } catch {
+        // best-effort — Why? falls back to empty state below
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
 
   const parsedFiles = useMemo<ParsedFile[]>(
     () => (bundle ? parseUnifiedDiff(bundle.diff) : []),
@@ -254,7 +343,7 @@ export function MergeReviewModal({
         return;
       }
       const res = await window.opencodex.chat.regenerateHunk({
-        conversationId: runId,
+        conversationId,
         filePath: regenerate.filePath,
         originalSnippet: regenerate.originalSnippet,
         modifiedSnippet: regenerate.modifiedSnippet,
@@ -278,6 +367,34 @@ export function MergeReviewModal({
 
   const provenanceFor = (filePath: string): HunkProvenance[] => provenance[filePath] ?? [];
 
+  const whyDetailsFor = (filePath: string): WhyDetails[] => {
+    const rows = appliedDiffsByFile[filePath];
+    if (!rows || rows.length === 0) return [];
+    return rows.map(appliedDiffToWhy);
+  };
+
+  const acceptRegeneratedHunk = (): void => {
+    if (!regenerate || !regenerate.suggestion) return;
+    const file = parsedFiles.find((f) => f.path === regenerate.filePath);
+    if (!file) {
+      setRegenerate(null);
+      return;
+    }
+    const baseModified = modifiedOverrides[file.path] ?? file.modified;
+    const lines = baseModified.split('\n');
+    const start = Math.max(0, regenerate.hunk.modifiedStartLine - 1);
+    const endExclusive =
+      regenerate.hunk.modifiedEndLine < regenerate.hunk.modifiedStartLine
+        ? start
+        : regenerate.hunk.modifiedEndLine;
+    const before = lines.slice(0, start);
+    const after = lines.slice(endExclusive);
+    const replacement = regenerate.suggestion.split('\n');
+    const nextText = [...before, ...replacement, ...after].join('\n');
+    setModifiedOverrides((prev) => ({ ...prev, [file.path]: nextText }));
+    setRegenerate(null);
+  };
+
   useEffect(() => {
     if (parsedFiles.length === 0) return;
     const onKey = (e: KeyboardEvent): void => {
@@ -286,6 +403,27 @@ export function MergeReviewModal({
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
       if (target instanceof HTMLElement && target.isContentEditable) return;
       if (regenerate || showDraftPr || showConflicts) return;
+      const root = modalRootRef.current;
+      const active = document.activeElement;
+      if (root && active && active !== document.body && !root.contains(active)) return;
+      // Hand off j/k/a/r to the inner MonacoDiffViewer when the user is
+      // focused there — per-hunk nav and accept/reject should win.
+      const inDiffViewer = active instanceof HTMLElement && !!active.closest('.monaco-diff-viewer');
+      if (e.shiftKey && (e.key === 'J' || e.key === 'K')) {
+        e.preventDefault();
+        if (e.key === 'J') {
+          const next = Math.min(parsedFiles.length - 1, focusedIndex + 1);
+          const nextPath = parsedFiles[next]?.path;
+          if (nextPath) setFocusedPath(nextPath);
+        } else {
+          const prev = Math.max(0, focusedIndex - 1);
+          const prevPath = parsedFiles[prev]?.path;
+          if (prevPath) setFocusedPath(prevPath);
+        }
+        return;
+      }
+      if (e.shiftKey) return;
+      if (inDiffViewer) return;
       if (e.key === 'j') {
         e.preventDefault();
         const next = Math.min(parsedFiles.length - 1, focusedIndex + 1);
@@ -311,10 +449,11 @@ export function MergeReviewModal({
   }, [parsedFiles, focusedIndex, bundle, busy, regenerate, showDraftPr, showConflicts]);
 
   return (
-    <div className="approval-modal-backdrop" role="dialog" aria-modal="true">
+    <div className="approval-modal-backdrop" role="dialog" aria-modal="true" ref={modalRootRef}>
       <div
         className="approval-modal merge-review-modal"
         style={{ minWidth: 'min(960px, 92vw)', maxWidth: '96vw' }}
+        tabIndex={-1}
       >
         <header className="approval-modal-header">
           <h2>Review subagent changes</h2>
@@ -437,7 +576,7 @@ export function MergeReviewModal({
                       </div>
                       <MonacoDiffViewer
                         originalText={focusedFile.original}
-                        modifiedText={focusedFile.modified}
+                        modifiedText={modifiedOverrides[focusedFile.path] ?? focusedFile.modified}
                         language={focusedFile.language}
                         filePath={focusedFile.path}
                         height={400}
@@ -460,21 +599,10 @@ export function MergeReviewModal({
                           <summary style={{ cursor: 'pointer', color: 'var(--text-secondary)' }}>
                             Why? · hunk #{whyOpenFor}
                           </summary>
-                          <div style={{ marginTop: 6, color: 'var(--text-muted)' }}>
-                            {provenanceFor(focusedFile.path).length === 0 ? (
-                              <em>No tool call audit data for this hunk yet.</em>
-                            ) : (
-                              <ul style={{ margin: 0, paddingLeft: 16 }}>
-                                {provenanceFor(focusedFile.path).map((p) => (
-                                  <li key={p.toolCallId}>
-                                    <strong>{p.toolName}</strong>
-                                    {p.decision ? ` · ${p.decision}` : null}
-                                    {p.rationale ? ` — ${p.rationale}` : null}
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
+                          <WhyDisclosureBody
+                            provenance={provenanceFor(focusedFile.path)}
+                            details={whyDetailsFor(focusedFile.path)}
+                          />
                         </details>
                       )}
                     </>
@@ -643,6 +771,16 @@ export function MergeReviewModal({
               >
                 {regenerate.busy ? 'Generating…' : 'Regenerate'}
               </button>
+              {regenerate.suggestion ? (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={acceptRegeneratedHunk}
+                  title="Replace this hunk in the modal view (not written to disk)"
+                >
+                  Replace hunk
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn"
@@ -658,7 +796,7 @@ export function MergeReviewModal({
 
       {showDraftPr && bundle && (
         <DraftPrModal
-          repoRoot={'.'}
+          repoRoot={workspaceRoot}
           branch={bundle.branch}
           initialDiff={bundle.diff}
           onClose={() => setShowDraftPr(false)}
@@ -667,7 +805,7 @@ export function MergeReviewModal({
 
       {showConflicts && (
         <MergeConflictResolver
-          repoRoot={'.'}
+          repoRoot={workspaceRoot}
           onClose={() => setShowConflicts(false)}
           onResolved={() => {
             setConflictError(null);
@@ -675,6 +813,104 @@ export function MergeReviewModal({
           }}
         />
       )}
+    </div>
+  );
+}
+
+function WhyDisclosureBody({
+  provenance,
+  details,
+}: {
+  provenance: HunkProvenance[];
+  details: WhyDetails[];
+}): JSX.Element {
+  if (provenance.length === 0 && details.length === 0) {
+    return (
+      <div style={{ marginTop: 6, color: 'var(--text-muted)' }}>
+        <em>No provenance recorded for this file yet.</em>
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginTop: 6, color: 'var(--text-muted)', display: 'grid', gap: 8 }}>
+      {details.map((d, idx) => (
+        <div
+          key={`${d.appliedAt ?? 'na'}-${idx}`}
+          style={{
+            border: '1px solid var(--border-row-divider)',
+            borderRadius: 4,
+            padding: 8,
+          }}
+        >
+          {d.promptSnapshot ? (
+            <div style={{ marginBottom: 6 }}>
+              <strong>User prompt</strong>
+              <pre
+                style={{
+                  margin: '2px 0 0 0',
+                  padding: 6,
+                  background: 'var(--bg-sunken)',
+                  borderRadius: 3,
+                  whiteSpace: 'pre-wrap',
+                  fontSize: 11,
+                }}
+              >
+                {d.promptSnapshot}
+              </pre>
+            </div>
+          ) : null}
+          {d.toolCallSummary ? (
+            <div style={{ marginBottom: 4 }}>
+              <strong>Tool call</strong> <code>{d.toolCallSummary}</code>
+            </div>
+          ) : null}
+          {d.ragCitations.length > 0 ? (
+            <div style={{ marginBottom: 4 }}>
+              <strong>RAG context</strong>
+              <ul style={{ margin: '2px 0 0 0', paddingLeft: 16 }}>
+                {d.ragCitations.map((c, i) => (
+                  <li key={`${c}-${i}`}>
+                    <code>{c}</code>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <div style={{ fontSize: 11 }}>
+            {d.providerId || d.modelId ? (
+              <span>
+                <strong>Model</strong> {d.providerId ?? '?'}/{d.modelId ?? '?'}
+              </span>
+            ) : null}
+            {d.costUsd !== null ? (
+              <span style={{ marginLeft: 8 }}>
+                <strong>Cost</strong> ${d.costUsd.toFixed(6)}
+              </span>
+            ) : null}
+            {d.tokensInput !== null || d.tokensOutput !== null ? (
+              <span style={{ marginLeft: 8 }}>
+                <strong>Tokens</strong> {d.tokensInput ?? 0} in / {d.tokensOutput ?? 0} out
+              </span>
+            ) : null}
+            {d.appliedAt ? (
+              <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
+                {new Date(d.appliedAt).toLocaleString()}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      ))}
+      {provenance.length > 0 ? (
+        <ul style={{ margin: 0, paddingLeft: 16 }}>
+          {provenance.map((p) => (
+            <li key={p.toolCallId}>
+              <strong>{p.toolName}</strong>
+              {p.decision ? ` · ${p.decision}` : null}
+              {p.rationale ? ` — ${p.rationale}` : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

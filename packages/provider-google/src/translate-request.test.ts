@@ -99,16 +99,26 @@ describe('translateMessages', () => {
     expect(out[0]?.parts[0]).toEqual({ functionCall: { id: 't', name: 'f', args: { a: 1 } } });
   });
 
-  it('wraps non-object tool_use arguments under { value: ... }', () => {
-    const out = translateMessages([
-      {
-        role: 'assistant',
-        content: [{ type: 'tool_use', id: 't', name: 'f', arguments: 'not-json' }],
-      },
-    ]);
-    expect(out[0]?.parts[0]).toEqual({
-      functionCall: { id: 't', name: 'f', args: { value: 'not-json' } },
-    });
+  it('rejects non-JSON tool_use argument strings with a clear error', () => {
+    expect(() =>
+      translateMessages([
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't', name: 'f', arguments: 'not-json' }],
+        },
+      ]),
+    ).toThrow(/JSON object/i);
+  });
+
+  it('rejects non-object tool_use arguments with a clear error', () => {
+    expect(() =>
+      translateMessages([
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't', name: 'f', arguments: 42 }],
+        },
+      ]),
+    ).toThrow(/JSON object/i);
   });
 
   it('emits tool role as user role with functionResponse parts and looks up name from prior tool_use', () => {
@@ -264,5 +274,61 @@ describe('buildChatRequestBody', () => {
   it('omits tools when none provided or empty', () => {
     const body = buildChatRequestBody({ model: 'gemini-2.5-pro', messages: [], tools: [] });
     expect(body.tools).toBeUndefined();
+  });
+
+  it('maps toolChoice to toolConfig.functionCallingConfig mode', () => {
+    expect(
+      buildChatRequestBody({
+        model: 'gemini-2.5-pro',
+        messages: [],
+        toolChoice: 'auto',
+      }).toolConfig,
+    ).toEqual({ functionCallingConfig: { mode: 'AUTO' } });
+    expect(
+      buildChatRequestBody({
+        model: 'gemini-2.5-pro',
+        messages: [],
+        toolChoice: 'required',
+      }).toolConfig,
+    ).toEqual({ functionCallingConfig: { mode: 'ANY' } });
+    expect(
+      buildChatRequestBody({
+        model: 'gemini-2.5-pro',
+        messages: [],
+        toolChoice: 'none',
+      }).toolConfig,
+    ).toEqual({ functionCallingConfig: { mode: 'NONE' } });
+  });
+
+  it('maps named toolChoice via allowedFunctionNames', () => {
+    const body = buildChatRequestBody({
+      model: 'gemini-2.5-pro',
+      messages: [],
+      toolChoice: { name: 'grep' },
+    });
+    expect(body.toolConfig).toEqual({
+      functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['grep'] },
+    });
+  });
+
+  it('maps responseFormat json_object to application/json mime', () => {
+    const body = buildChatRequestBody({
+      model: 'gemini-2.5-pro',
+      messages: [],
+      responseFormat: { type: 'json_object' },
+    });
+    expect(body.generationConfig?.responseMimeType).toBe('application/json');
+    expect(body.generationConfig?.responseSchema).toBeUndefined();
+  });
+
+  it('maps responseFormat json_schema with schema', () => {
+    const schema = { type: 'object', properties: { a: { type: 'string' } } } as const;
+    const body = buildChatRequestBody({
+      model: 'gemini-2.5-pro',
+      messages: [],
+      responseFormat: { type: 'json_schema', schema },
+    });
+    expect(body.generationConfig?.responseMimeType).toBe('application/json');
+    expect(body.generationConfig?.responseSchema).toEqual(schema);
   });
 });

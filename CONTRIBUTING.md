@@ -72,6 +72,19 @@ If your proposed change conflicts with these decisions, open an issue to discuss
 - File names: `kebab-case`. Type names: `PascalCase`. Functions/vars: `camelCase`.
 - Comments: only when the _why_ is non-obvious. Don't comment what the code does.
 
+## Publishing a plugin
+
+OpenCodex does not host a plugin marketplace. The "registry" is just a JSON file at any HTTPS URL the user pastes into **Settings → Plugins → Registry URL**, validated by `fetchPluginRegistry` against the Zod schema documented in [`docs/plugin-registry.md`](./docs/plugin-registry.md). Anyone can publish one — including you, for your own org's internal plugins.
+
+The canonical public index lives at a separate `opencodex-plugins` GitHub repo (the maintainer-curated registry that ships as the default `pluginRegistryUrl` in `SettingsSchema`). To get a plugin listed there:
+
+1. **Build and sign your plugin.** Follow [`docs/plugin-authoring.md`](./docs/plugin-authoring.md) for the manifest shape and [`docs/plugin-signing.md`](./docs/plugin-signing.md) to generate an Ed25519 keypair and sign the manifest. Unsigned plugins are refused at install time (`UnsignedPluginRefusedError`) unless the user explicitly accepts the risk.
+2. **Host the `.tgz` somewhere stable.** GitHub Releases on your own repo works; so does any HTTPS object store. The tarball URL goes in the registry entry's `installUrl` field.
+3. **Open a PR against the `opencodex-plugins` repo.** Add a single entry to `index.json` matching the schema in `docs/plugin-registry.md` — `name`, `version`, `displayName`, `description`, `author`, `license`, `homepage`, `installUrl`, `permissions`, `contributions`, `signature`, `signer`, `publishedAt`. CI on that repo re-validates every entry against the same Zod schema OpenCodex itself uses; entries that fail validation are dropped, so passing CI is the only gate.
+4. **Bump on update.** New version of your plugin? Open another PR bumping `version`, `installUrl`, `signature`, and `publishedAt`. Older entries remain in `index.json` until a maintainer prunes; the in-app search panel always installs the latest matching `name`.
+
+For internal-only / private plugins: skip the public registry, point your team's settings at your own internal `index.json` URL. The same fetcher works against either; the only difference is who can see it. Multiple signers can coexist in one registry — each entry carries its own `signature` + `signer` pair, so a single org-wide registry can mix first-party and third-party plugins without a shared key.
+
 ## Reporting bugs
 
 Open an issue using the bug report template. Include:

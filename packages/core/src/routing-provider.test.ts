@@ -105,9 +105,9 @@ describe('RoutingProvider', () => {
 
     await collect(
       router.chat({
-        ...(baseRequest as ChatRequest & { reasoning: boolean }),
-        ...({ reasoning: true } as { reasoning: boolean }),
-      } as ChatRequest),
+        ...baseRequest,
+        reasoning: true,
+      }),
     );
 
     expect(log.chat).toEqual([{ model: 'frontier', toolCount: 0 }]);
@@ -175,7 +175,10 @@ describe('RoutingProvider', () => {
 
     expect(log.chat).toEqual([{ model: 'frontier', toolCount: 1 }]);
     expect(onDecision).toHaveBeenCalledOnce();
-    expect(onDecision.mock.calls[0]?.[0]).toMatchObject({ usedFallback: true });
+    expect(onDecision.mock.calls[0]?.[0]).toMatchObject({
+      usedFallback: true,
+      degradedReason: 'provider_missing',
+    });
   });
 
   it('uses the default ref when no rule matches', async () => {
@@ -220,6 +223,96 @@ describe('RoutingProvider', () => {
 
     await collect(router.chat(baseRequest));
     expect(log.chat).toEqual([{ model: 'frontier', toolCount: 0 }]);
+  });
+
+  it('emits degradedReason=provider_missing when primary is not loaded and rule fallback is used', async () => {
+    const log: CallLog = { chat: [], embed: [] };
+    const big = makeProvider('big', log);
+    const policy: RoutingPolicy = {
+      id: 'p-degrade-1',
+      name: 'Degrade via rule fallback',
+      rules: [
+        {
+          id: 'r1',
+          when: 'tool_call',
+          use: { providerId: 'absent', modelId: 'gone' },
+          fallback: { providerId: 'big', modelId: 'frontier' },
+        },
+      ],
+    };
+    const onDecision = vi.fn();
+    const router = new RoutingProvider({
+      defaultRef: { providerId: 'big', modelId: 'frontier' },
+      policy,
+      providers: new Map([['big', big]]),
+      onDecision,
+    });
+
+    await collect(
+      router.chat({
+        ...baseRequest,
+        tools: [
+          {
+            name: 'noop',
+            description: '',
+            inputSchema: { type: 'object' },
+            permissionTier: 'read',
+          },
+        ],
+      }),
+    );
+
+    expect(onDecision.mock.calls[0]?.[0]).toMatchObject({
+      usedFallback: true,
+      degradedReason: 'provider_missing',
+      providerId: 'big',
+      modelId: 'frontier',
+    });
+  });
+
+  it('emits degradedReason=provider_missing when neither rule primary nor fallback are loaded but defaultRef is', async () => {
+    const log: CallLog = { chat: [], embed: [] };
+    const def = makeProvider('def', log);
+    const policy: RoutingPolicy = {
+      id: 'p-degrade-2',
+      name: 'Degrade to default',
+      rules: [
+        {
+          id: 'r1',
+          when: 'tool_call',
+          use: { providerId: 'absent', modelId: 'gone' },
+        },
+      ],
+    };
+    const onDecision = vi.fn();
+    const router = new RoutingProvider({
+      defaultRef: { providerId: 'def', modelId: 'def-model' },
+      policy,
+      providers: new Map([['def', def]]),
+      onDecision,
+    });
+
+    await collect(
+      router.chat({
+        ...baseRequest,
+        tools: [
+          {
+            name: 'noop',
+            description: '',
+            inputSchema: { type: 'object' },
+            permissionTier: 'read',
+          },
+        ],
+      }),
+    );
+
+    expect(log.chat).toEqual([{ model: 'def-model', toolCount: 1 }]);
+    expect(onDecision.mock.calls[0]?.[0]).toMatchObject({
+      usedFallback: true,
+      degradedReason: 'provider_missing',
+      providerId: 'def',
+      modelId: 'def-model',
+    });
   });
 
   it('decideForChat exposes the resolution without dispatching', () => {

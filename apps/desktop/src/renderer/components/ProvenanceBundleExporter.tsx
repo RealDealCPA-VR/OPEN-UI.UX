@@ -27,6 +27,7 @@ export function ProvenanceBundleExporter({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSavedTo, setLastSavedTo] = useState<string | null>(null);
+  const [lastSigned, setLastSigned] = useState<boolean>(false);
 
   const onExport = async (): Promise<void> => {
     const bridge = replayBridge();
@@ -40,6 +41,7 @@ export function ProvenanceBundleExporter({
       const res = await bridge.exportProvenanceBundle({ conversationId });
       if (res.savedTo) {
         setLastSavedTo(res.savedTo);
+        setLastSigned(typeof res.signature === 'string' && res.signature.length > 0);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -65,7 +67,7 @@ export function ProvenanceBundleExporter({
       </div>
       <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
         Bundles the full conversation transcript + every applied diff with prompt + citations +
-        routing decisions, as a single JSON file.
+        routing decisions, Ed25519-signed, as a single JSON file.
       </div>
       <div>
         <button type="button" className="btn" disabled={busy} onClick={() => void onExport()}>
@@ -78,7 +80,10 @@ export function ProvenanceBundleExporter({
         </div>
       ) : null}
       {lastSavedTo ? (
-        <div style={{ color: 'var(--success)', fontSize: 12 }}>Saved to {lastSavedTo}</div>
+        <div style={{ color: 'var(--success)', fontSize: 12 }}>
+          Saved to {lastSavedTo}
+          {lastSigned ? ' · signed' : ''}
+        </div>
       ) : null}
     </div>
   );

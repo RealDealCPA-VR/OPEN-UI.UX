@@ -130,4 +130,50 @@ describe('streamChunksToEvents', () => {
     const events = await collect(streamChunksToEvents(fromArray(chunks)));
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'end_turn' });
   });
+
+  it('keys tool_call deltas by id when index is absent', async () => {
+    const chunks: ChatChunk[] = [
+      {
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [{ id: 'call_A', type: 'function', function: { name: 'grep' } }],
+            },
+          },
+        ],
+      },
+      {
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [{ id: 'call_A', function: { arguments: '{"q":"x"}' } }],
+            },
+          },
+        ],
+      },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] },
+    ];
+    const events = await collect(streamChunksToEvents(fromArray(chunks)));
+    expect(events).toContainEqual({
+      type: 'tool_call',
+      id: 'call_A',
+      name: 'grep',
+      arguments: { q: 'x' },
+    });
+  });
+
+  it('emits costUsd when a known model is supplied', async () => {
+    const chunks: ChatChunk[] = [
+      {
+        choices: [],
+        usage: { prompt_tokens: 1_000_000, completion_tokens: 0, total_tokens: 1_000_000 },
+      },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+    ];
+    const events = await collect(streamChunksToEvents(fromArray(chunks), { model: 'gpt-4o' }));
+    const usage = events.find((e) => e.type === 'usage');
+    expect(usage).toMatchObject({ type: 'usage', costUsd: expect.any(Number) });
+  });
 });

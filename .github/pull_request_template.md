@@ -28,7 +28,7 @@ Thanks for the contribution! A few quick notes before you submit:
 <!--
 How did you verify this works? Be specific.
 Examples:
-- Added unit tests in packages/providers/openai/__tests__/...
+- Added unit tests in packages/provider-openai/src/*.test.ts
 - Manually tested in apps/desktop dev mode with provider X, model Y
 - Ran `pnpm test && pnpm typecheck && pnpm lint` locally
 -->

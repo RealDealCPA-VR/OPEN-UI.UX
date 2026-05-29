@@ -19,7 +19,7 @@ export const writeFileTool = defineTool({
   inputZod: input,
   permissionTier: 'write',
   async execute({ path: requested, content }, ctx): Promise<WriteFileResult> {
-    const resolved = resolveWithinWorkspace(ctx.workspaceRoot, requested);
+    const resolved = await resolveWithinWorkspace(ctx.workspaceRoot, requested);
     await atomicWrite(resolved, content, ctx.signal);
     return { bytesWritten: Buffer.byteLength(content, 'utf8') };
   },

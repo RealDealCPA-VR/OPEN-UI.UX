@@ -1,0 +1,33 @@
+name: Release readiness
+
+# Gates that should pass before a release is cut but that we don't want blocking
+# every PR. Runs on release-tag pushes (`v*`) and on manual dispatch from the
+# Actions UI.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  check-placeholders:
+    name: Check placeholders
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check placeholders
+        run: pnpm check-placeholders

@@ -1,14 +1,22 @@
 # OpenCodex
 
-**Mission Control for AI coding agents — your standalone desktop that drives Claude Code, Aider, OpenCode, and a built-in agent over any LLM.**
+**Mission Control for AI coding agents — a standalone desktop app that lives next to your editor and drives Claude Code, Aider, OpenCode, and a built-in agent over any LLM.**
 
-OpenCodex is an open-source, local-first, MIT-licensed desktop app that sits *above* the coding-agent CLIs you already use, unifies their approval and merge-review UX, and is provider-agnostic from day one.
+![Subagent tree view — OpenCodex Mission Control](/hero-subagent-tree.svg)
+
+> The image above is a hand-drawn SVG placeholder. The shipped landing hero is a real screenshot of the AgentRunDrawer subagent tree view (`apps/desktop/src/renderer/components/AgentRunDrawer.tsx`) — see `PLACEHOLDERS.md` in the repo for the replacement spec.
+
+OpenCodex is an open-source, local-first, MIT-licensed desktop app that sits *above* the coding-agent CLIs you already use, unifies their approval and merge-review UX, and is provider-agnostic from day one. It does not replace your editor — it drives the agents that work in it.
 
 ## The three pillars
 
-- **Runners** — drive the built-in agent, Claude Code, Aider, OpenCode, or any runner shipped via a plugin. The subagent tree view (see screenshot below — `apps/desktop/src/renderer/components/AgentRunDrawer.tsx`) shows every parallel worker live: status, tokens, cost, and the diff each one is staging in its own worktree.
+- **Runners** — drive the built-in agent, Claude Code, Aider, OpenCode, or any runner shipped via a plugin. The subagent tree view (mocked in the hero above; lives in `apps/desktop/src/renderer/components/AgentRunDrawer.tsx`) shows every parallel worker live: status, tokens, cost, and the diff each one is staging in its own worktree.
 - **Multi-agent orchestration** — fan out subtasks to parallel workers, each with its own model, scope, and git worktree, then accept or reject merges per worker.
 - **MCP + plugins** — every MCP server you connect becomes a tool / resource / prompt source. Third-party packages contribute tools, providers, runners, and full UI panels via the plugin SDK.
+
+## Provider-agnostic as a feature, not a footnote
+
+Eight providers in the box — OpenAI, Anthropic, Google Gemini, xAI Grok, Mistral, Ollama (local), OpenRouter, Voyage (embed-only) — all behind a single `LLMProvider` contract. Switch mid-conversation. The agent loop, the tool layer, the UI never name a specific vendor. Adding a new provider is one package and one interface implementation; ship it as a plugin or upstream it.
 
 ## What it is, at a glance
 

@@ -28,15 +28,19 @@ A guided tour of every screen, concept, and shortcut. Read top-to-bottom for a c
 
 ## Mission Control
 
-OpenCodex is **Mission Control for AI coding agents**: one standalone desktop that drives every major coding-agent CLI (Claude Code, Aider, OpenCode) plus a built-in agent, all over any LLM you configure.
+OpenCodex is **Mission Control for AI coding agents**: a **standalone desktop app that lives next to your editor** and drives every major coding-agent CLI (Claude Code, Aider, OpenCode) plus a built-in agent, all over any LLM you configure.
 
 You sit at the top of the stack. The three pillars beneath you are:
 
 - **Runners** — the built-in agent, Claude Code, Aider, OpenCode, and any runner contributed via the plugin SDK. You pick the right tool per task; OpenCodex handles approvals, diff review, audit log, and merge review in a unified UI no matter which runner is doing the work.
-- **Multi-agent orchestration** — fan subtasks out to parallel workers, each in its own git worktree so changes never collide. Watch the subagent tree, intervene, accept or reject merges per worker.
+- **Multi-agent orchestration** — fan subtasks out to parallel workers, each in its own git worktree so changes never collide. Watch the subagent tree (the hero asset on the [website landing](./website/pages/index.mdx) is a mock of this view), intervene, accept or reject merges per worker.
 - **MCP + plugins** — every MCP server you connect becomes a tool/resource/prompt source automatically. Third-party packages can contribute tools, providers, runners, and entire UI panels.
 
-Everything is local-first. API keys live in the OS keychain. No backend service.
+Everything is local-first. API keys live in the OS keychain. No backend service. The desktop window can sit on a second monitor or behind your editor — it doesn't try to be your editor, it drives the agents that work in it.
+
+### Provider-agnostic, by contract
+
+OpenCodex talks to LLMs through one interface — `LLMProvider` in `packages/core` — and every adapter is interchangeable. Eight ship in the box: OpenAI, Anthropic, Google Gemini, xAI Grok, Mistral, Ollama (local), OpenRouter, and Voyage (embed-only). The model picker groups them by provider, shows capability badges and cost inline, and lets you switch mid-conversation. The agent loop, the tool layer, and the UI never name a specific provider — that's why a new one is a single package, not a fork.
 
 ---
 
@@ -58,14 +62,18 @@ It also exposes a plugin SDK and is MCP-native — every MCP server you connect 
 
 ## First-time setup
 
-On first launch, the **Onboarding Wizard** opens. It's four steps:
+On first launch, the **Onboarding Wizard** opens. It's six steps:
 
-1. **Pick a provider** — OpenAI, Anthropic, Google, Mistral, xAI, Ollama, or OpenRouter. Each step has a "Why?" line explaining what's about to happen.
-2. **Enter your API key** — stored in the OS keychain via `keytar`. The wizard immediately calls the provider's "test" endpoint. If the key is rejected, you see the **actual provider error message** inline (not a generic "failed"), plus a "Try a different provider" link.
-3. **Pick a workspace** — the folder OpenCodex will read, edit, and run shell commands inside. You can change this any time in **Settings → Workspace**.
-4. **Start chatting** — a check animation marks completion (animates only if you don't have "Reduce motion" enabled in your OS).
+1. **Try Ollama (local)** — if Ollama is running on `127.0.0.1:11434`, the wizard offers a fully-local-only path. Accept, skip to cloud setup, or continue to provider selection.
+2. **Pick a provider** — OpenAI, Anthropic, Google, Mistral, xAI, Ollama, or OpenRouter. Each step has a "Why?" line explaining what's about to happen.
+3. **Enter your API key** — stored in the OS keychain via `keytar`. The wizard immediately calls the provider's "test" endpoint. If the key is rejected, you see the **actual provider error message** inline (not a generic "failed"), plus a "Try a different provider" link.
+4. **Connect a runner (optional)** — Claude Code, OpenCode, or Aider. The step shows install status per runner and a one-line "what is this" hook; skip or continue with zero runners.
+5. **Pick a workspace** — the folder OpenCodex will read, edit, and run shell commands inside. You can change this any time in **Settings → Workspace**.
+6. **Install starter skills (optional)** — three opt-in markdown skill templates (`daily-standup`, `security-audit`, `dependency-check`). Toggle any off you don't want, or skip the lot.
 
-**Skip for now** dismisses the wizard without marking onboarding complete. You'll see an `OnboardingBanner` at the top of the app with a "N of 4 done" chip and a **Resume setup** button.
+A final "Setup complete" step closes the wizard with a check animation (animates only if you don't have "Reduce motion" enabled in your OS).
+
+**Skip for now** dismisses the wizard without marking onboarding complete. You'll see an `OnboardingBanner` at the top of the app with a progress chip and a **Resume setup** button.
 
 If your provider key turns out to be wrong later, **Settings → Providers** has a **Test connection** button that reports latency, discovered model count, and (on failure) a one-line suggested fix.
 
@@ -85,14 +93,14 @@ OpenCodex uses a **three-column layout**:
                                                       status bar (bottom)
 ```
 
-- **Nav rail** (left, always visible): Chat / Agent / Codebase / Automations / Settings.
+- **Nav rail** (left, always visible): Chat / Agent / Runners / Codebase / Reviewer / Automations / Settings. Seven items.
 - **Context pane** (middle): per-route context — e.g., on `/chat` it's the conversation list; on `/automations` it's a live next-run countdown for each scheduled task.
 - **Main view** (right): the actual surface you're working in.
 - **Status bar** (bottom): live agent state, current tool, token usage with segmented meter against the model's context window, active workspace.
 
 **Collapse the context pane** with `Cmd/Ctrl+\` or `Cmd/Ctrl+B`. The nav rail stays visible. Toggle persists across sessions.
 
-**Jump between routes**: `Cmd/Ctrl+1` Chat, `Cmd/Ctrl+2` Agent, `Cmd/Ctrl+3` Codebase, `Cmd/Ctrl+4` Automations, `Cmd/Ctrl+5` Settings. Or `Cmd/Ctrl+,` opens Settings.
+**Jump between routes**: `Cmd/Ctrl+1` Chat, `Cmd/Ctrl+2` Agent, `Cmd/Ctrl+3` Runners, `Cmd/Ctrl+4` Codebase, `Cmd/Ctrl+5` Reviewer, `Cmd/Ctrl+6` Automations. Settings has no number — open it with `Cmd/Ctrl+,`. The Command Palette opens with `Cmd/Ctrl+P`.
 
 **Hover hints**: every icon-only button has a short hint that appears after 300ms of hover. Some show keyboard shortcuts inline (e.g., "Send · ⌘↩"). You can disable hints globally in **Settings → Accessibility**.
 
@@ -327,11 +335,15 @@ Each task's row has a "History" button that opens a side-drawer paginated by run
 
 ## Settings
 
-Two-pane layout: section rail on the left, panel on the right. The rail has a search input at the top (`Cmd/Ctrl+F` to refocus) that filters by title + description; `Esc` clears it.
+Two-pane layout: section rail on the left, panel on the right. The rail has a search input at the top — focus it with `Cmd/Ctrl+F` while you're anywhere inside the Settings view (the binding is gated by `closest('.settings-view')` so it never fires from Chat or Codebase). See [Cmd/Ctrl+F behavior by context](#cmdctrlf-behavior-by-context) for the full map.
 
 URLs like `/settings/providers?highlight=openai` briefly pulse the matching row so deep-links from elsewhere are visible.
 
-### The 16 sections
+### The 19 sections
+
+Theme, Workspace, Providers, Approvals, Model routing, Privacy, Plugins, MCP servers, Memory, Updates, Telemetry, Crash reporting, Budgets, Audit log, Indexing, Scheduled tasks (redirect), Skills, Accessibility, Help.
+
+Note: **Runners is a top-level route at `/runners`**, not a Settings section. The Settings rail's "Scheduled tasks" entry exists for backwards-compat deep-links only — opening it redirects to `/automations`.
 
 #### Theme
 
@@ -370,7 +382,7 @@ Card list of configured MCP servers. Per-card:
 
 #### Memory
 
-Two backends bundled: **Obsidian** (filesystem-backed `.md` walker) and **Notion** (fetch-only API client, token stored in keychain). Per-backend: enable toggle, config inputs, **Test connection** + status pill. Memory tools surface in the same registry as builtins under `memory__obsidian__*` / `memory__notion__*`.
+Three backends bundled: **local-fs** (plain markdown notes under `~/.opencodex/memory/`, zero config, on by default), **Obsidian** (filesystem-backed `.md` walker rooted at your vault), and **Notion** (fetch-only API client, integration token stored in keychain). Per-backend: enable toggle, config inputs, **Test connection** + status pill. Memory tools surface in the same registry as builtins under `memory__local-fs__*` / `memory__obsidian__*` / `memory__notion__*`.
 
 #### Updates
 
@@ -390,7 +402,10 @@ Every tool call OpenCodex executes is logged here: input, output, decision, time
 
 #### Indexing
 
-Read-only chat-mode toggle (when on, the `ApprovalManager` denies any tool above the `read` tier — useful when you want a model that's strictly chatting _about_ code without touching it). Description of the `search_codebase` tool.
+Two knobs today:
+
+- **Read-only chat mode** — toggle that, when on, makes the `ApprovalManager` deny any tool above the `read` tier. Useful when you want a model that's strictly chatting _about_ code without touching it. Inline error banner replaces silent failures if the toggle write fails.
+- **Codebase search** — descriptive row explaining the `search_codebase` tool (a ranked grep over the workspace that respects `.gitignore` and `.opencodexignore`). The full vector + AST indexing UI (status, last-update timestamp, per-file error list, manual reindex button) is on the v0.1 backlog; today the backend infrastructure (LanceDB shim, FTS5, chokidar watcher) exists but is surfaced via tools, not yet via the panel.
 
 #### Skills
 
@@ -448,7 +463,7 @@ This manual, rendered inside the app. Two-pane layout: filterable table of conte
 
 #### Automations (deep-link redirect)
 
-`/settings/scheduled-tasks` is a backwards-compat redirect to `/automations` preserving any `?prefillSkill=` query param. The actual UI lives in the top-level **Automations** view.
+The Settings rail's "Scheduled tasks" entry is a backwards-compat redirect to `/automations`, preserving any `?prefillSkill=` query param. The actual UI lives in the top-level **Automations** view.
 
 ---
 
@@ -648,13 +663,24 @@ Both opt-in, both off by default. Telemetry events are anonymized (provider+mode
 | ------------ | --------------------------------------- |
 | `Cmd/Ctrl+1` | Go to Chat                              |
 | `Cmd/Ctrl+2` | Go to Agent                             |
-| `Cmd/Ctrl+3` | Go to Codebase                          |
-| `Cmd/Ctrl+4` | Go to Automations                       |
-| `Cmd/Ctrl+5` | Go to Settings                          |
-| `Cmd/Ctrl+,` | Open Settings                           |
+| `Cmd/Ctrl+3` | Go to Runners                           |
+| `Cmd/Ctrl+4` | Go to Codebase                          |
+| `Cmd/Ctrl+5` | Go to Reviewer                          |
+| `Cmd/Ctrl+6` | Go to Automations                       |
+| `Cmd/Ctrl+,` | Open Settings (no number shortcut)      |
+| `Cmd/Ctrl+P` | Open Command Palette                    |
 | `Cmd/Ctrl+\` | Toggle left context pane                |
 | `Cmd/Ctrl+B` | Toggle left context pane (legacy alias) |
 | `Esc`        | Dismiss most recent toast               |
+
+### Cmd/Ctrl+F behavior by context
+
+`Cmd/Ctrl+F` is bound in two places. Each binding is gated to its host view, so there is no app-level conflict:
+
+- **Settings rail**: focuses the section filter input. Gated by `document.activeElement?.closest('.settings-view')` — only fires when the focus is already inside the Settings view.
+- **Codebase view**: refocuses the `CodebaseSearchBox` above the file tree. Component-scoped — only the Codebase view mounts the listener.
+
+The Chat slash menu does **not** bind `Cmd/Ctrl+F` (it opens on a literal `/` keystroke or via `Cmd/Ctrl+K`). If you're inside a Monaco editor (preview pane or merge-review diff), Monaco's own find widget owns the key — exit the editor (`Esc`, then `Tab`) to give the app-level binding back.
 
 ### Chat composer
 

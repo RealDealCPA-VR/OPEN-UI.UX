@@ -23,6 +23,8 @@ export const DEFAULT_PORT_RANGE_END = 38500;
 export const SIGNATURE_HEADER = 'x-opencodex-signature';
 export const RATE_LIMIT_WINDOW_MS = 1000;
 export const MAX_BODY_BYTES = 64 * 1024;
+export const LAST_TRIGGER_TTL_MS = 60_000;
+export const LAST_TRIGGER_MAX_ENTRIES = 10_000;
 
 export type TriggerKind = 'webhook' | 'git-hook';
 
@@ -87,6 +89,29 @@ function isRateLimited(taskId: string, now: number): boolean {
   const prev = lastTriggerAt.get(taskId);
   if (prev === undefined) return false;
   return now - prev < RATE_LIMIT_WINDOW_MS;
+}
+
+function pruneLastTriggerAt(now: number): void {
+  for (const [id, ts] of lastTriggerAt) {
+    if (now - ts > LAST_TRIGGER_TTL_MS) {
+      lastTriggerAt.delete(id);
+    }
+  }
+  if (lastTriggerAt.size >= LAST_TRIGGER_MAX_ENTRIES) {
+    const entries = [...lastTriggerAt.entries()].sort((a, b) => a[1] - b[1]);
+    const drop = lastTriggerAt.size - Math.floor(LAST_TRIGGER_MAX_ENTRIES / 2);
+    for (let i = 0; i < drop; i++) {
+      const entry = entries[i];
+      if (entry) lastTriggerAt.delete(entry[0]);
+    }
+  }
+}
+
+function recordTriggerAt(taskId: string, now: number): void {
+  lastTriggerAt.set(taskId, now);
+  if (lastTriggerAt.size >= Math.floor(LAST_TRIGGER_MAX_ENTRIES / 2)) {
+    pruneLastTriggerAt(now);
+  }
 }
 
 function pickRange(opts: ListenerStartOptions): number[] {
@@ -330,7 +355,7 @@ async function handleRequest(
     }
   }
 
-  lastTriggerAt.set(taskId, now);
+  recordTriggerAt(taskId, now);
   try {
     await opts.onTrigger({ taskId, kind: lookup.kind, body: parsedBody });
   } catch (err) {
@@ -354,4 +379,12 @@ export function __resetListenerForTests(): void {
   server = null;
   boundPort = null;
   lastTriggerAt.clear();
+}
+
+export function __getLastTriggerAtSizeForTests(): number {
+  return lastTriggerAt.size;
+}
+
+export function __recordTriggerAtForTests(taskId: string, ts: number): void {
+  recordTriggerAt(taskId, ts);
 }

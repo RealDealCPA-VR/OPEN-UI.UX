@@ -8,6 +8,7 @@ import type {
   StoredMessage,
 } from '../../shared/conversation';
 import type { ContentBlock, Role } from '@opencodex/core';
+import { withSqliteBusyRetry } from '../util/sqlite-retry';
 import { getDb } from './db';
 import { indexMessageInFts } from './message-search';
 
@@ -118,10 +119,14 @@ export function createConversation(
   const id = randomUUID();
   const title = (input.title?.trim() || 'New conversation').slice(0, 200);
   const now = new Date().toISOString();
-  db.prepare(
-    `INSERT INTO conversations (id, title, provider_id, model_id, created_at, updated_at)
+  withSqliteBusyRetry(() =>
+    db
+      .prepare(
+        `INSERT INTO conversations (id, title, provider_id, model_id, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(id, title, input.providerId ?? null, input.modelId ?? null, now, now);
+      )
+      .run(id, title, input.providerId ?? null, input.modelId ?? null, now, now),
+  );
   const conversation = getConversation(id, db);
   if (!conversation) throw new Error('failed to create conversation');
   return conversation;
@@ -135,9 +140,11 @@ export function renameConversation(
   const trimmed = title.trim().slice(0, 200);
   if (!trimmed) throw new Error('title cannot be empty');
   const now = new Date().toISOString();
-  const result = db
-    .prepare(`UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?`)
-    .run(trimmed, now, id);
+  const result = withSqliteBusyRetry(() =>
+    db
+      .prepare(`UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?`)
+      .run(trimmed, now, id),
+  );
   if (result.changes === 0) throw new Error(`conversation ${id} not found`);
   const conversation = getConversation(id, db);
   if (!conversation) throw new Error(`conversation ${id} not found after rename`);
@@ -145,7 +152,7 @@ export function renameConversation(
 }
 
 export function deleteConversation(id: string, db: Database.Database = getDb()): void {
-  db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
+  withSqliteBusyRetry(() => db.prepare('DELETE FROM conversations WHERE id = ?').run(id));
 }
 
 export function listMessages(
@@ -188,7 +195,6 @@ export function appendMessage(
       req.costUsd ?? null,
       now,
     );
-    // Lane 3 — mirror into messages_fts so conversation search stays fresh.
     try {
       indexMessageInFts(id, req.conversationId, req.content, db);
     } catch {
@@ -196,7 +202,7 @@ export function appendMessage(
     }
     db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now, req.conversationId);
   });
-  tx();
+  withSqliteBusyRetry(() => tx());
   const row = db.prepare(`SELECT ${MESSAGE_COLUMNS} FROM messages WHERE id = ?`).get(id) as
     | MessageRow
     | undefined;
@@ -269,24 +275,26 @@ export function updateAssistantMessage(
   },
   db: Database.Database = getDb(),
 ): StoredMessage {
-  const result = db
-    .prepare(
-      `UPDATE messages
+  const result = withSqliteBusyRetry(() =>
+    db
+      .prepare(
+        `UPDATE messages
        SET content = ?,
            content_blocks_json = ?,
            input_tokens = COALESCE(?, input_tokens),
            output_tokens = COALESCE(?, output_tokens),
            cost_usd = COALESCE(?, cost_usd)
        WHERE id = ?`,
-    )
-    .run(
-      patch.content,
-      serializeContentBlocks(patch.contentBlocks),
-      patch.inputTokens ?? null,
-      patch.outputTokens ?? null,
-      patch.costUsd ?? null,
-      id,
-    );
+      )
+      .run(
+        patch.content,
+        serializeContentBlocks(patch.contentBlocks),
+        patch.inputTokens ?? null,
+        patch.outputTokens ?? null,
+        patch.costUsd ?? null,
+        id,
+      ),
+  );
   if (result.changes === 0) throw new Error(`message ${id} not found`);
   const row = db.prepare(`SELECT ${MESSAGE_COLUMNS} FROM messages WHERE id = ?`).get(id) as
     | MessageRow

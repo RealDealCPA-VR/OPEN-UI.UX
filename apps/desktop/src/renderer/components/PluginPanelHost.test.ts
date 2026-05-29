@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { HostResponseSchema, PanelMessageSchema, handlePanelMessage } from './PluginPanelHost';
+import {
+  HostResponseSchema,
+  PanelMessageSchema,
+  PluginPanelPathTraversalError,
+  handlePanelMessage,
+  toFileUrl,
+} from './PluginPanelHost';
 
 function makeCtx(overrides: Partial<{ pluginId: string; panelId: string }> = {}) {
   const log = vi.fn();
@@ -110,5 +116,38 @@ describe('handlePanelMessage', () => {
     const out = handlePanelMessage({ kind: 'exec', code: 'process.exit(1)' }, ctx);
     expect(out).toBeNull();
     expect(ctx.log).not.toHaveBeenCalled();
+  });
+});
+
+describe('toFileUrl', () => {
+  it('builds a file URL from an absolute posix path', () => {
+    expect(toFileUrl('/Users/me/plugin/panel.html')).toBe('file:///Users/me/plugin/panel.html');
+  });
+
+  it('builds a file URL from a backslash Windows path', () => {
+    expect(toFileUrl('C:\\plugins\\demo\\panel.html')).toBe('file:///C:/plugins/demo/panel.html');
+  });
+
+  it('rejects parent-directory traversal segments', () => {
+    expect(() => toFileUrl('/plugins/demo/../../secret.html')).toThrow(
+      PluginPanelPathTraversalError,
+    );
+  });
+
+  it('rejects percent-encoded traversal segments', () => {
+    expect(() => toFileUrl('/plugins/demo/%2e%2e/secret.html')).toThrow(
+      PluginPanelPathTraversalError,
+    );
+  });
+
+  it('rejects non-file schemes', () => {
+    expect(() => toFileUrl('http://evil.example/panel.html')).toThrow(
+      PluginPanelPathTraversalError,
+    );
+    expect(() => toFileUrl('javascript:alert(1)')).toThrow(PluginPanelPathTraversalError);
+  });
+
+  it('rejects empty or non-string input', () => {
+    expect(() => toFileUrl('')).toThrow(PluginPanelPathTraversalError);
   });
 });

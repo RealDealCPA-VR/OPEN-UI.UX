@@ -7,7 +7,9 @@ import type {
   StopReason,
   ToolDefinition,
 } from '@opencodex/core';
+import { computeCostUsd, fetchWithRetry, sanitizeErrorDetail } from '@opencodex/core';
 import type { OpenAIConfig } from './config';
+import { findModel } from './models';
 import { sseEvents } from './sse';
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
@@ -76,13 +78,29 @@ function blockToContent(block: ContentBlock, role: MessageRole): ResponsesInputC
   return undefined;
 }
 
+function stringifyToolOutput(output: unknown): string {
+  if (typeof output === 'string') return output;
+  if (output === null) return 'null';
+  if (output === undefined) return '';
+  return JSON.stringify(output);
+}
+
 function translateMessagesForResponses(messages: Message[]): ResponsesInputItem[] {
   const items: ResponsesInputItem[] = [];
+  let lastToolUseId: string | undefined;
   for (const msg of messages) {
     const role: MessageRole = isMessageRole(msg.role) ? msg.role : 'user';
 
     if (typeof msg.content === 'string') {
-      if (msg.role === 'tool') continue;
+      if (msg.role === 'tool') {
+        if (!lastToolUseId) continue;
+        items.push({
+          type: 'function_call_output',
+          call_id: lastToolUseId,
+          output: msg.content,
+        });
+        continue;
+      }
       items.push({
         type: 'message',
         role,
@@ -93,6 +111,10 @@ function translateMessagesForResponses(messages: Message[]): ResponsesInputItem[
         ],
       });
       continue;
+    }
+
+    for (const block of msg.content) {
+      if (block.type === 'tool_use') lastToolUseId = block.id;
     }
 
     let messageContent: ResponsesInputContent[] = [];
@@ -123,8 +145,7 @@ function translateMessagesForResponses(messages: Message[]): ResponsesInputItem[
         items.push({
           type: 'function_call_output',
           call_id: block.toolUseId,
-          output:
-            typeof block.output === 'string' ? block.output : JSON.stringify(block.output ?? ''),
+          output: stringifyToolOutput(block.output),
         });
       }
     }
@@ -239,8 +260,13 @@ async function* parseResponseEvents(
   }
 }
 
+export interface ResponseEventsOptions {
+  model?: string;
+}
+
 export async function* responseEventsToChatEvents(
   events: AsyncIterable<ResponseEvent>,
+  opts: ResponseEventsOptions = {},
 ): AsyncGenerator<ChatEvent, void, void> {
   const pending = new Map<number, PendingFunctionCall>();
   let sawFunctionCall = false;
@@ -291,11 +317,19 @@ export async function* responseEventsToChatEvents(
         const usage = evt.response?.usage;
         if (usage && (usage.input_tokens !== undefined || usage.output_tokens !== undefined)) {
           const cached = usage.input_tokens_details?.cached_tokens;
+          const pricing = opts.model ? findModel(opts.model)?.pricing : undefined;
+          const cost = computeCostUsd({
+            inputTokens: usage.input_tokens ?? 0,
+            outputTokens: usage.output_tokens ?? 0,
+            ...(cached !== undefined ? { cachedInputTokens: cached } : {}),
+            ...(pricing ? { pricing } : {}),
+          });
           yield {
             type: 'usage',
             inputTokens: usage.input_tokens ?? 0,
             outputTokens: usage.output_tokens ?? 0,
             ...(cached !== undefined ? { cachedInputTokens: cached } : {}),
+            ...(cost !== undefined ? { costUsd: cost } : {}),
           };
         }
         stopReason = mapStatusToStopReason(
@@ -307,10 +341,17 @@ export async function* responseEventsToChatEvents(
       case 'response.incomplete': {
         const usage = evt.response?.usage;
         if (usage && (usage.input_tokens !== undefined || usage.output_tokens !== undefined)) {
+          const pricing = opts.model ? findModel(opts.model)?.pricing : undefined;
+          const cost = computeCostUsd({
+            inputTokens: usage.input_tokens ?? 0,
+            outputTokens: usage.output_tokens ?? 0,
+            ...(pricing ? { pricing } : {}),
+          });
           yield {
             type: 'usage',
             inputTokens: usage.input_tokens ?? 0,
             outputTokens: usage.output_tokens ?? 0,
+            ...(cost !== undefined ? { costUsd: cost } : {}),
           };
         }
         stopReason = mapStatusToStopReason('incomplete', evt.response?.incomplete_details?.reason);
@@ -374,11 +415,14 @@ export async function* responsesStream(
   };
   if (req.signal) init.signal = req.signal;
 
-  const response = await fetch(url, init);
+  const response = await fetchWithRetry(
+    () => fetch(url, init),
+    req.signal ? { signal: req.signal } : {},
+  );
   if (!response.ok || !response.body) {
     let detail = '<unreadable body>';
     try {
-      detail = await response.text();
+      detail = sanitizeErrorDetail(await response.text());
     } catch {
       // keep default
     }
@@ -390,5 +434,5 @@ export async function* responsesStream(
     yield { type: 'done', stopReason: 'error' };
     return;
   }
-  yield* responseEventsToChatEvents(parseResponseEvents(response.body));
+  yield* responseEventsToChatEvents(parseResponseEvents(response.body), { model: req.model });
 }

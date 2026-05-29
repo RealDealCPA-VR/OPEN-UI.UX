@@ -2,6 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'none'; connect-src 'none'; frame-ancestors 'self';"
+    />
     <title>Hello Panel</title>
     <style>
       body {
@@ -16,6 +20,11 @@
   </head>
   <body>
     <h1>Hello from a plugin panel</h1>
-    <p>This page is loaded by OpenCodex as a sandboxed iframe. Replace it with your own HTML.</p>
+    <p>
+      This page is loaded by OpenCodex inside a renderer iframe. The CSP meta tag above blocks
+      scripts, network requests, and remote subresources so a panel cannot exfiltrate data before
+      host-side sandboxing lands — see docs/security-model.md for the full iframe trust model. Relax
+      these directives deliberately when you add JavaScript or remote assets.
+    </p>
   </body>
 </html>

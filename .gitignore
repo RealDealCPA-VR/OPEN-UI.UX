@@ -7,6 +7,14 @@ dist/
 build/
 out/
 *.tsbuildinfo
+# Stray tsc emit artifacts in src/ — emit directs to dist/, but if anyone
+# accidentally runs `tsc` from a package without `-p tsconfig.json` (or in a
+# mode that emits next to source), these patterns keep the noise out of git
+# and ESLint.
+packages/*/src/**/*.js
+packages/*/src/**/*.js.map
+packages/*/src/**/*.d.ts
+packages/*/src/**/*.d.ts.map
 
 # Electron
 apps/desktop/release/

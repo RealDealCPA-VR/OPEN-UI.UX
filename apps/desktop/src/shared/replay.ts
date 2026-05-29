@@ -59,9 +59,14 @@ export interface ProvenanceBundleMessage {
   createdAt: string;
 }
 
+export const PROVENANCE_BUNDLE_FORMAT = 'opencodex-provenance-v1' as const;
+
 export interface ProvenanceBundle {
+  format: typeof PROVENANCE_BUNDLE_FORMAT;
   bundleVersion: 1;
   exportedAt: string;
+  deviceId: string;
+  publicKey: string;
   conversation: {
     id: string;
     title: string;
@@ -74,10 +79,16 @@ export interface ProvenanceBundle {
   appliedDiffs: AppliedDiff[];
 }
 
+export interface SignedProvenanceBundle {
+  bundle: ProvenanceBundle;
+  signature: string;
+}
+
 export interface ExportProvenanceBundleResponse {
   filename: string;
   savedTo: string | null;
   bundle: ProvenanceBundle | null;
+  signature: string | null;
 }
 
 export const replayConversationRequestSchema = z.object({

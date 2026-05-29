@@ -171,9 +171,9 @@ When a server connects, its `tools/list` is registered through the same `ToolReg
 
 ## Plugin model
 
-Status: SDK manifest shape shipped (`packages/plugin-sdk/src/manifest.ts:22`); plugin loader + VM sandbox planned for v0.1. See `docs/plugin-authoring.md`.
+Status: SDK manifest shape shipped (`packages/plugin-sdk/src/manifest.ts:22`); plugin loader shipped but **runs unsandboxed in the main process** — hardening to `utilityProcess.fork()` + Node `--permission` flags is planned for v0.1. See `docs/security-model.md#plugin-sandbox` for the current trust model and `docs/plugin-authoring.md` for the SDK shape.
 
-Plugin packages ship a `opencodex.plugin.json` manifest declaring `permissions[]` and `contributions{}`. On install the user reviews permissions and confirms. The loader runs the entry module in a sandboxed VM context, hands it a `PluginHost` restricted to declared permissions, and registers contributions with the relevant registries.
+Plugin packages ship a `opencodex.plugin.json` manifest declaring `permissions[]` and `contributions{}`. On install the user reviews permissions and confirms. Today the loader dynamically imports the entry module into the Electron main process and hands it a `PluginHost`; the manifest `permissions[]` array currently gates `PluginHost` helper calls only, not raw Node syscalls. Hardened isolation is in flight.
 
 ## Why Electron, not Tauri
 

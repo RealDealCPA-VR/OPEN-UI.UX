@@ -70,4 +70,23 @@ describe('computeNextFire (pure, no DB)', () => {
     ).toBeNull();
     expect(computeNextFire(plainTask({ trigger: { type: 'webhook', secret: 's' } }))).toBeNull();
   });
+
+  it('honors a tz override on the cron trigger', () => {
+    const t = plainTask({
+      trigger: { type: 'cron', expr: '0 9 * * *', tz: 'America/New_York' },
+    });
+    // 09:00 America/New_York on 2026-05-26 (EDT, UTC-4) is 13:00 UTC.
+    const after = new Date('2026-05-26T05:00:00Z');
+    const next = computeNextFire(t, after);
+    expect(next).not.toBeNull();
+    expect(next!.toISOString()).toBe('2026-05-26T13:00:00.000Z');
+  });
+
+  it('defaults to UTC when no tz is set', () => {
+    const t = plainTask({ trigger: { type: 'cron', expr: '0 9 * * *' } });
+    const after = new Date('2026-05-26T05:00:00Z');
+    const next = computeNextFire(t, after);
+    expect(next).not.toBeNull();
+    expect(next!.toISOString()).toBe('2026-05-26T09:00:00.000Z');
+  });
 });

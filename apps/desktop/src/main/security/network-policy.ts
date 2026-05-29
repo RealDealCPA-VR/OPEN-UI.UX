@@ -64,6 +64,8 @@ export function isLoopbackHost(hostname: string): boolean {
     return true;
   }
   if (host.startsWith('127.')) return true;
+  if (host.startsWith('::ffff:127.') || host === '::ffff:127.0.0.1') return true;
+  if (host.startsWith('[::ffff:127.')) return true;
   return false;
 }
 

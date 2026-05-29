@@ -94,10 +94,31 @@ export function handlePanelMessage(raw: unknown, ctx: PanelMessageContext): Host
   };
 }
 
-function toFileUrl(p: string): string {
-  let normalized = p.replace(/\\/g, '/');
-  if (!normalized.startsWith('/')) normalized = `/${normalized}`;
-  return `file://${normalized}`;
+export class PluginPanelPathTraversalError extends Error {
+  constructor(path: string) {
+    super(`Plugin panel htmlPath rejected: traversal segment in ${path}`);
+    this.name = 'PluginPanelPathTraversalError';
+  }
+}
+
+export function toFileUrl(p: string): string {
+  if (typeof p !== 'string' || p.length === 0) {
+    throw new PluginPanelPathTraversalError(String(p));
+  }
+  const normalized = p.replace(/\\/g, '/');
+  const segments = normalized.split('/');
+  for (const seg of segments) {
+    if (seg === '..') throw new PluginPanelPathTraversalError(p);
+  }
+  if (/%2e%2e/i.test(normalized) || /%2f%2e%2e/i.test(normalized)) {
+    throw new PluginPanelPathTraversalError(p);
+  }
+  const isWindowsDrive = /^[a-zA-Z]:\//.test(normalized);
+  if (!isWindowsDrive && /^[a-z][a-z0-9+.-]*:/i.test(normalized) && !/^file:/i.test(normalized)) {
+    throw new PluginPanelPathTraversalError(p);
+  }
+  const prefixed = normalized.startsWith('/') ? normalized : `/${normalized}`;
+  return `file://${prefixed}`;
 }
 
 export interface PluginPanelHostProps {

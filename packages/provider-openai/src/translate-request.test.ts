@@ -49,6 +49,28 @@ describe('translateMessages', () => {
     ]);
   });
 
+  it('serializes null tool_result output as "null" (not empty string)', () => {
+    expect(
+      translateMessages([
+        {
+          role: 'user',
+          content: [{ type: 'tool_result', toolUseId: 'call_1', output: null }],
+        },
+      ]),
+    ).toEqual([{ role: 'tool', tool_call_id: 'call_1', content: 'null' }]);
+  });
+
+  it('serializes undefined tool_result output as empty string', () => {
+    expect(
+      translateMessages([
+        {
+          role: 'user',
+          content: [{ type: 'tool_result', toolUseId: 'call_1', output: undefined }],
+        },
+      ]),
+    ).toEqual([{ role: 'tool', tool_call_id: 'call_1', content: '' }]);
+  });
+
   it('flushes content before a tool_result and resumes after', () => {
     expect(
       translateMessages([
@@ -134,5 +156,54 @@ describe('buildChatRequestBody', () => {
       { stream: false },
     );
     expect(body.tools).toBeUndefined();
+  });
+
+  it('translates toolChoice string values to OpenAI shape', () => {
+    expect(
+      buildChatRequestBody({ model: 'gpt-4o', messages: [], toolChoice: 'auto' }, { stream: false })
+        .tool_choice,
+    ).toBe('auto');
+    expect(
+      buildChatRequestBody(
+        { model: 'gpt-4o', messages: [], toolChoice: 'required' },
+        { stream: false },
+      ).tool_choice,
+    ).toBe('required');
+    expect(
+      buildChatRequestBody({ model: 'gpt-4o', messages: [], toolChoice: 'none' }, { stream: false })
+        .tool_choice,
+    ).toBe('none');
+  });
+
+  it('translates named toolChoice to function selector', () => {
+    const body = buildChatRequestBody(
+      { model: 'gpt-4o', messages: [], toolChoice: { name: 'grep' } },
+      { stream: false },
+    );
+    expect(body.tool_choice).toEqual({ type: 'function', function: { name: 'grep' } });
+  });
+
+  it('translates responseFormat json_object', () => {
+    const body = buildChatRequestBody(
+      { model: 'gpt-4o', messages: [], responseFormat: { type: 'json_object' } },
+      { stream: false },
+    );
+    expect(body.response_format).toEqual({ type: 'json_object' });
+  });
+
+  it('translates responseFormat json_schema with schema', () => {
+    const schema = { type: 'object', properties: { a: { type: 'string' } } } as const;
+    const body = buildChatRequestBody(
+      {
+        model: 'gpt-4o',
+        messages: [],
+        responseFormat: { type: 'json_schema', name: 'Reply', schema },
+      },
+      { stream: false },
+    );
+    expect(body.response_format).toEqual({
+      type: 'json_schema',
+      json_schema: { name: 'Reply', schema },
+    });
   });
 });

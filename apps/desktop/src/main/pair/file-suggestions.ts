@@ -11,6 +11,16 @@ function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
 }
 
+function isSafePathToken(raw: string): boolean {
+  if (!raw) return false;
+  if (raw.includes('\0')) return false;
+  const normalized = raw.replace(/\\/g, '/');
+  for (const seg of normalized.split('/')) {
+    if (seg === '..') return false;
+  }
+  return true;
+}
+
 function collectReferencedPaths(messages: readonly StoredMessage[]): Set<string> {
   const recent = messages.slice(-RECENT_MESSAGE_WINDOW);
   const out = new Set<string>();
@@ -18,11 +28,11 @@ function collectReferencedPaths(messages: readonly StoredMessage[]): Set<string>
     if (!msg.content) continue;
     for (const m of msg.content.matchAll(CITATION_RE)) {
       const file = m[1];
-      if (file) out.add(normalizePath(file));
+      if (file && isSafePathToken(file)) out.add(normalizePath(file));
     }
     for (const m of msg.content.matchAll(BARE_PATH_RE)) {
       const file = m[1];
-      if (file && file.includes('.')) out.add(normalizePath(file));
+      if (file && file.includes('.') && isSafePathToken(file)) out.add(normalizePath(file));
     }
   }
   return out;
@@ -103,6 +113,7 @@ export class FileSuggestionsEngine {
     const bucket = this.getOrCreateBucket(conversationId);
 
     const consider = (path: string, kind: PairChangeKind): void => {
+      if (!isSafePathToken(path)) return;
       const norm = normalizePath(path);
       if (!referenced.has(norm) && !hasMatchingSuffix(referenced, norm)) return;
       const suggestion: PairSuggestion = {

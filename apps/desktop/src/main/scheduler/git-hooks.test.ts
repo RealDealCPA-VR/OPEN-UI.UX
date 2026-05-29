@@ -5,10 +5,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   computeBodySignature,
   generateHookSecret,
+  getListenerPortFilePath,
   installGitHook,
+  PORT_FILE_NAME,
   SENTINEL_BEGIN,
   SENTINEL_END,
   uninstallGitHook,
+  writeListenerPortFile,
 } from './git-hooks';
 
 describe('git hooks installer', () => {
@@ -151,6 +154,35 @@ describe('git hooks installer', () => {
     expect(remaining).not.toContain(SENTINEL_END);
     expect(existsSync(join(dir, '.git', 'hooks', 'post-commit.opencodex'))).toBe(false);
     expect(existsSync(join(dir, '.git', 'hooks', 'post-commit.cmd'))).toBe(false);
+  });
+
+  it('installed wrapper references the port file at runtime', () => {
+    installGitHook({
+      workspaceRoot: dir,
+      hook: 'post-commit',
+      taskId: 't-port',
+      url: 'http://127.0.0.1:38400/trigger/t-port',
+      secret: 's',
+    });
+    const sh = readFileSync(join(dir, '.git', 'hooks', 'post-commit'), 'utf8');
+    expect(sh).toContain(PORT_FILE_NAME);
+    expect(sh).toContain('FALLBACK_URL=');
+    const cmd = readFileSync(join(dir, '.git', 'hooks', 'post-commit.cmd'), 'utf8');
+    expect(cmd).toContain(PORT_FILE_NAME);
+    expect(cmd).toContain('FALLBACK_URL=');
+  });
+
+  it('writeListenerPortFile writes the port into <hooks>/opencodex-port', () => {
+    writeListenerPortFile(dir, 38450);
+    const portFile = getListenerPortFilePath(dir);
+    const contents = readFileSync(portFile, 'utf8');
+    expect(contents.trim()).toBe('38450');
+  });
+
+  it('writeListenerPortFile rejects invalid ports', () => {
+    expect(() => writeListenerPortFile(dir, 0)).toThrow();
+    expect(() => writeListenerPortFile(dir, 70000)).toThrow();
+    expect(() => writeListenerPortFile(dir, -1)).toThrow();
   });
 
   it('refuses to install in a non-git directory', () => {

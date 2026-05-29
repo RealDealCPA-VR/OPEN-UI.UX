@@ -18,6 +18,7 @@ export const manualTriggerSchema = z.object({
 export const cronTriggerSchema = z.object({
   type: z.literal('cron'),
   expr: z.string().min(1),
+  tz: z.string().min(1).optional(),
 });
 
 export const fileChangeTriggerSchema = z.object({
@@ -99,7 +100,7 @@ export function describeTrigger(t: Trigger): string {
     case 'manual':
       return 'Manual';
     case 'cron':
-      return `Cron: ${t.expr}`;
+      return t.tz ? `Cron: ${t.expr} (${t.tz})` : `Cron: ${t.expr}`;
     case 'file-change':
       return `File change: ${t.glob}`;
     case 'git-hook':

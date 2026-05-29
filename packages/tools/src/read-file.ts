@@ -23,7 +23,7 @@ export const readFileTool = defineTool({
   inputZod: input,
   permissionTier: 'read',
   async execute({ path: requested, offset, limit }, ctx): Promise<ReadFileResult> {
-    const resolved = resolveWithinWorkspace(ctx.workspaceRoot, requested);
+    const resolved = await resolveWithinWorkspace(ctx.workspaceRoot, requested);
     ctx.signal.throwIfAborted();
     const raw = await fs.readFile(resolved, 'utf8');
     const lines = raw.split(/\r?\n/);

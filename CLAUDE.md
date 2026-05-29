@@ -10,7 +10,7 @@ Locked architectural decisions:
 
 - **Framework**: Electron (main / preload / renderer + utility processes for subagents).
 - **Monorepo**: pnpm workspaces. `apps/desktop`, `packages/*`, `examples/plugins/*`.
-- **Provider abstraction**: every LLM goes behind the `LLMProvider` interface in [packages/core/src/provider.ts](packages/core/src/provider.ts). No provider-specific code outside `packages/providers/`.
+- **Provider abstraction**: every LLM goes behind the `LLMProvider` interface in [packages/core/src/provider.ts](packages/core/src/provider.ts). No provider-specific code outside the per-provider packages (`packages/provider-openai`, `packages/provider-anthropic`, `packages/provider-google`, `packages/provider-xai`, `packages/provider-mistral`, `packages/provider-ollama`, `packages/provider-openrouter`, `packages/provider-voyage`).
 - **Plugins are first-class**: tools, providers, and UI panels can all be contributed by third-party packages via [packages/plugin-sdk](packages/plugin-sdk/).
 - **MCP-native**: MCP servers are surfaced through the same tool registry as built-in tools.
 - **No backend service**. Everything runs locally. API keys live in the OS keychain via `keytar`.

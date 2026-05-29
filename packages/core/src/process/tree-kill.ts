@@ -4,8 +4,31 @@ export interface TreeKillOptions {
   gracePeriodMs?: number;
 }
 
-export function treeKill(child: ChildProcess, opts?: TreeKillOptions): void {
-  if (child.killed || child.exitCode !== null || !child.pid) return;
+function waitForExit(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve(true);
+  }
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const onExit = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.removeListener('exit', onExit);
+      resolve(false);
+    }, timeoutMs);
+    timer.unref?.();
+    child.once('exit', onExit);
+  });
+}
+
+export function treeKill(child: ChildProcess, opts?: TreeKillOptions): Promise<void> {
+  if (child.killed || child.exitCode !== null || !child.pid) return Promise.resolve();
   const gracePeriodMs = opts?.gracePeriodMs ?? 2000;
   const isWindows = process.platform === 'win32';
   if (isWindows) {
@@ -17,7 +40,7 @@ export function treeKill(child: ChildProcess, opts?: TreeKillOptions): void {
     } catch {
       // ignore
     }
-    return;
+    return waitForExit(child, gracePeriodMs).then(() => undefined);
   }
   try {
     process.kill(-child.pid, 'SIGTERM');
@@ -28,7 +51,8 @@ export function treeKill(child: ChildProcess, opts?: TreeKillOptions): void {
       // ignore
     }
   }
-  setTimeout(() => {
+  return waitForExit(child, gracePeriodMs).then((exited) => {
+    if (exited) return;
     if (child.exitCode !== null || child.killed || !child.pid) return;
     try {
       process.kill(-child.pid, 'SIGKILL');
@@ -39,5 +63,5 @@ export function treeKill(child: ChildProcess, opts?: TreeKillOptions): void {
         // ignore
       }
     }
-  }, gracePeriodMs).unref();
+  });
 }

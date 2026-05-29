@@ -18,7 +18,7 @@ export const listDirTool = defineTool({
   inputZod: input,
   permissionTier: 'read',
   async execute({ path: requested }, ctx): Promise<DirEntry[]> {
-    const resolved = resolveWithinWorkspace(ctx.workspaceRoot, requested);
+    const resolved = await resolveWithinWorkspace(ctx.workspaceRoot, requested);
     ctx.signal.throwIfAborted();
     const entries = await fs.readdir(resolved, { withFileTypes: true });
     return entries

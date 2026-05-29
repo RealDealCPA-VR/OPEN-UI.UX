@@ -1,10 +1,9 @@
 import { BrowserWindow, dialog } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import { z } from 'zod';
-import { anonymizeId } from '@opencodex/telemetry';
 import { logger } from '../logger';
 import { registerInvoke } from '../ipc/registry';
-import { track } from '../telemetry/manager';
+import { anonymizeId, track } from '../telemetry/manager';
 import { resolveSelectedModel } from '../selected-model/resolve';
 import { buildConversationExport } from '../storage/conversation-export';
 import {

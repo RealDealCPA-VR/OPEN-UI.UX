@@ -65,7 +65,7 @@ export const runShellTool = defineTool({
   permissionTier: 'execute',
   async execute(args, ctx): Promise<RunShellResult> {
     const cwd = args.cwd
-      ? resolveWithinWorkspace(ctx.workspaceRoot, args.cwd)
+      ? await resolveWithinWorkspace(ctx.workspaceRoot, args.cwd)
       : path.resolve(ctx.workspaceRoot);
     const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const maxBytes = args.maxOutputBytes ?? DEFAULT_MAX_BYTES;

@@ -27,6 +27,9 @@ export const SENTINEL_END = '# opencodex-hook END';
 export const SUPPORTED_HOOKS = ['post-commit', 'pre-push'] as const;
 export type GitHookName = (typeof SUPPORTED_HOOKS)[number];
 
+/** Filename inside `<workspace>/.git/hooks/` that holds the current listener port. */
+export const PORT_FILE_NAME = 'opencodex-port';
+
 export function generateHookSecret(): string {
   // 32 hex chars = 128 bits; lowercase hex.
   const bytes = new Uint8Array(16);
@@ -77,15 +80,29 @@ function buildShWrapper(args: {
 }): string {
   const body = JSON.stringify({ taskId: args.taskId, hook: args.hook });
   const sig = computeBodySignature(body, args.secret);
-  // We deliberately keep this minimal. The body + signature are baked in at
-  // install time; the hook does NOT have access to the secret at runtime.
+  // The wrapper reads the listener port at runtime from <hooks>/opencodex-port
+  // so the URL stays correct across listener restarts that pick a different
+  // port. The fallback URL is the value baked at install time, in case the
+  // port file is missing or unreadable.
+  const fallbackUrl = args.url;
   return [
     '#!/bin/sh',
     `# Installed by OpenCodex for scheduled task ${args.taskId}`,
     SENTINEL_BEGIN,
-    `URL=${shellQuote(args.url)}`,
+    `TASK_ID=${shellQuote(args.taskId)}`,
     `BODY=${shellQuote(body)}`,
     `SIG=${shellQuote(sig)}`,
+    `FALLBACK_URL=${shellQuote(fallbackUrl)}`,
+    'HOOK_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"',
+    `PORT_FILE="$HOOK_DIR/${PORT_FILE_NAME}"`,
+    'URL="$FALLBACK_URL"',
+    'if [ -r "$PORT_FILE" ]; then',
+    '  PORT=$(head -n1 "$PORT_FILE" | tr -d "\\r\\n\\t ")',
+    '  case "$PORT" in',
+    '    ""|*[!0-9]*) : ;;',
+    '    *) URL="http://127.0.0.1:$PORT/trigger/$TASK_ID" ;;',
+    '  esac',
+    'fi',
     'if command -v curl >/dev/null 2>&1; then',
     '  curl -sS -X POST -H "content-type: application/json" -H "x-opencodex-signature: $SIG" -d "$BODY" "$URL" >/dev/null 2>&1 || true',
     'fi',
@@ -108,12 +125,17 @@ function buildCmdWrapper(args: {
     '@echo off',
     `REM Installed by OpenCodex for scheduled task ${args.taskId}`,
     SENTINEL_BEGIN.replace(/^#/, 'REM'),
-    `set "URL=${args.url}"`,
-    // Escape double quotes inside body for batch literal.
+    `set "TASK_ID=${args.taskId}"`,
+    `set "FALLBACK_URL=${args.url}"`,
+    'set "URL=%FALLBACK_URL%"',
+    `set "PORT_FILE=%~dp0${PORT_FILE_NAME}"`,
+    'if exist "%PORT_FILE%" (',
+    '  for /f "usebackq delims=" %%P in ("%PORT_FILE%") do set "PORT=%%P"',
+    '  call set "PORT=%%PORT: =%%"',
+    '  if not "%PORT%"=="" set "URL=http://127.0.0.1:%PORT%/trigger/%TASK_ID%"',
+    ')',
     `set "BODY=${body.replace(/"/g, '""')}"`,
     `set "SIG=${sig}"`,
-    // PowerShell command line. Double-quotes here close the cmd /c context
-    // and let PowerShell single-quote internal string args correctly.
     "powershell -NoProfile -Command \"try { Invoke-WebRequest -Uri $env:URL -Method POST -ContentType 'application/json' -Headers @{ 'x-opencodex-signature' = $env:SIG } -Body $env:BODY -UseBasicParsing | Out-Null } catch {}\"",
     SENTINEL_END.replace(/^#/, 'REM'),
     '',
@@ -193,6 +215,35 @@ export function installGitHook(opts: InstallHookOptions): InstallHookResult {
   writeFileSync(paths.primaryCmd, cmdBody);
   void paths.wrapperCmd;
   return { primaryWritten, wrapperWritten, cmdWritten: true };
+}
+
+/**
+ * Persist the currently-bound scheduler-listener port into
+ * `<workspace>/.git/hooks/opencodex-port`. The installed wrapper scripts read
+ * this file at runtime so a listener port change (e.g. after a reboot picks a
+ * different free port) doesn't require re-baking every hook.
+ */
+export function writeListenerPortFile(workspaceRoot: string, port: number): void {
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error(`writeListenerPortFile: invalid port: ${port}`);
+  }
+  const absWorkspace = resolve(workspaceRoot);
+  const hookDir = resolve(absWorkspace, '.git', 'hooks');
+  const rel = relative(absWorkspace, hookDir);
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
+    throw new Error(`writeListenerPortFile: hook dir escapes workspace: ${hookDir}`);
+  }
+  if (!existsSync(join(absWorkspace, '.git'))) {
+    throw new Error(`writeListenerPortFile: not a git repo: ${absWorkspace}`);
+  }
+  if (!existsSync(hookDir)) {
+    mkdirSync(hookDir, { recursive: true });
+  }
+  writeFileSync(join(hookDir, PORT_FILE_NAME), `${port}\n`, { mode: 0o644 });
+}
+
+export function getListenerPortFilePath(workspaceRoot: string): string {
+  return resolve(workspaceRoot, '.git', 'hooks', PORT_FILE_NAME);
 }
 
 /**

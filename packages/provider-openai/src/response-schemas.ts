@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const toolCallDeltaSchema = z.object({
-  index: z.number().int().nonnegative(),
+  index: z.number().int().nonnegative().optional(),
   id: z.string().optional(),
   type: z.literal('function').optional(),
   function: z

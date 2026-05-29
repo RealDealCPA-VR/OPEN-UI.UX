@@ -63,9 +63,14 @@ export function buildTree(runs: readonly AgentRunWithParent[]): TreeNode[] {
     childByParent.set(parent, list);
   }
 
+  // Cycle membership snapshot: take rootIds as it was before we start
+  // promoting cycle members, otherwise the first node we promote makes its
+  // peer look "reachable from a root" on the next pass and only one side of
+  // a two-node cycle ends up a root.
+  const initialRoots = new Set(rootIds);
   for (const run of runs) {
-    if (rootIds.has(run.id)) continue;
-    if (!reachableFromAnyRoot(childByParent, rootIds, run.id, byId)) {
+    if (initialRoots.has(run.id)) continue;
+    if (!reachableFromAnyRoot(childByParent, initialRoots, run.id, byId)) {
       const parent = readParent(run);
       if (parent !== null) {
         const siblings = childByParent.get(parent);

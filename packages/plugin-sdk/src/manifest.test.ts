@@ -110,4 +110,86 @@ describe('PermissionSchema agent.runner', () => {
     );
     expect(result.success).toBe(false);
   });
+
+  it('locks the permission set — adding a new permission requires a schema change', () => {
+    expect(PermissionSchema.options).toEqual([
+      'workspace.read',
+      'workspace.write',
+      'shell.execute',
+      'network.fetch',
+      'settings.read',
+      'settings.write',
+      'ui.panel',
+      'agent.runner',
+    ]);
+  });
+});
+
+describe('ManifestSchema entry path validation', () => {
+  it('rejects an absolute posix path for entry', () => {
+    const result = ManifestSchema.safeParse(baseManifest({ entry: '/etc/passwd' }));
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an absolute Windows path for entry', () => {
+    const result = ManifestSchema.safeParse(
+      baseManifest({ entry: 'C:\\Windows\\System32\\foo.js' }),
+    );
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a parent traversal segment in entry', () => {
+    const result = ManifestSchema.safeParse(baseManifest({ entry: '../outside/index.js' }));
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects parent traversal in panel entry', () => {
+    const result = ManifestSchema.safeParse(
+      baseManifest({
+        contributions: {
+          panels: [{ id: 'p', title: 't', entry: 'panels/../../etc/index.html' }],
+        },
+      }),
+    );
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects parent traversal in slashCommand entry', () => {
+    const result = ManifestSchema.safeParse(
+      baseManifest({
+        contributions: {
+          slashCommands: [{ name: '/x', entry: '../bad.js' }],
+        },
+      }),
+    );
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a nested relative entry', () => {
+    const result = ManifestSchema.safeParse(baseManifest({ entry: 'dist/sub/index.js' }));
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('ManifestSchema strictness', () => {
+  it('rejects unknown top-level keys', () => {
+    const result = ManifestSchema.safeParse(baseManifest({ malicious: { hijack: true } }));
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects unknown keys inside contributions', () => {
+    const result = ManifestSchema.safeParse(baseManifest({ contributions: { bogus: ['x'] } }));
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects unknown keys inside a panel entry', () => {
+    const result = ManifestSchema.safeParse(
+      baseManifest({
+        contributions: {
+          panels: [{ id: 'p', title: 't', entry: 'panel.html', extra: 'bad' }],
+        },
+      }),
+    );
+    expect(result.success).toBe(false);
+  });
 });

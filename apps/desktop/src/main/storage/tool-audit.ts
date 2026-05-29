@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
+import type { RoutingDecision } from '@opencodex/core';
 import {
   TOOL_CALL_AUDIT_PAYLOAD_LIMIT,
   type ToolCallAuditDecision,
@@ -12,6 +13,7 @@ import {
 import { appendToWorm } from '../tool-audit/worm-mirror';
 import { withSqliteBusyRetry } from '../util/sqlite-retry';
 import { getDb } from './db';
+import { SQLITE_LIKE_ESCAPE_CLAUSE, wrapContains } from './like-escape';
 
 export type { ToolCallAuditDecision, ToolCallAuditRow };
 
@@ -25,6 +27,7 @@ export interface RecordToolCallInput {
   durationMs: number | null;
   triggerSource?: ToolCallAuditTriggerSource;
   runnerId?: string | null;
+  routingDecision?: RoutingDecision | null;
 }
 
 interface RawRow {
@@ -39,6 +42,7 @@ interface RawRow {
   created_at: string;
   trigger_source: string;
   runner_id: string | null;
+  routing_decision_json: string | null;
 }
 
 interface RawQueryRow extends RawRow {
@@ -48,7 +52,7 @@ interface RawQueryRow extends RawRow {
   conversation_title: string;
 }
 
-const COLUMNS = `id, message_id, tool_name, input_json, output_json, decision, is_error, duration_ms, created_at, trigger_source, runner_id`;
+const COLUMNS = `id, message_id, tool_name, input_json, output_json, decision, is_error, duration_ms, created_at, trigger_source, runner_id, routing_decision_json`;
 
 const QUERY_LIMIT_DEFAULT = 100;
 const QUERY_LIMIT_MAX = 500;
@@ -58,12 +62,13 @@ export function recordToolCall(
   db: Database.Database = getDb(),
 ): string {
   const id = randomUUID();
+  const routingJson = input.routingDecision ? safeStringify(input.routingDecision) : null;
   withSqliteBusyRetry(() =>
     db
       .prepare(
         `INSERT INTO tool_calls
-       (id, message_id, tool_name, input_json, output_json, decision, is_error, duration_ms, trigger_source, runner_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, message_id, tool_name, input_json, output_json, decision, is_error, duration_ms, trigger_source, runner_id, routing_decision_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -76,6 +81,7 @@ export function recordToolCall(
         input.durationMs,
         input.triggerSource ?? 'user',
         input.runnerId ?? null,
+        routingJson,
       ),
   );
   appendToWorm({
@@ -92,6 +98,7 @@ export function recordToolCall(
     outputTruncated: false,
     triggerSource: input.triggerSource ?? 'user',
     runnerId: input.runnerId ?? null,
+    routingDecision: input.routingDecision ?? null,
   });
   return id;
 }
@@ -134,16 +141,29 @@ export function queryToolCalls(
     params.push(query.until);
   }
   if (query.runnerIds && query.runnerIds.length > 0) {
-    filters.push(`tc.runner_id IN (${query.runnerIds.map(() => '?').join(', ')})`);
-    params.push(...query.runnerIds);
+    // The sentinel value '__opencodex__' (or 'internal') maps to the built-in
+    // runner whose runner_id is stored as NULL or 'internal'. The IN clause
+    // alone won't match NULL, so we expand that case explicitly.
+    const opencodexSentinels = new Set(['__opencodex__', 'internal']);
+    const externalIds = query.runnerIds.filter((id) => !opencodexSentinels.has(id));
+    const includeOpencodex = query.runnerIds.some((id) => opencodexSentinels.has(id));
+    const parts: string[] = [];
+    if (externalIds.length > 0) {
+      parts.push(`tc.runner_id IN (${externalIds.map(() => '?').join(', ')})`);
+      params.push(...externalIds);
+    }
+    if (includeOpencodex) {
+      parts.push(`(tc.runner_id IS NULL OR tc.runner_id = '' OR tc.runner_id = 'internal')`);
+    }
+    if (parts.length > 0) filters.push(`(${parts.join(' OR ')})`);
   }
   if (query.triggerSource) {
     filters.push(`tc.trigger_source = ?`);
     params.push(query.triggerSource);
   }
   if (query.filePath) {
-    filters.push(`tc.input_json LIKE ? ESCAPE '\\'`);
-    params.push(`%${query.filePath.replace(/[\\%_]/g, (m) => `\\${m}`)}%`);
+    filters.push(`tc.input_json LIKE ? ${SQLITE_LIKE_ESCAPE_CLAUSE}`);
+    params.push(wrapContains(query.filePath));
   }
 
   const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
@@ -163,6 +183,7 @@ export function queryToolCalls(
          SUBSTR(tc.output_json, 1, ${TOOL_CALL_AUDIT_PAYLOAD_LIMIT}) AS output_json,
          LENGTH(tc.output_json) AS output_json_len,
          tc.decision, tc.is_error, tc.duration_ms, tc.created_at, tc.trigger_source, tc.runner_id,
+         tc.routing_decision_json,
          m.conversation_id AS conversation_id,
          c.title AS conversation_title
        FROM tool_calls tc
@@ -240,7 +261,19 @@ function rowToAudit(
     outputTruncated: outputLen !== null && outputLen > TOOL_CALL_AUDIT_PAYLOAD_LIMIT,
     triggerSource: (row.trigger_source as ToolCallAuditTriggerSource) ?? 'user',
     runnerId: row.runner_id ?? null,
+    routingDecision: parseRoutingDecision(row.routing_decision_json),
   };
+}
+
+function parseRoutingDecision(raw: string | null): RoutingDecision | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object') return parsed as RoutingDecision;
+  } catch {
+    // ignored — malformed JSON, fall through to null.
+  }
+  return null;
 }
 
 function safeStringify(value: unknown): string {

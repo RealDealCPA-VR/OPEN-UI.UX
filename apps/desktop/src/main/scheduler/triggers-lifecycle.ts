@@ -1,7 +1,12 @@
 import { logger } from '../logger';
 import { getSchedulerListenerPort, setSchedulerListenerPort } from '../storage/settings';
 import { fireTaskById } from './scheduler';
-import { installGitHook, uninstallGitHook, type GitHookName } from './git-hooks';
+import {
+  installGitHook,
+  uninstallGitHook,
+  writeListenerPortFile,
+  type GitHookName,
+} from './git-hooks';
 import {
   buildTriggerUrl,
   getListenerPort,
@@ -105,6 +110,7 @@ export function reinstallAllGitHooks(): { installed: number; errors: string[] } 
   if (port === null) {
     return { installed: 0, errors: ['listener not running'] };
   }
+  const portFileWritten = new Set<string>();
   for (const task of listTasks()) {
     if (!task.enabled || task.trigger.type !== 'git-hook') continue;
     const secret = task.trigger.hookSecret;
@@ -120,6 +126,16 @@ export function reinstallAllGitHooks(): { installed: number; errors: string[] } 
         url: buildTriggerUrl(task.id, port),
         secret,
       });
+      if (!portFileWritten.has(task.workspacePath)) {
+        try {
+          writeListenerPortFile(task.workspacePath, port);
+          portFileWritten.add(task.workspacePath);
+        } catch (err) {
+          errors.push(
+            `${task.name} (port file): ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
       installed += 1;
     } catch (err) {
       errors.push(`${task.name}: ${err instanceof Error ? err.message : String(err)}`);
@@ -146,6 +162,14 @@ export function installGitHookForTask(taskId: string): { ok: boolean; error?: st
       url: buildTriggerUrl(task.id, port),
       secret,
     });
+    try {
+      writeListenerPortFile(task.workspacePath, port);
+    } catch (err) {
+      return {
+        ok: false,
+        error: `wrote hook but failed to write port file: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

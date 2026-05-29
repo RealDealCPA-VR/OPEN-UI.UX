@@ -5,6 +5,7 @@ import type {
   ListAppliedDiffsRequest,
   ListAppliedDiffsResponse,
 } from '../../shared/replay';
+import { withSqliteBusyRetry } from '../util/sqlite-retry';
 import { getDb } from './db';
 
 export interface RecordAppliedDiffInput {
@@ -82,28 +83,32 @@ export function recordAppliedDiff(
   db: Database.Database = getDb(),
 ): string {
   const id = randomUUID();
-  db.prepare(
-    `INSERT INTO applied_diffs
+  withSqliteBusyRetry(() =>
+    db
+      .prepare(
+        `INSERT INTO applied_diffs
        (id, conversation_id, message_id, tool_call_id, file_path, diff,
         prompt_snapshot, rag_citations_json, routing_decision_json,
         provider_id, model_id, tokens_input, tokens_output, cost_usd, seed)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    id,
-    input.conversationId,
-    input.messageId,
-    input.toolCallId ?? null,
-    input.filePath,
-    input.diff,
-    input.promptSnapshot ?? null,
-    safeStringify(input.ragCitations),
-    safeStringify(input.routingDecision),
-    input.providerId ?? null,
-    input.modelId ?? null,
-    input.tokensInput ?? null,
-    input.tokensOutput ?? null,
-    input.costUsd ?? null,
-    input.seed ?? null,
+      )
+      .run(
+        id,
+        input.conversationId,
+        input.messageId,
+        input.toolCallId ?? null,
+        input.filePath,
+        input.diff,
+        input.promptSnapshot ?? null,
+        safeStringify(input.ragCitations),
+        safeStringify(input.routingDecision),
+        input.providerId ?? null,
+        input.modelId ?? null,
+        input.tokensInput ?? null,
+        input.tokensOutput ?? null,
+        input.costUsd ?? null,
+        input.seed ?? null,
+      ),
   );
   return id;
 }
@@ -165,5 +170,5 @@ export function listAppliedDiffsForConversation(
 }
 
 export function deleteAppliedDiff(id: string, db: Database.Database = getDb()): void {
-  db.prepare('DELETE FROM applied_diffs WHERE id = ?').run(id);
+  withSqliteBusyRetry(() => db.prepare('DELETE FROM applied_diffs WHERE id = ?').run(id));
 }

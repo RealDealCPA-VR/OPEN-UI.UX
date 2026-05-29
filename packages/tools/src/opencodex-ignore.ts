@@ -1,19 +1,37 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import picomatch from 'picomatch';
 
 export interface IgnoreMatcher {
   matches(relativePath: string): boolean;
 }
 
-type Rule = {
+type CompiledRule = {
   pattern: string;
   negated: boolean;
   anchored: boolean;
   dirOnly: boolean;
-  regex: RegExp;
+  match: (rel: string) => boolean;
 };
 
-function compilePattern(raw: string): Rule | null {
+const PICOMATCH_OPTS: picomatch.PicomatchOptions = {
+  dot: true,
+  nocase: false,
+  posixSlashes: true,
+};
+
+function buildPicomatch(pattern: string, anchored: boolean): (rel: string) => boolean {
+  const variants: string[] = [];
+  if (anchored) {
+    variants.push(pattern, `${pattern}/**`);
+  } else {
+    variants.push(pattern, `**/${pattern}`, `**/${pattern}/**`, `${pattern}/**`);
+  }
+  const matchers = variants.map((p) => picomatch(p, PICOMATCH_OPTS));
+  return (rel: string): boolean => matchers.some((m) => m(rel));
+}
+
+function compilePattern(raw: string): CompiledRule | null {
   let pattern = raw.trim();
   if (pattern.length === 0) return null;
   if (pattern.startsWith('#')) return null;
@@ -26,49 +44,26 @@ function compilePattern(raw: string): Rule | null {
   if (anchored) pattern = pattern.slice(1);
   const dirOnly = pattern.endsWith('/');
   if (dirOnly) pattern = pattern.slice(0, -1);
+  if (pattern.length === 0) return null;
 
-  const regex = globToRegex(pattern, anchored);
-  return { pattern, negated, anchored, dirOnly, regex };
+  const match = buildPicomatch(pattern, anchored);
+  return { pattern, negated, anchored, dirOnly, match };
 }
 
-function globToRegex(glob: string, anchored: boolean): RegExp {
-  let regex = '';
-  for (let i = 0; i < glob.length; i++) {
-    const ch = glob[i];
-    if (ch === '*') {
-      if (glob[i + 1] === '*') {
-        regex += '.*';
-        i++;
-        if (glob[i + 1] === '/') i++;
-      } else {
-        regex += '[^/]*';
-      }
-    } else if (ch === '?') {
-      regex += '[^/]';
-    } else if (ch === '.' || ch === '+' || ch === '(' || ch === ')' || ch === '|') {
-      regex += `\\${ch}`;
-    } else {
-      regex += ch;
-    }
-  }
-  const prefix = anchored ? '^' : '(^|/)';
-  const suffix = '($|/)';
-  return new RegExp(`${prefix}${regex}${suffix}`);
-}
-
-export function parseIgnoreFile(content: string): Rule[] {
+export function parseIgnoreFile(content: string): CompiledRule[] {
   return content
     .split(/\r?\n/)
     .map((line) => compilePattern(line))
-    .filter((rule): rule is Rule => rule !== null);
+    .filter((rule): rule is CompiledRule => rule !== null);
 }
 
-export function createIgnoreMatcher(rules: Rule[]): IgnoreMatcher {
+export function createIgnoreMatcher(rules: CompiledRule[]): IgnoreMatcher {
   return {
     matches(relativePath: string): boolean {
+      const normalized = relativePath.replaceAll('\\', '/');
       let ignored = false;
       for (const rule of rules) {
-        if (rule.regex.test(relativePath)) {
+        if (rule.match(normalized)) {
           ignored = !rule.negated;
         }
       }
@@ -78,7 +73,7 @@ export function createIgnoreMatcher(rules: Rule[]): IgnoreMatcher {
 }
 
 export function readIgnoreMatcherForWorkspace(workspaceRoot: string): IgnoreMatcher {
-  const rules: Rule[] = [];
+  const rules: CompiledRule[] = [];
   for (const filename of ['.gitignore', '.opencodexignore']) {
     const path = join(workspaceRoot, filename);
     if (existsSync(path)) {

@@ -49,6 +49,7 @@ const STOP_REASON_LABEL: Record<AgentRunStopReason, string> = {
   tool_use: 'tool_use',
   max_tokens: 'max_tokens',
   budget_exceeded: 'budget_exceeded',
+  cancelled: 'cancelled',
   error: 'error',
   unauthorized_tool: 'unauthorized_tool',
   runner_error: 'Runner crashed',

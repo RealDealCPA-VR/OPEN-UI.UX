@@ -1,10 +1,14 @@
 # OpenCodex
 
-### Mission control for AI coding agents. Any LLM. Your machine. Yours.
+### Mission Control for AI coding agents. Any LLM. Your machine. Yours.
 
-OpenCodex is the desktop cockpit your AI coding tools deserve. It runs locally on macOS, Windows, and Linux, talks to whichever LLM you point it at, and turns Claude Code, Aider, OpenCode, and its own built-in agent into a single, keyboard-driven control room — with approvals, diffs, audit logs, and zero vendor lock-in.
+![Subagent tree view — OpenCodex Mission Control](./website/public/hero-subagent-tree.svg)
 
-**MIT licensed. Local-first. Provider-agnostic. Plugin-extensible. Built to ship.**
+> The hero asset above is a hand-drawn SVG placeholder. The shipped artwork is a real screenshot of the AgentRunDrawer subagent tree view — see [PLACEHOLDERS.md](./PLACEHOLDERS.md) for the replacement spec.
+
+OpenCodex is a **standalone desktop app that lives next to your editor and drives Claude Code, Aider, OpenCode, and a built-in agent as runners — over any LLM you point it at.** It runs locally on macOS, Windows, and Linux, unifies approvals, diffs, audit logs, and merge review across every runner you wire up, and never asks you to pick a single vendor.
+
+**MIT licensed. Local-first. Provider-agnostic by contract. Plugin-extensible. Built to ship.**
 
 > Stop juggling terminals. Start shipping.
 
@@ -50,6 +54,19 @@ Love Aider? Love Claude Code? **OpenCodex drives them as runners.** It does not 
 
 ---
 
+## Switch providers like you switch fonts
+
+Every other coding agent picks a side. **OpenCodex picks the contract.** One `LLMProvider` interface in `packages/core` — every adapter implements it, every model declares its own capabilities, the UI gates features on those declarations. The result:
+
+- **Eight adapters in the box** — OpenAI, Anthropic, Google Gemini, xAI Grok, Mistral, Ollama (local), OpenRouter, Voyage (embed-only) — plus any provider a plugin adds.
+- **Switch mid-conversation.** The model picker groups by provider, shows capability badges (`tools` / `vision` / `cache` / `stream`) and cost per million tokens inline. Recent picks are pinned at the top.
+- **No provider-specific code escapes its package.** The agent loop, the tool layer, the UI — none of them know the name of a single vendor. That's the whole point.
+- **Bring your own.** A new provider is one package and one `LLMProvider` implementation. Ship it as a plugin, or upstream it.
+
+This isn't just a feature. It's the architectural commitment that makes everything else portable.
+
+---
+
 ## Sixty seconds to your first agent
 
 ```sh
@@ -74,17 +91,32 @@ That's it. The [QUICKSTART](./QUICKSTART.md) walks you the rest of the way in un
 
 ```
 apps/
-  desktop/             Electron app (main / preload / renderer)
+  desktop/                 Electron app (main / preload / renderer)
 packages/
-  core/                LLMProvider, Tool, ChatEvent — the contracts
-  providers/           OpenAI · Anthropic · Google · xAI · Mistral · Ollama · OpenRouter
-  tools/               Built-in tools (read_file, run_shell, grep, ...)
-  plugin-sdk/          Public SDK for third-party plugin authors
-  mcp-client/          Model Context Protocol client (stdio / SSE / HTTP)
-  memory-*             Pluggable memory backends (local-fs, Notion, Obsidian, ...)
-  runner-*             Runner adapters (claude-code, opencode, aider)
+  core/                    LLMProvider, Tool, ChatEvent — the contracts
+  provider-openai/         OpenAI Chat Completions + Responses
+  provider-anthropic/      Anthropic Messages API
+  provider-google/         Google Gemini
+  provider-xai/            xAI Grok (OpenAI-compatible)
+  provider-mistral/        Mistral chat + embeddings
+  provider-ollama/         Local Ollama HTTP
+  provider-openrouter/     OpenRouter unified API
+  provider-voyage/         Voyage embeddings (embed-only)
+  tools/                   Built-in tools (read_file, run_shell, grep, ...)
+  plugin-sdk/              Public SDK for third-party plugin authors
+  mcp-client/              Model Context Protocol client (stdio / SSE / HTTP)
+  memory-local-fs/         Local markdown notes backend
+  memory-obsidian/         Obsidian vault backend
+  memory-notion/           Notion workspace backend
+  runner-claude-code/      Claude Code CLI adapter
+  runner-opencode/         OpenCode CLI adapter
+  runner-aider/            Aider CLI adapter
+  rag-chunker/             Tree-sitter chunker
+  audit-verify/            Ed25519 audit-log verification CLI
+  telemetry/               Opt-in PostHog telemetry shim
+  crash-reporting/         Opt-in Sentry crash reporting shim
 examples/
-  plugins/             Reference plugins for SDK consumers
+  plugins/                 Reference plugins for SDK consumers
 docs/
 ```
 
@@ -99,9 +131,12 @@ Node 20+, pnpm 9+. Then:
 ```sh
 pnpm install
 pnpm dev          # apps/desktop in dev mode
+pnpm typecheck    # strict TS across all packages
 pnpm build        # builds everything
 pnpm test         # vitest across all packages
 ```
+
+Before cutting a tag, the `release-readiness.yml` workflow gates on `pnpm check-placeholders` — every pre-tag sentinel in the tree (GitHub org/repo, security contact, etc.) must be resolved before release. See [PLACEHOLDERS.md](./PLACEHOLDERS.md) for the literal patterns and the per-file checklist.
 
 ---
 

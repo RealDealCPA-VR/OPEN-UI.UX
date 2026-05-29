@@ -41,4 +41,27 @@ describe('jsonrpc helpers', () => {
     expect(err.code).toBe(-32601);
     expect(err.data).toEqual({ hint: 'init' });
   });
+
+  it('rejects ambiguous messages with both result and method', () => {
+    const ambiguous = { jsonrpc: '2.0', id: 1, method: 'foo', result: {} };
+    expect(isRequest(ambiguous)).toBe(false);
+    expect(isResponse(ambiguous)).toBe(false);
+    expect(isNotification(ambiguous)).toBe(false);
+  });
+
+  it('rejects ambiguous messages with both error and method', () => {
+    const ambiguous = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'foo',
+      error: { code: -1, message: 'x' },
+    };
+    expect(isRequest(ambiguous)).toBe(false);
+    expect(isResponse(ambiguous)).toBe(false);
+    expect(isNotification(ambiguous)).toBe(false);
+  });
+
+  it('rejects responses lacking result and error', () => {
+    expect(isResponse({ jsonrpc: '2.0', id: 1 })).toBe(false);
+  });
 });

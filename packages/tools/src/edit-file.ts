@@ -67,7 +67,7 @@ export const editFileTool = defineTool({
     { path: requested, oldString, newString, replaceAll },
     ctx,
   ): Promise<EditFileResult> {
-    const resolved = resolveWithinWorkspace(ctx.workspaceRoot, requested);
+    const resolved = await resolveWithinWorkspace(ctx.workspaceRoot, requested);
     ctx.signal.throwIfAborted();
     const original = await fs.readFile(resolved, 'utf8');
     const occurrences = countOccurrences(original, oldString);

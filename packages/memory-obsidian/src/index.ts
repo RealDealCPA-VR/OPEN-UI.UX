@@ -1,7 +1,9 @@
 import { promises as fs } from 'node:fs';
+import type { FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { defineTool, type Tool } from '@opencodex/core';
+import { withFileLock } from '@opencodex/memory-utils';
 import { bm25Search, cosine, reciprocalRankFusion, tokenize, type RankedItem } from './bm25';
 import { parseFrontMatter, renderFrontMatter } from './front-matter';
 import { ensureMarkdownExtension, resolveVaultPath } from './path-guard';
@@ -201,7 +203,7 @@ export class ObsidianMemory {
   }
 
   async readNote(relPath: string): Promise<MemoryReadResult> {
-    const abs = resolveVaultPath(this.vaultPath, ensureMarkdownExtension(relPath));
+    const abs = await resolveVaultPath(this.vaultPath, ensureMarkdownExtension(relPath));
     const raw = await fs.readFile(abs, 'utf8');
     const { data, body } = parseFrontMatter(raw);
     const rel = path.relative(path.resolve(this.vaultPath), abs).split(path.sep).join('/');
@@ -214,20 +216,22 @@ export class ObsidianMemory {
     relPath: string,
     content: string,
   ): Promise<{ path: string; bytesWritten: number }> {
-    const abs = resolveVaultPath(this.vaultPath, ensureMarkdownExtension(relPath));
-    const existing = await fs.readFile(abs, 'utf8').catch((err: NodeJS.ErrnoException) => {
-      if (err.code === 'ENOENT') {
-        throw new Error(`Note not found: ${relPath}. Use memory_create_note to create it.`);
-      }
-      throw err;
+    const abs = await resolveVaultPath(this.vaultPath, ensureMarkdownExtension(relPath));
+    return withFileLock(abs, async () => {
+      const existing = await fs.readFile(abs, 'utf8').catch((err: NodeJS.ErrnoException) => {
+        if (err.code === 'ENOENT') {
+          throw new Error(`Note not found: ${relPath}. Use memory_create_note to create it.`);
+        }
+        throw err;
+      });
+      const sep = existing.endsWith('\n') ? '' : '\n';
+      const block = content.startsWith('\n') ? content : `\n${content}`;
+      const next = `${existing}${sep}${block}${content.endsWith('\n') ? '' : '\n'}`;
+      await atomicWrite(abs, next);
+      this.invalidate();
+      const rel = path.relative(path.resolve(this.vaultPath), abs).split(path.sep).join('/');
+      return { path: rel, bytesWritten: Buffer.byteLength(next, 'utf8') };
     });
-    const sep = existing.endsWith('\n') ? '' : '\n';
-    const block = content.startsWith('\n') ? content : `\n${content}`;
-    const next = `${existing}${sep}${block}${content.endsWith('\n') ? '' : '\n'}`;
-    await atomicWrite(abs, next);
-    this.invalidate();
-    const rel = path.relative(path.resolve(this.vaultPath), abs).split(path.sep).join('/');
-    return { path: rel, bytesWritten: Buffer.byteLength(next, 'utf8') };
   }
 
   async createNote(
@@ -236,18 +240,31 @@ export class ObsidianMemory {
     content: string,
     extraFrontMatter: Record<string, string>,
   ): Promise<{ path: string; bytesWritten: number }> {
-    const abs = resolveVaultPath(this.vaultPath, ensureMarkdownExtension(relPath));
-    const exists = await fs
-      .stat(abs)
-      .then(() => true)
-      .catch(() => false);
-    if (exists) throw new Error(`Note already exists: ${relPath}`);
-    const fm: Record<string, string> = { title, ...extraFrontMatter };
-    const rendered = `${renderFrontMatter(fm)}\n${content}${content.endsWith('\n') ? '' : '\n'}`;
-    await atomicWrite(abs, rendered);
-    this.invalidate();
-    const rel = path.relative(path.resolve(this.vaultPath), abs).split(path.sep).join('/');
-    return { path: rel, bytesWritten: Buffer.byteLength(rendered, 'utf8') };
+    const abs = await resolveVaultPath(this.vaultPath, ensureMarkdownExtension(relPath));
+    return withFileLock(abs, async () => {
+      const fm: Record<string, string> = { ...extraFrontMatter, title };
+      const rendered = `${renderFrontMatter(fm)}\n${content}${content.endsWith('\n') ? '' : '\n'}`;
+      await fs.mkdir(path.dirname(abs), { recursive: true });
+      let handle: FileHandle | null = null;
+      try {
+        handle = await fs.open(abs, 'wx');
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'EEXIST') {
+          throw new Error(`Note already exists: ${relPath}`);
+        }
+        throw err;
+      }
+      try {
+        await handle.writeFile(rendered, { encoding: 'utf8' });
+        await handle.sync();
+      } finally {
+        await handle.close().catch(() => {});
+      }
+      this.invalidate();
+      const rel = path.relative(path.resolve(this.vaultPath), abs).split(path.sep).join('/');
+      return { path: rel, bytesWritten: Buffer.byteLength(rendered, 'utf8') };
+    });
   }
 
   invalidate(): void {

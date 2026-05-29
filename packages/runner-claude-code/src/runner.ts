@@ -29,21 +29,62 @@ const ENV_KEEP: readonly string[] = [
   'WINDIR',
   'APPDATA',
   'LOCALAPPDATA',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'XDG_CACHE_HOME',
 ];
 
-function scrubEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+const ENV_KEEP_PREFIX: readonly string[] = ['ANTHROPIC_', 'CLAUDE_'];
+
+const ENV_KEEP_SUFFIX: readonly string[] = ['_API_KEY', '_API_BASE', '_BASE_URL'];
+
+const ENV_KEEP_EXACT: ReadonlySet<string> = new Set(['ANTHROPIC_AUTH_TOKEN']);
+
+function shouldKeepEnv(name: string): boolean {
+  if (ENV_KEEP.includes(name)) return true;
+  if (ENV_KEEP_EXACT.has(name)) return true;
+  for (const p of ENV_KEEP_PREFIX) if (name.startsWith(p)) return true;
+  for (const s of ENV_KEEP_SUFFIX) if (name.endsWith(s)) return true;
+  return false;
+}
+
+function scrubEnv(env: NodeJS.ProcessEnv, overrides?: Record<string, string>): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = {};
-  for (const key of ENV_KEEP) {
-    const value = env[key];
-    if (value !== undefined) out[key] = value;
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) continue;
+    if (shouldKeepEnv(key)) out[key] = value;
+  }
+  if (overrides) {
+    for (const [k, v] of Object.entries(overrides)) {
+      if (typeof v === 'string') out[k] = v;
+    }
   }
   return out;
+}
+
+const ESC = String.fromCharCode(0x1b);
+const BEL = String.fromCharCode(0x07);
+const CSI_RE = new RegExp(`${ESC}\\[[0-?]*[ -/]*[@-~]`, 'g');
+const OSC_RE = new RegExp(`${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)`, 'g');
+
+function stripAnsi(s: string): string {
+  return s.replace(CSI_RE, '').replace(OSC_RE, '');
+}
+
+function needsShell(cliPath: string): boolean {
+  if (process.platform !== 'win32') return false;
+  const lower = cliPath.toLowerCase();
+  return lower.endsWith('.cmd') || lower.endsWith('.bat') || lower.endsWith('.ps1');
 }
 
 async function resolveCliPath(host: PluginHost): Promise<string | null> {
   const configured = await host.getSetting<string>('claudeCliPath');
   if (configured && configured.trim().length > 0) return configured.trim();
   return autoDetect();
+}
+
+interface ExtendedRunOptions extends SubagentRunOptions {
+  env?: Record<string, string>;
 }
 
 export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
@@ -66,20 +107,24 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
         return;
       }
 
-      const env = scrubEnv(process.env);
+      const envOverrides = (opts as ExtendedRunOptions).env;
+      const env = scrubEnv(process.env, envOverrides);
       host.logger.info('claude-code: spawning', { cliPath, cwd: opts.workspaceRoot });
 
+      const useShell = needsShell(cliPath);
       const child = spawn(cliPath, ['--output-format', 'stream-json', '--print', opts.task], {
         cwd: opts.workspaceRoot,
         env,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
         detached: process.platform !== 'win32',
+        shell: useShell,
       });
       const childStdout = child.stdout;
       const childStderr = child.stderr;
+      const childStdin = child.stdin;
       if (!childStdout || !childStderr) {
-        treeKill(child);
+        void treeKill(child);
         host.logger.error('claude-code: child stdio unavailable');
         yield {
           type: 'error',
@@ -90,19 +135,7 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
         yield { type: 'done', stopReason: 'error' };
         return;
       }
-
-      const onAbort = (): void => {
-        host.logger.warn('claude-code: abort signal received, killing process tree');
-        treeKill(child);
-      };
-      const signal = opts.signal;
-      if (signal) {
-        if (signal.aborted) {
-          treeKill(child);
-        } else {
-          signal.addEventListener('abort', onAbort, { once: true });
-        }
-      }
+      childStdin?.end();
 
       const state = createTranslatorState();
       const stdoutBuf = new NdjsonBuffer();
@@ -111,6 +144,7 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
       let resolveWait: (() => void) | null = null;
       let closed = false;
       let spawnError: Error | null = null;
+      let budgetExceeded = false;
 
       const wake = (): void => {
         if (resolveWait) {
@@ -124,6 +158,34 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
         new Promise<void>((resolve) => {
           resolveWait = resolve;
         });
+
+      const onAbort = (): void => {
+        host.logger.warn('claude-code: abort signal received, killing process tree');
+        void treeKill(child);
+        wake();
+      };
+      const signal = opts.signal;
+      if (signal) {
+        if (signal.aborted) {
+          void treeKill(child);
+        } else {
+          signal.addEventListener('abort', onAbort, { once: true });
+        }
+      }
+
+      const maxWallTimeMs = opts.budget?.maxWallTimeMs;
+      let budgetTimer: ReturnType<typeof setTimeout> | null = null;
+      if (typeof maxWallTimeMs === 'number' && maxWallTimeMs > 0) {
+        budgetTimer = setTimeout(() => {
+          budgetExceeded = true;
+          host.logger.warn('claude-code: wall-time budget exceeded, killing process tree', {
+            maxWallTimeMs,
+          });
+          void treeKill(child);
+          wake();
+        }, maxWallTimeMs);
+        budgetTimer.unref?.();
+      }
 
       const handleLine = (line: string): void => {
         let parsed: unknown;
@@ -139,15 +201,27 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
 
       childStdout.setEncoding('utf8');
       childStdout.on('data', (chunk: string) => {
-        const lines = stdoutBuf.push(chunk);
+        const lines = stdoutBuf.push(stripAnsi(chunk));
         for (const line of lines) handleLine(line);
         wake();
+      });
+      childStdout.on('error', (err) => {
+        host.logger.warn('claude-code: stdout stream error', { err: String(err) });
       });
 
       childStderr.setEncoding('utf8');
       childStderr.on('data', (chunk: string) => {
-        stderrChunks.push(chunk);
+        stderrChunks.push(stripAnsi(chunk));
       });
+      childStderr.on('error', (err) => {
+        host.logger.warn('claude-code: stderr stream error', { err: String(err) });
+      });
+
+      if (childStdin) {
+        childStdin.on('error', (err) => {
+          host.logger.warn('claude-code: stdin stream error', { err: String(err) });
+        });
+      }
 
       child.on('error', (err) => {
         spawnError = err;
@@ -176,7 +250,8 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
         }
       } finally {
         if (signal) signal.removeEventListener('abort', onAbort);
-        if (!closed) treeKill(child);
+        if (budgetTimer) clearTimeout(budgetTimer);
+        if (!closed) void treeKill(child);
       }
 
       const finalSpawnError = spawnError as Error | null;
@@ -190,6 +265,17 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
           yield { type: 'usage', inputTokens: 0, outputTokens: 0 };
           yield { type: 'done', stopReason: 'error' };
         }
+        return;
+      }
+
+      if (budgetExceeded && !state.resultEmitted) {
+        yield {
+          type: 'error',
+          message: `Claude Code CLI killed: wall-time budget (${maxWallTimeMs}ms) exceeded.`,
+          retryable: false,
+        };
+        if (!state.usageEmitted) yield { type: 'usage', inputTokens: 0, outputTokens: 0 };
+        yield { type: 'done', stopReason: 'error' };
         return;
       }
 

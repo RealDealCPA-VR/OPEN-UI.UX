@@ -1,5 +1,6 @@
 import type { Transport } from './transport';
 import type { SseServerConfig } from './config';
+import { assertHostAllowed } from './host-guard';
 
 type MessageHandler = (message: unknown) => void;
 type CloseHandler = () => void;
@@ -61,11 +62,13 @@ export class SseTransport implements Transport {
   readonly kind = 'sse' as const;
   private abort: AbortController | null = null;
   private postUrl: string | null = null;
-  private messageHandler: MessageHandler | null = null;
-  private closeHandler: CloseHandler | null = null;
+  private readonly messageHandlers: MessageHandler[] = [];
+  private readonly closeHandlers: CloseHandler[] = [];
   private started = false;
 
-  constructor(private readonly config: SseServerConfig) {}
+  constructor(private readonly config: SseServerConfig) {
+    assertHostAllowed(config.url, { allowlist: config.hostAllowlist });
+  }
 
   async start(): Promise<void> {
     if (this.started) return;
@@ -94,11 +97,13 @@ export class SseTransport implements Transport {
     try {
       for await (const evt of parseEventStream(body)) {
         if (evt.event === 'endpoint') {
-          this.postUrl = new URL(evt.data, this.config.url).toString();
+          const resolvedUrl = new URL(evt.data, this.config.url).toString();
+          assertHostAllowed(resolvedUrl, { allowlist: this.config.hostAllowlist });
+          this.postUrl = resolvedUrl;
         } else if (evt.event === 'message') {
           try {
             const parsed: unknown = JSON.parse(evt.data);
-            this.messageHandler?.(parsed);
+            this.dispatchMessage(parsed);
           } catch {
             // ignore malformed payloads
           }
@@ -108,7 +113,7 @@ export class SseTransport implements Transport {
       // stream closed
     } finally {
       this.started = false;
-      this.closeHandler?.();
+      this.fireClose();
     }
   }
 
@@ -136,11 +141,19 @@ export class SseTransport implements Transport {
     }
   }
 
+  private dispatchMessage(parsed: unknown): void {
+    for (const handler of this.messageHandlers) handler(parsed);
+  }
+
+  private fireClose(): void {
+    for (const handler of this.closeHandlers) handler();
+  }
+
   onMessage(handler: MessageHandler): void {
-    this.messageHandler = handler;
+    this.messageHandlers.push(handler);
   }
 
   onClose(handler: CloseHandler): void {
-    this.closeHandler = handler;
+    this.closeHandlers.push(handler);
   }
 }

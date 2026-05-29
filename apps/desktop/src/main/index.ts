@@ -1,8 +1,14 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog, session, shell } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join as pathJoin, join } from 'node:path';
 import { z } from 'zod';
 import { logger } from './logger';
+import { validateDeepLink as validateDeepLinkImpl } from './security/deep-link';
+import {
+  checkOutbound,
+  onNetworkPolicyChanged,
+  snapshotNetworkPolicy,
+} from './security/network-policy';
 import { registerAgentHandlers } from './agent/handlers';
 import { registerAntiSycophancyHandlers } from './agent/anti-sycophancy-handlers';
 import { registerResumeHandlers } from './agent/resume-handlers';
@@ -67,13 +73,14 @@ import { registerToolHandlers } from './tools/handlers';
 import { bootstrapVoice, registerVoiceHandlers } from './voice/handlers';
 import { unregisterPttShortcut } from './voice/global-shortcut';
 import { registerMultiWorkspaceHandlers } from './workspace/multi-workspace-handlers';
+import { installSearchWorkspaceResolver } from './workspace/search-resolver';
 import { resolveAppIconPath } from './app-icon';
 import { createTray, destroyTray } from './tray';
 import { initAutoUpdater, registerUpdateHandlers } from './updater';
 import { registerWorkspaceHandlers } from './workspace/handlers';
 import { initTelemetry, shutdownTelemetry, track } from './telemetry/manager';
 import { registerTelemetryHandlers } from './telemetry/handlers';
-import { initCrashReporting } from './crash/manager';
+import { initCrashReporting, shutdownCrashReporting } from './crash/manager';
 import { registerCrashReportingHandlers } from './crash/handlers';
 import { INITIAL_THEME_ARG_PREFIX } from '../shared/theme';
 
@@ -117,20 +124,29 @@ process.on('uncaughtException', (err: Error) => {
 let mainWindow: BrowserWindow | null = null;
 let pendingDeepLink: string | null = null;
 
+function validateDeepLink(raw: string): string | null {
+  return validateDeepLinkImpl(raw, PROTOCOL);
+}
+
 function extractDeepLink(argv: readonly string[]): string | null {
   for (const arg of argv) {
-    if (arg.startsWith(`${PROTOCOL}://`)) return arg;
+    if (arg.startsWith(`${PROTOCOL}://`)) {
+      const validated = validateDeepLink(arg);
+      if (validated) return validated;
+    }
   }
   return null;
 }
 
 function deliverDeepLink(url: string): void {
+  const validated = validateDeepLink(url);
+  if (!validated) return;
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
-    mainWindow.webContents.send('app:deep-link', url);
+    mainWindow.webContents.send('app:deep-link', validated);
   } else {
-    pendingDeepLink = url;
+    pendingDeepLink = validated;
   }
 }
 
@@ -149,6 +165,144 @@ app.on('open-url', (event, url) => {
   event.preventDefault();
   deliverDeepLink(url);
 });
+
+function buildCsp(devMode: boolean): string {
+  const connectSrc = devMode
+    ? "connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:*"
+    : "connect-src 'self'";
+  const scriptSrc = devMode
+    ? "script-src 'self' 'unsafe-eval' 'unsafe-inline'"
+    : "script-src 'self'";
+  return [
+    "default-src 'self'",
+    scriptSrc,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "media-src 'self' blob:",
+    connectSrc,
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "frame-src 'none'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'none'",
+  ].join('; ');
+}
+
+function installRendererSecurity(): void {
+  const devMode = Boolean(process.env['ELECTRON_RENDERER_URL']);
+  const csp = buildCsp(devMode);
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const headers = { ...(details.responseHeaders ?? {}) };
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'content-security-policy') delete headers[key];
+    }
+    headers['Content-Security-Policy'] = [csp];
+    callback({ responseHeaders: headers });
+  });
+
+  session.defaultSession.setPermissionRequestHandler((_wc, _permission, deny) => {
+    deny(false);
+  });
+  session.defaultSession.setPermissionCheckHandler(() => false);
+
+  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+    if (details.url.startsWith('devtools://') || details.url.startsWith('chrome-extension://')) {
+      callback({ cancel: false });
+      return;
+    }
+    if (details.url.startsWith('file://') || details.url.startsWith('data:')) {
+      callback({ cancel: false });
+      return;
+    }
+    if (details.url.startsWith('blob:')) {
+      callback({ cancel: false });
+      return;
+    }
+    if (devMode && process.env['ELECTRON_RENDERER_URL']) {
+      const rendererUrl = process.env['ELECTRON_RENDERER_URL'];
+      if (details.url.startsWith(rendererUrl)) {
+        callback({ cancel: false });
+        return;
+      }
+      try {
+        const u = new URL(details.url);
+        const r = new URL(rendererUrl);
+        if (u.hostname === r.hostname && (u.protocol === 'ws:' || u.protocol === 'wss:')) {
+          callback({ cancel: false });
+          return;
+        }
+      } catch {
+        // fall through to policy check
+      }
+    }
+    const check = checkOutbound(details.url);
+    if (!check.allowed) {
+      logger.warn(
+        { url: details.url, reason: check.reason },
+        'outbound request blocked by network policy',
+      );
+      callback({ cancel: true });
+      return;
+    }
+    callback({ cancel: false });
+  });
+
+  app.on('web-contents-created', (_event, contents) => {
+    contents.on('will-navigate', (event, navigationUrl) => {
+      const currentUrl = contents.getURL();
+      try {
+        const next = new URL(navigationUrl);
+        if (currentUrl === '' || currentUrl === 'about:blank') {
+          if (
+            next.protocol === 'file:' ||
+            (process.env['ELECTRON_RENDERER_URL'] &&
+              navigationUrl.startsWith(process.env['ELECTRON_RENDERER_URL']))
+          ) {
+            return;
+          }
+        }
+        const current = new URL(currentUrl);
+        if (next.origin !== current.origin) {
+          event.preventDefault();
+          logger.warn(
+            { from: currentUrl, to: navigationUrl },
+            'blocked off-origin navigation in renderer',
+          );
+        }
+      } catch {
+        event.preventDefault();
+        logger.warn({ navigationUrl }, 'blocked navigation: unparseable URL');
+      }
+    });
+
+    contents.setWindowOpenHandler(({ url }) => {
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          void shell.openExternal(url);
+        } else {
+          logger.warn({ url, protocol: parsed.protocol }, 'blocked window.open with non-http URL');
+        }
+      } catch {
+        logger.warn({ url }, 'blocked window.open with invalid URL');
+      }
+      return { action: 'deny' };
+    });
+  });
+}
+
+function warnIfPermissiveNetworkPolicy(): void {
+  const policy = snapshotNetworkPolicy();
+  if (!policy.localOnlyMode && policy.allowlist.length === 0) {
+    logger.warn(
+      'network policy is permissive: localOnlyMode=false and allowlist is empty — ' +
+        'all outbound hosts are allowed. Set localOnlyMode or populate the allowlist in Settings → Privacy.',
+    );
+  }
+}
 
 function createWindow(): void {
   const initialTheme = getTheme();
@@ -185,11 +339,28 @@ function createWindow(): void {
   }
 }
 
+function showNativeAbiMismatchDialog(rawMessage: string): void {
+  const detail = rawMessage.split('\n').slice(0, 6).join('\n');
+  dialog.showErrorBox(
+    'OpenCodex — native module ABI mismatch',
+    `OpenCodex's local database (better-sqlite3) was built for a different Node.js ABI ` +
+      `than the Electron runtime that just loaded it. ` +
+      `Run\n\n    pnpm rebuild-native\n\nfrom apps/desktop, then relaunch OpenCodex.\n\n` +
+      `Underlying error:\n${detail}`,
+  );
+}
+
 app.whenReady().then(() => {
   try {
     openDb();
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     logger.error({ err }, 'failed to open database');
+    if (message.includes('NODE_MODULE_VERSION') || message.includes('ERR_DLOPEN_FAILED')) {
+      showNativeAbiMismatchDialog(message);
+      app.exit(1);
+      return;
+    }
   }
 
   try {
@@ -226,6 +397,9 @@ app.whenReady().then(() => {
   }
 
   registerIpcHandlers();
+  installRendererSecurity();
+  warnIfPermissiveNetworkPolicy();
+  onNetworkPolicyChanged(() => warnIfPermissiveNetworkPolicy());
   initTelemetry();
   void initCrashReporting();
   void startMemory().catch((err: unknown) => {
@@ -252,6 +426,14 @@ app.whenReady().then(() => {
     });
   } catch (err) {
     logger.warn({ err }, 'multi-workspace indexer init failed');
+  }
+
+  // Phase 14 tier2 — let search_codebase fan out across registered workspaces
+  // and surface cross-workspace import follow-ups.
+  try {
+    installSearchWorkspaceResolver();
+  } catch (err) {
+    logger.warn({ err }, 'search workspace resolver install failed');
   }
 
   // Lane 2 — defer resume prompt until renderer's webContents have loaded
@@ -309,6 +491,7 @@ app.on('before-quit', () => {
   void stopMemory();
   void stopWatchedWorkspace();
   void shutdownTelemetry();
+  void shutdownCrashReporting();
   stopSchedulerForApp();
   void stopSkills();
   // Lane 2 — stop run-store bridge so we don't broadcast during shutdown.

@@ -1,8 +1,11 @@
 import type { OllamaModelEntry, OllamaProbeResult } from '../../shared/ollama';
+import { getProviderEntry } from '../storage/settings';
 
-const PROBE_URL = 'http://127.0.0.1:11434/api/tags';
-const PROBE_TIMEOUT_MS = 800;
+const DEFAULT_BASE = 'http://127.0.0.1:11434';
+const LOCALHOST_FALLBACK_BASE = 'http://127.0.0.1:11434';
+const PROBE_TIMEOUT_MS = 3_000;
 const BYTES_PER_GB = 1024 * 1024 * 1024;
+const TAGS_PATH = '/api/tags';
 
 interface OllamaTagsResponse {
   models?: Array<{ name?: unknown; model?: unknown; size?: unknown }>;
@@ -23,26 +26,99 @@ function coerceModelEntry(raw: unknown): OllamaModelEntry | null {
   return { id, sizeGb };
 }
 
+function stripSlash(s: string): string {
+  return s.replace(/\/$/, '');
+}
+
+function normalizeHostString(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return DEFAULT_BASE;
+  if (/^https?:\/\//i.test(trimmed)) return stripSlash(trimmed);
+  // OLLAMA_HOST may be just "host:port" or even "host".
+  return stripSlash(`http://${trimmed}`);
+}
+
+export interface ResolveBaseUrlOptions {
+  configuredBaseUrl?: string | null;
+  envHost?: string | undefined;
+}
+
+/**
+ * Precedence: explicit per-provider base URL > OLLAMA_HOST env > default localhost.
+ */
+export function resolveOllamaBaseUrl(opts: ResolveBaseUrlOptions = {}): string {
+  if (opts.configuredBaseUrl && opts.configuredBaseUrl.length > 0) {
+    return normalizeHostString(opts.configuredBaseUrl);
+  }
+  if (opts.envHost && opts.envHost.length > 0) {
+    return normalizeHostString(opts.envHost);
+  }
+  return DEFAULT_BASE;
+}
+
+function looksLikeIPv6ConnectFailure(message: string, base: string): boolean {
+  if (!/(\[::1?\]|::1?\b|:::?\d+)/.test(base) && !/\bipv6\b/i.test(base)) return false;
+  return /ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ENOTFOUND/i.test(message);
+}
+
+async function probeOnce(
+  baseUrl: string,
+  signal: AbortSignal | undefined,
+  fetchImpl: typeof fetch,
+): Promise<OllamaProbeResult> {
+  const ctrl = signal ? undefined : AbortSignal.timeout(PROBE_TIMEOUT_MS);
+  const res = await fetchImpl(`${baseUrl}${TAGS_PATH}`, { signal: signal ?? ctrl });
+  if (!res.ok) {
+    return { running: false, models: [], error: `HTTP ${res.status}` };
+  }
+  const raw = (await res.json()) as OllamaTagsResponse;
+  const list = Array.isArray(raw.models) ? raw.models : [];
+  const models: OllamaModelEntry[] = [];
+  for (const item of list) {
+    const entry = coerceModelEntry(item);
+    if (entry) models.push(entry);
+  }
+  return { running: true, models };
+}
+
+export interface ProbeOllamaOptions {
+  /** Override base URL discovery (test-only). */
+  baseUrl?: string;
+  /** Override env lookup (test-only). */
+  envHost?: string | undefined;
+  /** Skip the per-provider config lookup (test-only). */
+  skipConfiguredBaseUrl?: boolean;
+}
+
 export async function probeOllama(
   signal?: AbortSignal,
   fetchImpl: typeof fetch = fetch,
+  options: ProbeOllamaOptions = {},
 ): Promise<OllamaProbeResult> {
-  const ctrl = signal ? undefined : AbortSignal.timeout(PROBE_TIMEOUT_MS);
+  let configuredBaseUrl: string | null = null;
+  if (!options.skipConfiguredBaseUrl) {
+    try {
+      const entry = getProviderEntry('ollama');
+      configuredBaseUrl = entry.baseUrl;
+    } catch {
+      configuredBaseUrl = null;
+    }
+  }
+  const envHost = options.envHost ?? process.env['OLLAMA_HOST'];
+  const baseUrl = options.baseUrl ?? resolveOllamaBaseUrl({ configuredBaseUrl, envHost });
+
   try {
-    const res = await fetchImpl(PROBE_URL, { signal: signal ?? ctrl });
-    if (!res.ok) {
-      return { running: false, models: [], error: `HTTP ${res.status}` };
-    }
-    const raw = (await res.json()) as OllamaTagsResponse;
-    const list = Array.isArray(raw.models) ? raw.models : [];
-    const models: OllamaModelEntry[] = [];
-    for (const item of list) {
-      const entry = coerceModelEntry(item);
-      if (entry) models.push(entry);
-    }
-    return { running: true, models };
+    return await probeOnce(baseUrl, signal, fetchImpl);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'probe failed';
+    if (baseUrl !== LOCALHOST_FALLBACK_BASE && looksLikeIPv6ConnectFailure(message, baseUrl)) {
+      try {
+        return await probeOnce(LOCALHOST_FALLBACK_BASE, signal, fetchImpl);
+      } catch (fallbackErr) {
+        const fallbackMessage = fallbackErr instanceof Error ? fallbackErr.message : 'probe failed';
+        return { running: false, models: [], error: fallbackMessage };
+      }
+    }
     return { running: false, models: [], error: message };
   }
 }

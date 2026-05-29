@@ -55,6 +55,29 @@ describe('FileChangeWatcher', () => {
     }
   });
 
+  it('passes the matching changed paths in the event payload', async () => {
+    const onFire = vi.fn();
+    const watcher = new FileChangeWatcher({
+      workspaceRoot: dir,
+      glob: '**/*.ts',
+      onFire,
+      debounceMs: 100,
+    });
+    await watcher.start();
+    try {
+      writeFileSync(join(dir, 'a.ts'), '1;\n');
+      writeFileSync(join(dir, 'b.ts'), '2;\n');
+      await waitFor(() => onFire.mock.calls.length >= 1);
+      const call = onFire.mock.calls[0];
+      expect(call).toBeDefined();
+      const event = call![0] as { paths: string[] };
+      expect(event.paths.length).toBeGreaterThan(0);
+      expect(event.paths.every((p) => p.endsWith('.ts'))).toBe(true);
+    } finally {
+      await watcher.stop();
+    }
+  });
+
   it('does NOT fire for files outside the glob', async () => {
     const onFire = vi.fn();
     const watcher = new FileChangeWatcher({
@@ -139,7 +162,7 @@ describe('FileChangeWatcherRegistry', () => {
         { taskId: 't1', workspaceRoot: dir, glob: '**/*.ts' },
         { taskId: 't2', workspaceRoot: dir, glob: '**/*.md' },
       ],
-      (id) => {
+      (id, _event) => {
         fired.push(id);
       },
     );

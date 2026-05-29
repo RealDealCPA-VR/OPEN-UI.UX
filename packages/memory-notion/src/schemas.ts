@@ -30,16 +30,16 @@ export const userSchema = z.object({
 export const pageObjectSchema = z.object({
   object: z.literal('page'),
   id: z.string(),
-  url: z.string().optional(),
-  last_edited_time: z.string().optional(),
+  url: z.string().nullable().optional(),
+  last_edited_time: z.string().nullable().optional(),
   properties: z.record(z.unknown()).default({}),
 });
 
 export const databaseObjectSchema = z.object({
   object: z.literal('database'),
   id: z.string(),
-  url: z.string().optional(),
-  last_edited_time: z.string().optional(),
+  url: z.string().nullable().optional(),
+  last_edited_time: z.string().nullable().optional(),
   title: richTextSchema.optional(),
 });
 
@@ -52,6 +52,7 @@ export const searchResponseSchema = z.object({
   object: z.literal('list'),
   results: z.array(z.unknown()),
   next_cursor: z.string().nullable().optional(),
+  has_more: z.boolean().optional(),
 });
 
 export const blockBaseSchema = z.object({
@@ -65,6 +66,7 @@ export const blockChildrenResponseSchema = z.object({
   object: z.literal('list'),
   results: z.array(z.record(z.unknown())),
   next_cursor: z.string().nullable().optional(),
+  has_more: z.boolean().optional(),
 });
 
 export const notionErrorSchema = z.object({

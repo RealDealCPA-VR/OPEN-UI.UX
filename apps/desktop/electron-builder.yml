@@ -52,7 +52,26 @@ linux:
       arch: [x64]
     - target: rpm
       arch: [x64]
+    - target: snap
+      arch: [x64]
   artifactName: ${productName}-${version}-${arch}.${ext}
+# Snap Store publishing: `snapcraft login --with` consumes
+# $SNAPCRAFT_STORE_CREDENTIALS at build time. CI exports it from the
+# `SNAPCRAFT_STORE_CREDENTIALS` secret before invoking electron-builder.
+# `${env.SNAP_CHANNEL}` defaults to `stable` in release.yml.
+snap:
+  publish:
+    provider: snapStore
+    channels:
+      - ${env.SNAP_CHANNEL}
+# Autoupdater channel pinned to `latest` so electron-updater reads
+# `latest-{platform}.yml` from the GitHub release. Switch to `beta` for
+# pre-release channels via a separate publish profile.
+# `releaseType` is driven by $OPENCODEX_RELEASE_TYPE so CI can flip between
+# `draft` (default, for review) and `release` (auto-promote). The companion
+# `promote-release.yml` workflow flips a draft to a published release without
+# rebuilding.
 publish:
   provider: github
-  releaseType: draft
+  channel: latest
+  releaseType: ${env.OPENCODEX_RELEASE_TYPE}

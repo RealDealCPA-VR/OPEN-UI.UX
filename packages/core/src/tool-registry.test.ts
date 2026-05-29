@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
-import { defineTool, ToolInputError, ToolNotFoundError } from './tool';
+import { defineTool, ToolCancelledError, ToolInputError, ToolNotFoundError } from './tool';
 import { ToolRegistry } from './tool-registry';
 
 function makeCtx() {
@@ -92,5 +92,30 @@ describe('ToolRegistry', () => {
     const r = new ToolRegistry();
     r.register(makeEcho());
     await expect(r.execute('echo', { text: 42 }, makeCtx())).rejects.toBeInstanceOf(ToolInputError);
+  });
+
+  it('execute throws ToolCancelledError without reaching execute when signal is pre-aborted', async () => {
+    const r = new ToolRegistry();
+    const execute = vi.fn(async ({ text }: { text: string }) => text);
+    r.register(
+      defineTool({
+        name: 'observed',
+        description: 'records whether execute ran',
+        inputZod: z.object({ text: z.string() }),
+        permissionTier: 'read',
+        execute,
+      }),
+    );
+    const controller = new AbortController();
+    controller.abort('user-cancelled');
+    const ctx = {
+      workspaceRoot: '/tmp',
+      signal: controller.signal,
+      logger: { info: () => {}, error: () => {} },
+    };
+    await expect(r.execute('observed', { text: 'hi' }, ctx)).rejects.toBeInstanceOf(
+      ToolCancelledError,
+    );
+    expect(execute).not.toHaveBeenCalled();
   });
 });

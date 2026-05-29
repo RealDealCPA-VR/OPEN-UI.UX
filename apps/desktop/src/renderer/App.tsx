@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { ApprovalQueue } from './components/ApprovalQueue';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { HoverHintProvider } from './components/HoverHint';
 import { OnboardingWizard } from './components/OnboardingWizard';
 import { PluginPanelHost } from './components/PluginPanelHost';
@@ -51,20 +52,89 @@ export function App(): JSX.Element {
               <ApprovalQueue />
               <OnboardingWizard />
               <Routes>
-                <Route element={<AppShell />}>
+                <Route
+                  element={
+                    <ErrorBoundary label="AppShell">
+                      <AppShell />
+                    </ErrorBoundary>
+                  }
+                >
                   <Route index element={<Navigate to="/chat" replace />} />
-                  <Route path="/chat" element={<ChatView />} />
-                  <Route path="/agent" element={<AgentView />} />
-                  <Route path="/agent/:runId" element={<AgentView />} />
-                  <Route path="/codebase" element={<CodebaseView />} />
-                  <Route path="/review" element={<ReviewView />} />
-                  <Route path="/automations" element={<AutomationsView />} />
-                  <Route path="/runners" element={<RunnersView />} />
+                  <Route
+                    path="/chat"
+                    element={
+                      <ErrorBoundary label="ChatView">
+                        <ChatView />
+                      </ErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/agent"
+                    element={
+                      <ErrorBoundary label="AgentView">
+                        <AgentView />
+                      </ErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/agent/:runId"
+                    element={
+                      <ErrorBoundary label="AgentView">
+                        <AgentView />
+                      </ErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/codebase"
+                    element={
+                      <ErrorBoundary label="CodebaseView">
+                        <CodebaseView />
+                      </ErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/review"
+                    element={
+                      <ErrorBoundary label="ReviewView">
+                        <ReviewView />
+                      </ErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/automations"
+                    element={
+                      <ErrorBoundary label="AutomationsView">
+                        <AutomationsView />
+                      </ErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/runners"
+                    element={
+                      <ErrorBoundary label="RunnersView">
+                        <RunnersView />
+                      </ErrorBoundary>
+                    }
+                  />
                   <Route path="/settings/runners" element={<RunnersRedirect />} />
                   <Route path="/settings/scheduled-tasks" element={<ScheduledTasksRedirect />} />
                   <Route path="/settings" element={<Navigate to="/settings/theme" replace />} />
-                  <Route path="/settings/:section" element={<SettingsView />} />
-                  <Route path="/plugins/:pluginId/:panelId" element={<PluginPanelHost />} />
+                  <Route
+                    path="/settings/:section"
+                    element={
+                      <ErrorBoundary label="SettingsView">
+                        <SettingsView />
+                      </ErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/plugins/:pluginId/:panelId"
+                    element={
+                      <ErrorBoundary label="PluginPanelHost">
+                        <PluginPanelHost />
+                      </ErrorBoundary>
+                    }
+                  />
                   <Route path="*" element={<Navigate to="/chat" replace />} />
                 </Route>
               </Routes>

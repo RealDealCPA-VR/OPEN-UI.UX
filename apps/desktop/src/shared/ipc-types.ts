@@ -598,11 +598,27 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
   };
   'onboarding:get-state': {
     request: void;
-    response: { complete: boolean };
+    response: { complete: boolean; steps: Record<string, unknown> };
   };
   'onboarding:set-complete': {
     request: { complete: boolean };
     response: { complete: boolean };
+  };
+  'onboarding:get-step': {
+    request: { stepName: string };
+    response: { value: unknown };
+  };
+  'onboarding:set-step': {
+    request: { stepName: string; value?: unknown };
+    response: { steps: Record<string, unknown> };
+  };
+  'onboarding:clear-steps': {
+    request: void;
+    response: { steps: Record<string, unknown> };
+  };
+  'onboarding:get-defaults': {
+    request: void;
+    response: { homedir: string };
   };
   'plugins:list': {
     request: void;
@@ -639,6 +655,13 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
   'plugins:fetch-registry': {
     request: void;
     response: { entries: unknown[]; error: string | null };
+  };
+  'plugins:install-from-registry': {
+    request: { installUrl: string; acceptUnsigned?: boolean };
+    response:
+      | { ok: true; plugins: PluginListItem[] }
+      | { ok: false; reason: 'unsigned'; pluginName: string }
+      | { ok: false; reason: 'error'; error: string };
   };
   'plugins:list-panels': {
     request: void;
@@ -735,7 +758,12 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
         hasChildren: boolean;
       }>;
       workspaceRoot: string | null;
+      truncated: boolean;
     };
+  };
+  'file-tree:has-children': {
+    request: { path: string };
+    response: { hasChildren: boolean };
   };
   'telemetry:get-config': {
     request: void;
@@ -1005,7 +1033,7 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
   };
   'replay:get-conversation-bundle': {
     request: { id: string };
-    response: { bundle: ProvenanceBundle | null };
+    response: { bundle: ProvenanceBundle | null; signature: string | null };
   };
   // Lane 8 — ollama onboarding
   'ollama:probe': {

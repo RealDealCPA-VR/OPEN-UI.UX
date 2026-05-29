@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Modal } from './Modal';
 
 interface DraftPrModalProps {
   repoRoot: string;
@@ -83,13 +84,16 @@ export function DraftPrModal({
   };
 
   return (
-    <div className="approval-modal-backdrop" role="dialog" aria-modal="true">
-      <div
-        className="approval-modal draft-pr-modal"
-        style={{ minWidth: 'min(720px, 92vw)', maxWidth: '92vw' }}
-      >
+    <Modal
+      open
+      onClose={onClose}
+      labelledBy="draft-pr-modal-title"
+      className="approval-modal draft-pr-modal"
+      closeOnBackdrop={!opening}
+    >
+      <div style={{ minWidth: 'min(720px, 92vw)', maxWidth: '92vw' }}>
         <header className="approval-modal-header">
-          <h2>Draft pull request</h2>
+          <h2 id="draft-pr-modal-title">Draft pull request</h2>
         </header>
         <p className="approval-modal-description">
           Branch <code>{branch}</code>{' '}
@@ -159,6 +163,6 @@ export function DraftPrModal({
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

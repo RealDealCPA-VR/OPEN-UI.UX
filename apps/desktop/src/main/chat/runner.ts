@@ -5,6 +5,7 @@ import type {
   LLMProvider,
   Message,
   Role,
+  RoutingDecision,
   StopReason,
   ToolCallEvent,
 } from '@opencodex/core';
@@ -117,6 +118,9 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
   // Lane 5 — if a routing policy is active, wrap the resolved provider in a
   // RoutingProvider so each turn can dispatch to the policy-matched provider.
   let provider: LLMProvider = basePrimary;
+  // Phase 14 tier2 — capture the most recent routing decision so each tool
+  // call audit row records which model actually handled the turn.
+  const routingTracker: RoutingDecisionTracker = { lastDecision: null };
   try {
     const activePolicy = getActiveRoutingPolicy();
     if (activePolicy && activePolicy.rules.length > 0) {
@@ -137,6 +141,9 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
         defaultRef: { providerId: opts.providerId, modelId: opts.modelId },
         policy: activePolicy,
         providers,
+        onDecision: (decision) => {
+          routingTracker.lastDecision = decision;
+        },
       });
     }
   } catch (err) {
@@ -216,6 +223,7 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
     workspaceRoot,
     toolRegistry: registry,
     approvalManager: approvals,
+    routingTracker,
   }).finally(() => {
     active.delete(streamId);
     approvals?.clearSession(streamId);
@@ -253,6 +261,11 @@ interface RunStreamArgs {
   workspaceRoot: string;
   toolRegistry: ToolRegistry | null;
   approvalManager: ApprovalManager | null;
+  routingTracker?: RoutingDecisionTracker;
+}
+
+interface RoutingDecisionTracker {
+  lastDecision: RoutingDecision | null;
 }
 
 function safeGetApprovalManager(): ApprovalManager | null {
@@ -775,6 +788,7 @@ function auditToolCall(args: RunStreamArgs, tc: ToolCallEvent, patch: AuditPatch
       decision: patch.decision,
       isError: patch.isError,
       durationMs: patch.durationMs,
+      routingDecision: args.routingTracker?.lastDecision ?? null,
     });
   } catch (err) {
     logger.error(

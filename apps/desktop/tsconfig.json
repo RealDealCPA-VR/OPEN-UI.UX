@@ -36,6 +36,8 @@
       "@opencodex/memory-notion/*": ["../../packages/memory-notion/src/*"],
       "@opencodex/memory-local-fs": ["../../packages/memory-local-fs/src/index.ts"],
       "@opencodex/memory-local-fs/*": ["../../packages/memory-local-fs/src/*"],
+      "@opencodex/rag-chunker": ["../../packages/rag-chunker/src/index.ts"],
+      "@opencodex/rag-chunker/*": ["../../packages/rag-chunker/src/*"],
       "@opencodex/telemetry": ["../../packages/telemetry/src/index.ts"],
       "@opencodex/telemetry/*": ["../../packages/telemetry/src/*"],
       "@opencodex/crash-reporting": ["../../packages/crash-reporting/src/index.ts"],

@@ -9,7 +9,7 @@ OpenCodex is a local-first coding agent that executes tools, runs shell commands
 Report privately via either:
 
 - GitHub's [Private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability) (preferred — go to the repo's Security tab → Report a vulnerability).
-- Email: `security@TODO-set-domain` (replace with project contact before publishing).
+- Email: `security@TODO-set-domain` — **the maintainer must replace this with a real contact address before publishing v0.1.** Tracked in [PLACEHOLDERS.md](./PLACEHOLDERS.md); CI fails on this sentinel until it's filled.
 
 Please include:
 
@@ -33,10 +33,15 @@ We will acknowledge your report within **72 hours** and aim to provide an initia
 In scope:
 
 - The OpenCodex desktop application (`apps/desktop`)
-- Core packages (`packages/core`, `packages/providers`, `packages/tools`, `packages/plugin-sdk`, `packages/mcp-client`)
-- The plugin sandbox and permission model
-- The tool approval system
-- Secure key storage integration (keychain via `keytar`)
+- Core packages (`packages/core`, `packages/tools`, `packages/plugin-sdk`, `packages/mcp-client`)
+- Per-provider packages (`packages/provider-openai`, `packages/provider-anthropic`, `packages/provider-google`, `packages/provider-xai`, `packages/provider-mistral`, `packages/provider-ollama`, `packages/provider-openrouter`, `packages/provider-voyage`)
+- Runner adapters (`packages/runner-claude-code`, `packages/runner-opencode`, `packages/runner-aider`) and the install / probe / friendly-error pipeline that drives them
+- Memory backends (`packages/memory-local-fs`, `packages/memory-obsidian`, `packages/memory-notion`)
+- Audit-log signing + the `packages/audit-verify` verification CLI (Ed25519 chain integrity)
+- The 127.0.0.1 scheduler webhook listener (HMAC-SHA256, rate limit, port allocation in 38400–38500)
+- The plugin sandbox and permission model (including plugin signing under `docs/plugin-signing.md`)
+- The tool approval system, including the `read` / `write` / `execute` / `network` tier defaults
+- Secure key storage integration (keychain via `keytar`) for provider keys, runner CLI paths, and memory backend tokens
 
 Out of scope:
 

@@ -1,13 +1,10 @@
 import { z } from 'zod';
 import { defineTool } from '@opencodex/core';
-import { anonymizeId } from '@opencodex/telemetry';
 import { logger } from '../logger';
 import { recordComplete, recordError, recordStart } from './run-registry';
 import { type SubagentResult } from './subagent';
 import { isUtilityProcessAvailable, runSubagentInline, runSubagentInWorker } from './worker-host';
 
-// Lazy: avoid loading telemetry/manager (and through it, electron-store) at module-load time
-// so unit tests that import this tool transitively don't crash in node env.
 async function trackEvent(
   event: string,
   props?: Record<string, string | number | boolean | null>,
@@ -17,6 +14,15 @@ async function trackEvent(
     mod.track(event, props);
   } catch {
     // ignore
+  }
+}
+
+async function anonymize(input: string): Promise<string | null> {
+  try {
+    const mod = await import('../telemetry/manager');
+    return mod.anonymizeId(input);
+  } catch {
+    return null;
   }
 }
 
@@ -66,11 +72,17 @@ export const spawnSubagentTool = defineTool({
       runnerId,
     });
 
-    void trackEvent('agent.subagent_spawned', {
-      providerHash: anonymizeId(input.providerId),
-      modelHash: anonymizeId(input.modelId),
-      allowedTools: input.allowedTools?.length ?? null,
-    });
+    void (async () => {
+      const [providerHash, modelHash] = await Promise.all([
+        anonymize(input.providerId),
+        anonymize(input.modelId),
+      ]);
+      void trackEvent('agent.subagent_spawned', {
+        providerHash,
+        modelHash,
+        allowedTools: input.allowedTools?.length ?? null,
+      });
+    })();
 
     let result: SubagentResult;
     try {

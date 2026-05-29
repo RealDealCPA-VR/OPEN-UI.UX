@@ -33,20 +33,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Native modules (better-sqlite3 in particular) are load-bearing:
+      # apps/desktop/scripts/ensure-native-abi.mjs runs as pretest/predev/prebuild
+      # and refuses to continue without a matching ABI sentinel. A rebuild
+      # failure here means the whole pipeline is wedged — fail loudly rather
+      # than swallowing it.
       - name: Rebuild native modules
-        id: rebuild_native
-        continue-on-error: true
         run: pnpm --filter @opencodex/desktop run rebuild-native
 
-      - name: Warn on rebuild-native failure
-        if: steps.rebuild_native.outcome == 'failure'
-        run: echo "::warning::rebuild-native failed — DB-backed tests will be skipped"
-
-      - name: Check placeholders
-        run: pnpm check-placeholders
+      # Note: `pnpm check-placeholders` runs in .github/workflows/release-readiness.yml,
+      # which is gated on release tags + manual dispatch so unfilled placeholders block
+      # releases (the intended gate) without blocking every PR.
 
       - name: Lint
         run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
 
       - name: Typecheck
         run: pnpm typecheck
@@ -54,8 +57,36 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Format check
-        run: pnpm format:check
-
       - name: Build
         run: pnpm build
+
+      # The desktop binary must be present at out/main/index.cjs — the Build
+      # step above runs `pnpm build` which invokes electron-vite for the
+      # @opencodex/desktop workspace. e2e is gated to ubuntu-latest because
+      # Windows runners flake on Electron+Playwright session teardown.
+      - name: Install Playwright Electron deps (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+      - name: Playwright e2e (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run --auto-servernum pnpm --filter @opencodex/desktop run e2e
+
+      # Phase 14 — renderer perf budget. Records cold-start + keystroke p95
+      # into apps/desktop/.bench/<timestamp>.json. Runs on Linux only for the
+      # same xvfb / teardown reasons as e2e. The script self-fails on >10%
+      # regression once a committed baseline.json exists; otherwise it just
+      # records the artifact.
+      - name: Renderer perf bench (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run --auto-servernum pnpm --filter @opencodex/desktop run bench
+        continue-on-error: true
+
+      - name: Upload perf artifact
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderer-perf-bench
+          path: apps/desktop/.bench/*.json
+          if-no-files-found: ignore

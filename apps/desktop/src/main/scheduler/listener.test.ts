@@ -1,8 +1,12 @@
 import { createHmac } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  __getLastTriggerAtSizeForTests,
+  __recordTriggerAtForTests,
   __resetListenerForTests,
   buildTriggerUrl,
+  LAST_TRIGGER_MAX_ENTRIES,
+  LAST_TRIGGER_TTL_MS,
   RATE_LIMIT_WINDOW_MS,
   SIGNATURE_HEADER,
   startListener,
@@ -228,5 +232,26 @@ describe('scheduler listener', () => {
 
     expect(onTrigger).toHaveBeenCalledOnce();
     void RATE_LIMIT_WINDOW_MS;
+  });
+
+  it('prunes lastTriggerAt entries older than the TTL', () => {
+    const now = 10_000_000;
+    __recordTriggerAtForTests('expired-1', now - LAST_TRIGGER_TTL_MS - 1);
+    __recordTriggerAtForTests('expired-2', now - LAST_TRIGGER_TTL_MS - 5_000);
+    __recordTriggerAtForTests('fresh-1', now);
+    // Force a prune by overflowing the map past the half-mark threshold.
+    for (let i = 0; i < Math.ceil(LAST_TRIGGER_MAX_ENTRIES / 2); i++) {
+      __recordTriggerAtForTests(`pad-${i}`, now);
+    }
+    // After pruning the expired entries should be gone.
+    expect(__getLastTriggerAtSizeForTests()).toBeLessThan(LAST_TRIGGER_MAX_ENTRIES);
+  });
+
+  it('caps lastTriggerAt at LAST_TRIGGER_MAX_ENTRIES', () => {
+    const now = 50_000_000;
+    for (let i = 0; i < LAST_TRIGGER_MAX_ENTRIES + 100; i++) {
+      __recordTriggerAtForTests(`task-${i}`, now);
+    }
+    expect(__getLastTriggerAtSizeForTests()).toBeLessThanOrEqual(LAST_TRIGGER_MAX_ENTRIES);
   });
 });

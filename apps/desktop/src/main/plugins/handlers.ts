@@ -18,6 +18,7 @@ import { getPluginRegistryUrl, setPluginRegistryUrl } from '../storage/settings'
 import { toFriendlyError } from '../util/friendly-error';
 import { PLUGIN_PRESETS } from './presets';
 import { fetchPluginRegistry } from './registry-fetcher';
+import { installFromRegistryUrl } from './registry-installer';
 
 function resolveBundledPresetPath(presetId: string): string {
   if (app.isPackaged) {
@@ -98,6 +99,18 @@ export function registerPluginHandlers(): void {
     if (!url) return { entries: [], error: 'no registry URL configured' };
     return fetchPluginRegistry(url);
   });
+  registerInvoke(
+    'plugins:install-from-registry',
+    z.object({
+      installUrl: z.string().url(),
+      acceptUnsigned: z.boolean().optional(),
+    }),
+    async ({ installUrl, acceptUnsigned }) => {
+      const req: { installUrl: string; acceptUnsigned?: boolean } = { installUrl };
+      if (acceptUnsigned !== undefined) req.acceptUnsigned = acceptUnsigned;
+      return installFromRegistryUrl(req);
+    },
+  );
 
   onPluginsChange((plugins) => {
     for (const win of BrowserWindow.getAllWindows()) {

@@ -26,6 +26,22 @@ import { commitHunks } from './commit-hunks';
 import { draftPr, openPrInBrowser } from './draft-pr';
 import { listConflicts, resolveConflict } from './merge-conflict-resolver';
 
+/*
+ * Submodule limitation
+ * --------------------
+ * These handlers operate on the top-level repo only. Nested git submodules
+ * (`.gitmodules`, `.git` files inside subdirectories pointing to a gitdir)
+ * are NOT walked:
+ *   - branchFromConversation creates branches in the top-level repo;
+ *     submodule HEAD is left detached or untouched.
+ *   - commitHunks applies patches to the top-level index; hunks against
+ *     paths inside a submodule will be rejected by `git apply --cached`.
+ *   - draftPr / openPrInBrowser use the top-level remote.
+ *   - merge-conflict-resolver reads only top-level `git status`.
+ * Full submodule support — recursive status, per-submodule commits, dual
+ * PR flow — is a separate workstream tracked in the audit backlog.
+ */
+
 function fetchRecentMessages(
   conversationId: string,
   count: number,

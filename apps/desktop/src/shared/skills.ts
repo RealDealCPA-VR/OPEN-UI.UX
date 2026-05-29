@@ -86,6 +86,10 @@ export const skillRegistryEntrySchema = z.object({
   sourceUrl: z.string().url(),
   author: z.string().optional(),
   version: z.string().optional(),
+  sha256: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/, 'sha256 must be 64 lowercase hex chars')
+    .optional(),
 });
 export type SkillRegistryEntry = z.infer<typeof skillRegistryEntrySchema>;
 export const skillRegistrySchema = z.array(skillRegistryEntrySchema);

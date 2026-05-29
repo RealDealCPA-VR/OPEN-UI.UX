@@ -46,6 +46,22 @@ async function branchExists(
   }
 }
 
+async function isValidRefName(
+  runGit: BranchFromConversationDeps['runGit'],
+  repoRoot: string,
+  ref: string,
+): Promise<boolean> {
+  if (ref.length === 0) return false;
+  if (ref.startsWith('-')) return false;
+  const fn = runGit ?? defaultRunGit;
+  try {
+    await fn(repoRoot, ['check-ref-format', '--allow-onelevel', ref]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function nextAvailableBranchName(
   runGit: BranchFromConversationDeps['runGit'],
   repoRoot: string,
@@ -79,21 +95,41 @@ export async function branchFromConversation(
     return { ok: false, error: `not a git repo: ${repoRoot}` };
   }
   const runGit = deps.runGit ?? defaultRunGit;
+  if (req.baseRef !== undefined && !(await isValidRefName(runGit, repoRoot, req.baseRef))) {
+    return { ok: false, error: `invalid baseRef: ${req.baseRef}` };
+  }
   const baseBranchName = buildBranchName(conv.title);
   let branch: string;
   try {
     branch = await nextAvailableBranchName(runGit, repoRoot, baseBranchName);
     const baseArgs = req.baseRef
-      ? ['checkout', '-b', branch, req.baseRef]
-      : ['checkout', '-b', branch];
+      ? ['checkout', '-b', branch, req.baseRef, '--']
+      : ['checkout', '-b', branch, '--'];
     await runGit(repoRoot, baseArgs);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.warn(
-      { err: message, repoRoot, conversationId: req.conversationId },
+      { err: scrubGitErrorMessage(message), repoRoot, conversationId: req.conversationId },
       'branchFromConversation failed',
     );
-    return { ok: false, error: message };
+    return { ok: false, error: scrubGitErrorMessage(message) };
   }
   return { ok: true, branch, repoRoot };
+}
+
+export function scrubGitErrorMessage(raw: string): string {
+  let out = raw;
+  out = out.replace(/https?:\/\/[^\s:@]+:[^\s@]+@[^\s]+/g, (match) => {
+    const at = match.lastIndexOf('@');
+    const proto = match.indexOf('://');
+    return at > 0 && proto >= 0
+      ? `${match.slice(0, proto + 3)}***@${match.slice(at + 1)}`
+      : '[redacted-url]';
+  });
+  out = out.replace(/(Authorization:|Bearer\s+)[^\s"']+/gi, '$1[redacted]');
+  out = out.replace(
+    /(password|token|secret)["'\s:=]+[^\s"']+/gi,
+    (_m, k: string) => `${k}=[redacted]`,
+  );
+  return out;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   OllamaInstallerKind,
   OllamaInstallProgress,
@@ -32,6 +32,23 @@ function formatSize(gb: number): string {
   return `${gb.toFixed(1)} GB`;
 }
 
+// Smallest by sizeGb wins; ties (or all-zero sizes) fall through to the first
+// entry in /api/tags order so behavior is deterministic for the Todo spec.
+export function pickSmallestModelId(models: ReadonlyArray<OllamaModelEntry>): string | null {
+  if (models.length === 0) return null;
+  let bestIdx = 0;
+  let bestSize = models[0]?.sizeGb ?? 0;
+  for (let i = 1; i < models.length; i++) {
+    const entry = models[i];
+    if (!entry) continue;
+    if (entry.sizeGb > 0 && (bestSize <= 0 || entry.sizeGb < bestSize)) {
+      bestIdx = i;
+      bestSize = entry.sizeGb;
+    }
+  }
+  return models[bestIdx]?.id ?? null;
+}
+
 export function OllamaStep({
   onSkip,
   onContinueCloud,
@@ -49,14 +66,31 @@ export function OllamaStep({
   });
   const [accepting, setAccepting] = useState(false);
 
+  // useRef so runProbe's identity stays stable across re-renders triggered by
+  // setSelectedModelId — otherwise the useEffect that calls runProbe would loop.
+  const selectedModelIdRef = useRef<string | null>(null);
+  selectedModelIdRef.current = selectedModelId;
+
   const runProbe = useCallback(async () => {
     setProbing(true);
+    const ollama = window.opencodex?.ollama;
+    if (!ollama?.probe) {
+      setProbe({
+        running: false,
+        models: [],
+        error: 'Ollama bridge unavailable in this build.',
+      });
+      setProbing(false);
+      return;
+    }
     try {
-      const result = await window.opencodex.ollama.probe();
+      const result = await ollama.probe();
       setProbe(result);
-      if (result.running && result.models.length > 0 && selectedModelId === null) {
-        const first = result.models[0];
-        if (first) setSelectedModelId(first.id);
+      if (result.running && result.models.length > 0 && selectedModelIdRef.current === null) {
+        // Default to the smallest installed model so the first run actually
+        // streams on modest hardware instead of OOM-ing on a 70B.
+        const pick = pickSmallestModelId(result.models);
+        if (pick) setSelectedModelId(pick);
       }
     } catch (err) {
       setProbe({
@@ -67,7 +101,7 @@ export function OllamaStep({
     } finally {
       setProbing(false);
     }
-  }, [selectedModelId]);
+  }, []);
 
   useEffect(() => {
     void runProbe();
@@ -75,7 +109,9 @@ export function OllamaStep({
 
   useEffect(() => {
     let cancelled = false;
-    void window.opencodex.ollama
+    const ollama = window.opencodex?.ollama;
+    if (!ollama?.listInstallableManagers) return;
+    void ollama
       .listInstallableManagers()
       .then((res) => {
         if (cancelled) return;
@@ -94,7 +130,9 @@ export function OllamaStep({
   }, []);
 
   useEffect(() => {
-    const off = window.opencodex.ollama.onInstallProgress((payload: OllamaInstallProgress) => {
+    const ollama = window.opencodex?.ollama;
+    if (!ollama?.onInstallProgress) return;
+    const off = ollama.onInstallProgress((payload: OllamaInstallProgress) => {
       setInstallerState((s) => ({
         ...s,
         installLog: (s.installLog + payload.chunk).slice(-4000),
@@ -274,8 +312,9 @@ export function OllamaStep({
             className="btn btn-primary"
             disabled={accepting || selectedModelId === null}
             onClick={() => void handleAcceptLocalOnly()}
+            title="Skip provider setup — start chatting now with Ollama only"
           >
-            {accepting ? 'Finishing…' : 'Use Ollama only'}
+            {accepting ? 'Finishing…' : 'Skip provider setup — use Ollama'}
           </button>
         )}
         <button type="button" onClick={onContinueCloud} disabled={accepting}>

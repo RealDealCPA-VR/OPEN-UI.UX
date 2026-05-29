@@ -157,4 +157,10 @@ describe('NdjsonBuffer', () => {
     const buf = new NdjsonBuffer();
     expect(buf.push('a\n\nb\n')).toEqual(['a', 'b']);
   });
+
+  it('drops buffered bytes past the cap when no newline arrives (OOM guard)', () => {
+    const buf = new NdjsonBuffer(16);
+    expect(buf.push('x'.repeat(64))).toEqual([]);
+    expect(buf.flush()).toEqual([]);
+  });
 });

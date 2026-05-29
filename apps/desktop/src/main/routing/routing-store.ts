@@ -1,12 +1,12 @@
-import Store from 'electron-store';
 import {
   routingPolicySchema,
   routingStateSchema,
   type RoutingPolicy,
   type RoutingState,
 } from '../../shared/routing';
+import { lazyElectronStore } from '../storage/lazy-electron-store';
 
-interface RoutingStoreShape {
+interface RoutingStoreShape extends Record<string, unknown> {
   routingPolicies: RoutingPolicy[];
   activeRoutingPolicyId: string | null;
 }
@@ -16,7 +16,7 @@ const defaults: RoutingStoreShape = {
   activeRoutingPolicyId: null,
 };
 
-const store = new Store<RoutingStoreShape>({
+const store = lazyElectronStore<RoutingStoreShape>({
   name: 'routing',
   defaults,
 });

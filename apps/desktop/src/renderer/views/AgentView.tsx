@@ -338,6 +338,8 @@ export function AgentView(): JSX.Element {
       {reviewRunId && (
         <MergeReviewModal
           runId={reviewRunId}
+          conversationId={reviewRunId}
+          workspaceRoot={runs?.find((r) => r.id === reviewRunId)?.worktreeRepoRoot ?? '.'}
           onClose={() => setReviewRunId(null)}
           onResolved={() => {
             void refresh();

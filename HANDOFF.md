@@ -29,7 +29,7 @@
 
 ## Verify Before Continuing
 
-- [ ] **Onboarding wizard runner step.** Reset onboarding (DevTools → `window.opencodex.onboarding.setComplete(false)` → reload). Wizard now shows 4 steps; the new step between API key and workspace lists external runners with install state, has Skip + Continue. Zero runners enabled is a valid completion path.
+- [ ] **Onboarding wizard runner step.** Reset onboarding (DevTools → `window.opencodex.onboarding.setComplete(false)` → reload). Wizard now shows 6 visible steps (`ollama` → `provider` → `apikey` → `runners` → `workspace` → `skills`); the runner step between API key and workspace lists external runners with install state, has Skip + Continue. Zero runners enabled is a valid completion path.
 
 - [ ] **Agent empty-state runner discovery.** Open `/agent` with no runs (fresh install or wipe runs DB). Expected: two-line hook + horizontal scroll of runner cards. Built-in card → "Spawn task". External installed → "Spawn with `<name>`" pre-selects that runner in the modal. External not-installed → "Set up" deep-links to `/settings/runners?install=<id>`.
 

@@ -42,4 +42,26 @@ describe('sseEvents', () => {
     const stream = streamOf(': keepalive\n\n');
     expect(await collect(sseEvents(stream))).toEqual([]);
   });
+
+  it('flushes a trailing event when stream ends without a blank line', async () => {
+    const stream = streamOf('data: {"a":1}\n\ndata: {"b":2}');
+    expect(await collect(sseEvents(stream))).toEqual(['{"a":1}', '{"b":2}']);
+  });
+
+  it('cancels the reader when the consumer breaks early', async () => {
+    let cancelled = false;
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: a\n\ndata: b\n\n'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const it = sseEvents(stream);
+    await it.next();
+    await it.return?.();
+    expect(cancelled).toBe(true);
+  });
 });

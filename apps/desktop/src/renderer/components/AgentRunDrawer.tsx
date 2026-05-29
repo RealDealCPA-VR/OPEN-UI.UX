@@ -153,7 +153,8 @@ export function AgentRunDrawer({
     return () => {
       cancelled = true;
     };
-  }, [run]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run.id, run.mergeStatus, run.worktreeBranch]);
 
   const currentBundleState = bundleState?.runId === run.id ? bundleState : null;
   const bundle = currentBundleState?.bundle ?? null;

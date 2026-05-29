@@ -169,9 +169,12 @@ export function OnboardingWizard(): JSX.Element | null {
       setWorkspace(s);
     });
     const unsub = window.opencodex.workspace.onChanged((evt) => setWorkspace(evt.state));
+    const onResume = (): void => setOpen(true);
+    window.addEventListener('opencodex:onboarding:resume', onResume);
     return () => {
       cancelled = true;
       unsub();
+      window.removeEventListener('opencodex:onboarding:resume', onResume);
     };
   }, []);
 
@@ -279,6 +282,17 @@ export function OnboardingWizard(): JSX.Element | null {
                     providerId: 'ollama',
                     modelId: selectedModelId,
                   });
+                }
+                // Land the first run in a working chat — if the user hasn't
+                // picked a folder yet, seed the workspace to their home dir.
+                if (!workspace?.active) {
+                  try {
+                    const { homedir } = await window.opencodex.onboarding.getDefaults();
+                    const next = await window.opencodex.workspace.setActive({ path: homedir });
+                    setWorkspace(next);
+                  } catch {
+                    // Non-fatal — onboarding can complete without a workspace.
+                  }
                 }
                 reload();
                 await window.opencodex.onboarding.setComplete(true);

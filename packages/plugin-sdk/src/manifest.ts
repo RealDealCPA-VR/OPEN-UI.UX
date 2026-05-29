@@ -13,33 +13,71 @@ export const PermissionSchema = z.enum([
 
 export type Permission = z.infer<typeof PermissionSchema>;
 
-export const ContributionSchema = z.object({
-  tools: z.array(z.string()).optional(),
-  providers: z.array(z.string()).optional(),
-  panels: z.array(z.object({ id: z.string(), title: z.string(), entry: z.string() })).optional(),
-  slashCommands: z.array(z.object({ name: z.string(), entry: z.string() })).optional(),
-  runners: z
-    .array(
-      z.object({
-        id: z.string().min(1),
-        displayName: z.string().min(1),
-      }),
-    )
-    .optional(),
-});
+const relativeEntryPath = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => !/^[a-zA-Z]:[\\/]/.test(value) && !value.startsWith('/') && !value.startsWith('\\'),
+    {
+      message: 'entry path must be relative (no absolute paths)',
+    },
+  )
+  .refine((value) => !value.split(/[\\/]/).some((segment) => segment === '..'), {
+    message: 'entry path must not contain ".." segments',
+  });
 
-export const ManifestSchema = z.object({
-  name: z.string().min(1),
-  version: z.string().min(1),
-  displayName: z.string().min(1),
-  description: z.string().optional(),
-  author: z.string().optional(),
-  license: z.string().optional(),
-  homepage: z.string().url().optional(),
-  entry: z.string(),
-  engines: z.object({ opencodex: z.string() }),
-  permissions: z.array(PermissionSchema).default([]),
-  contributions: ContributionSchema.default({}),
-});
+export const ContributionSchema = z
+  .object({
+    tools: z.array(z.string().min(1)).optional(),
+    providers: z.array(z.string().min(1)).optional(),
+    panels: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            title: z.string().min(1),
+            entry: relativeEntryPath,
+          })
+          .strict(),
+      )
+      .optional(),
+    slashCommands: z
+      .array(
+        z
+          .object({
+            name: z.string().min(1),
+            entry: relativeEntryPath,
+          })
+          .strict(),
+      )
+      .optional(),
+    runners: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            displayName: z.string().min(1),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict();
+
+export const ManifestSchema = z
+  .object({
+    name: z.string().min(1),
+    version: z.string().min(1),
+    displayName: z.string().min(1),
+    description: z.string().optional(),
+    author: z.string().optional(),
+    license: z.string().optional(),
+    homepage: z.string().url().optional(),
+    entry: relativeEntryPath,
+    engines: z.object({ opencodex: z.string().min(1) }).strict(),
+    permissions: z.array(PermissionSchema).default([]),
+    contributions: ContributionSchema.default({}),
+  })
+  .strict();
 
 export type PluginManifest = z.infer<typeof ManifestSchema>;

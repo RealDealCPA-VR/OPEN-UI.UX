@@ -1,7 +1,14 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { ManifestSchema, type PluginManifest } from './manifest';
-import { canonicalizeManifest, signManifest, verifyManifest, type TrustedKey } from './signing';
+import {
+  SIGNATURE_ENVELOPE_VERSION,
+  canonicalizeManifest,
+  signManifest,
+  signManifestEnvelope,
+  verifyManifest,
+  type TrustedKey,
+} from './signing';
 
 function makeKeypair(): { privateKey: string; publicKey: string } {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
@@ -76,5 +83,33 @@ describe('plugin signing', () => {
     const a = makeManifest({ description: 'a', author: 'x' });
     const b = makeManifest({ author: 'x', description: 'a' });
     expect(canonicalizeManifest(a)).toBe(canonicalizeManifest(b));
+  });
+
+  it('signManifestEnvelope tags the envelope with v:1 and embeds the payload', () => {
+    const { privateKey } = makeKeypair();
+    const manifest = makeManifest();
+    const envelope = signManifestEnvelope(manifest, privateKey);
+    expect(envelope.v).toBe(SIGNATURE_ENVELOPE_VERSION);
+    expect(envelope.payload).toBe(canonicalizeManifest(manifest));
+    expect(envelope.sig.length).toBeGreaterThan(0);
+  });
+
+  it('verifyManifest accepts a JSON envelope sig string', () => {
+    const { privateKey, publicKey } = makeKeypair();
+    const manifest = makeManifest();
+    const envelope = signManifestEnvelope(manifest, privateKey);
+    const result = verifyManifest(manifest, JSON.stringify(envelope), [{ id: 'k', publicKey }]);
+    expect(result.ok).toBe(true);
+    expect(result.signer).toBe('k');
+  });
+
+  it('rejects an envelope tagged with an unknown version', () => {
+    const { privateKey, publicKey } = makeKeypair();
+    const manifest = makeManifest();
+    const envelope = signManifestEnvelope(manifest, privateKey);
+    const bad = JSON.stringify({ ...envelope, v: 99 });
+    const result = verifyManifest(manifest, bad, [{ id: 'k', publicKey }]);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/unsupported signature envelope/);
   });
 });

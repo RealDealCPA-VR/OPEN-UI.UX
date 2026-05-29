@@ -42,6 +42,9 @@ jobs:
         run: pnpm --filter @opencodex/desktop dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Default release type: draft (maintainer promotes via promote-release.yml).
+          # Set to `release` to auto-publish.
+          OPENCODEX_RELEASE_TYPE: ${{ vars.OPENCODEX_RELEASE_TYPE || 'draft' }}
           # macOS code-signing + notarization (optional: skipped if absent)
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -51,3 +54,8 @@ jobs:
           # Windows Authenticode signing (optional: skipped if absent)
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # Linux Snap Store publishing (optional: skipped if absent).
+          # Generate via `snapcraft export-login --snaps=opencodex - | base64`
+          # and store as a GitHub Actions secret. SNAP_CHANNEL defaults to stable.
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+          SNAP_CHANNEL: ${{ vars.SNAP_CHANNEL || 'stable' }}

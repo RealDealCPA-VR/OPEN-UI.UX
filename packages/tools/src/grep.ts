@@ -47,7 +47,7 @@ export const grepTool = defineTool({
     ctx,
   ): Promise<GrepMatch[]> {
     const base = searchPath
-      ? resolveWithinWorkspace(ctx.workspaceRoot, searchPath)
+      ? await resolveWithinWorkspace(ctx.workspaceRoot, searchPath)
       : path.resolve(ctx.workspaceRoot);
     const limit = maxMatches ?? 1000;
 

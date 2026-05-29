@@ -10,6 +10,7 @@ import {
   mergePaletteResults,
   type PaletteCategory,
   type PaletteEntry,
+  type PaletteMcpTool,
 } from './command-palette-derive';
 
 export interface CommandPaletteProps {
@@ -24,6 +25,7 @@ const CATEGORY_LABELS: Record<PaletteCategory, string> = {
   message: 'Messages',
   file: 'Files',
   skill: 'Skills',
+  'mcp-tool': 'MCP Tools',
 };
 
 interface Bridge {
@@ -52,6 +54,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
   const [messageHits, setMessageHits] = useState<ConversationSearchHit[]>([]);
   const [fileHits, setFileHits] = useState<CodebaseSearchHit[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [mcpTools, setMcpTools] = useState<PaletteMcpTool[]>([]);
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -118,6 +121,45 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
+      void window.opencodex.mcp
+        .list()
+        .then(async (state) => {
+          if (cancelled) return;
+          const connectedServers = state.servers.filter(
+            (s) => state.status[s.id]?.status === 'connected',
+          );
+          const collected: PaletteMcpTool[] = [];
+          await Promise.all(
+            connectedServers.map(async (server) => {
+              try {
+                const res = await window.opencodex.mcp.listServerTools({ serverId: server.id });
+                for (const tool of res.tools) {
+                  collected.push({
+                    serverId: server.id,
+                    serverDisplayName: server.displayName,
+                    toolName: tool.name,
+                    ...(tool.description !== undefined ? { description: tool.description } : {}),
+                  });
+                }
+              } catch {
+                // ignore — server may have disconnected mid-fetch
+              }
+            }),
+          );
+          if (!cancelled) setMcpTools(collected);
+        })
+        .catch(() => undefined);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
       if (!debouncedQuery) {
         setMessageHits([]);
         setFileHits([]);
@@ -161,8 +203,8 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
   }, [debouncedQuery, workspaceRoot, open]);
 
   const entries = useMemo(
-    () => mergePaletteResults(messageHits, fileHits, skills, debouncedQuery),
-    [messageHits, fileHits, skills, debouncedQuery],
+    () => mergePaletteResults(messageHits, fileHits, skills, debouncedQuery, { mcpTools }),
+    [messageHits, fileHits, skills, debouncedQuery, mcpTools],
   );
 
   const navEntries = useMemo(() => flattenForKeyboardNav(entries), [entries]);
@@ -193,6 +235,16 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
       }
       if (entry.skill) {
         navigate(`/settings/skills?highlight=${encodeURIComponent(entry.skill.id)}`);
+        onClose();
+        return;
+      }
+      if (entry.mcpTool) {
+        const tool = entry.mcpTool;
+        window.dispatchEvent(
+          new CustomEvent('mcp:open-tool-runner', {
+            detail: { serverId: tool.serverId, toolName: tool.toolName },
+          }),
+        );
         onClose();
         return;
       }

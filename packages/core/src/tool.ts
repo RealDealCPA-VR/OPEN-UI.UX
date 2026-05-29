@@ -65,3 +65,13 @@ export class ToolInputError extends Error {
     this.name = 'ToolInputError';
   }
 }
+
+export class ToolCancelledError extends Error {
+  constructor(
+    public readonly toolName: string,
+    public readonly reason?: unknown,
+  ) {
+    super(`Tool "${toolName}" execution was cancelled`);
+    this.name = 'ToolCancelledError';
+  }
+}

@@ -17,6 +17,38 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_RECENT_MESSAGES = 6;
 const DIFF_TRUNCATE_CHARS = 12_000;
 
+const SECRET_PATTERNS: ReadonlyArray<{ name: string; re: RegExp }> = [
+  { name: 'aws-access-key', re: /\bAKIA[0-9A-Z]{16}\b/g },
+  { name: 'aws-secret', re: /\baws_secret_access_key\s*[:=]\s*["']?[A-Za-z0-9/+=]{30,}["']?/gi },
+  { name: 'github-pat', re: /\bghp_[A-Za-z0-9]{20,}\b/g },
+  { name: 'github-oauth', re: /\bgho_[A-Za-z0-9]{20,}\b/g },
+  { name: 'github-user', re: /\bghu_[A-Za-z0-9]{20,}\b/g },
+  { name: 'github-server', re: /\bghs_[A-Za-z0-9]{20,}\b/g },
+  { name: 'github-refresh', re: /\bghr_[A-Za-z0-9]{20,}\b/g },
+  { name: 'openai-key', re: /\bsk-[A-Za-z0-9_-]{20,}\b/g },
+  { name: 'anthropic-key', re: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g },
+  { name: 'google-api-key', re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
+  { name: 'slack-token', re: /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g },
+  {
+    name: 'private-key',
+    re: /-----BEGIN (?:RSA |OPENSSH |EC |DSA |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |OPENSSH |EC |DSA |PGP )?PRIVATE KEY-----/g,
+  },
+  { name: 'password-kv', re: /"(password|passwd|secret|api[_-]?key|token)"\s*:\s*"[^"]+"/gi },
+  { name: 'password-env', re: /\b(?:PASSWORD|SECRET|API_KEY|TOKEN|ACCESS_KEY)\s*=\s*[^\s\n]+/gi },
+  { name: 'bearer-token', re: /\bBearer\s+[A-Za-z0-9._~+/-]{20,}=*/g },
+  { name: 'basic-auth', re: /\bBasic\s+[A-Za-z0-9+/]{20,}=*/g },
+  { name: 'jwt', re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g },
+  { name: 'url-creds', re: /\b(https?|ftp|git|ssh):\/\/[^\s:@]+:[^\s@]+@[^\s]+/g },
+];
+
+export function redactSecrets(text: string): string {
+  let out = text;
+  for (const { name, re } of SECRET_PATTERNS) {
+    out = out.replace(re, `[redacted:${name}]`);
+  }
+  return out;
+}
+
 export interface DraftPrDeps {
   buildProvider: (providerId: string) => Promise<LLMProvider>;
   fetchRecentMessages: (
@@ -37,10 +69,11 @@ function buildPrompt(
   diff: string,
   recent: ReadonlyArray<{ role: string; content: string }>,
 ): Message[] {
+  const redacted = redactSecrets(diff);
   const truncatedDiff =
-    diff.length > DIFF_TRUNCATE_CHARS
-      ? `${diff.slice(0, DIFF_TRUNCATE_CHARS)}\n... [truncated]`
-      : diff;
+    redacted.length > DIFF_TRUNCATE_CHARS
+      ? `${redacted.slice(0, DIFF_TRUNCATE_CHARS)}\n... [truncated]`
+      : redacted;
   const recentBlock = recent
     .map((m) => `### ${m.role}\n${m.content}`)
     .join('\n\n')
@@ -128,7 +161,7 @@ export async function draftPr(
     const { title, body } = parseDraft(collected.join(''));
     return { ok: true, title, body };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = redactSecrets(err instanceof Error ? err.message : String(err));
     logger.warn({ err: message }, 'draftPr failed');
     return { ok: false, error: message };
   }
@@ -152,14 +185,15 @@ export function deriveWebPrUrlFromRemote(
     path = sshMatch[2] ?? null;
   }
   if (!host || !path) return null;
-  if (host.includes('github')) {
+  const lowerHost = host.toLowerCase();
+  if (lowerHost === 'github.com' || lowerHost.endsWith('.github.com')) {
     const base = baseBranch ?? 'main';
     return `https://${host}/${path}/compare/${encodeURIComponent(base)}...${encodeURIComponent(branch)}?expand=1`;
   }
-  if (host.includes('gitlab')) {
+  if (lowerHost === 'gitlab.com' || lowerHost.endsWith('.gitlab.com')) {
     return `https://${host}/${path}/-/merge_requests/new?merge_request[source_branch]=${encodeURIComponent(branch)}`;
   }
-  if (host.includes('bitbucket')) {
+  if (lowerHost === 'bitbucket.org' || lowerHost.endsWith('.bitbucket.org')) {
     return `https://${host}/${path}/pull-requests/new?source=${encodeURIComponent(branch)}`;
   }
   return null;
@@ -193,7 +227,7 @@ export async function openPrInBrowser(
       const getOrigin = deps.getOriginRemote ?? defaultGetOriginRemote;
       const remote = await getOrigin(req.repoRoot);
       if (!remote) {
-        const msg = ghErr instanceof Error ? ghErr.message : String(ghErr);
+        const msg = redactSecrets(ghErr instanceof Error ? ghErr.message : String(ghErr));
         return { ok: false, error: `gh failed and no origin remote: ${msg}` };
       }
       const url = deriveWebPrUrlFromRemote(remote, req.branch, req.baseBranch);

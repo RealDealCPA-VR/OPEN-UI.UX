@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  NdjsonBuffer,
-  createTranslatorState,
-  fallbackTextDelta,
-  translateOpenCodeJson,
-} from './event-translator';
+import { NdjsonBuffer, createTranslatorState, translateOpenCodeJson } from './event-translator';
 
 describe('translateOpenCodeJson', () => {
   it('emits text_delta for text events', () => {
@@ -125,27 +120,6 @@ describe('translateOpenCodeJson', () => {
   });
 });
 
-describe('fallbackTextDelta', () => {
-  it('wraps a non-JSON line as a text_delta with trailing newline', () => {
-    expect(fallbackTextDelta('hello')).toEqual({
-      type: 'text_delta',
-      delta: 'hello\n',
-    });
-  });
-
-  it('strips trailing CR', () => {
-    expect(fallbackTextDelta('hello\r')).toEqual({
-      type: 'text_delta',
-      delta: 'hello\n',
-    });
-  });
-
-  it('returns null for empty lines', () => {
-    expect(fallbackTextDelta('')).toBeNull();
-    expect(fallbackTextDelta('\r')).toBeNull();
-  });
-});
-
 describe('NdjsonBuffer', () => {
   it('splits multi-line chunks into individual lines', () => {
     const buf = new NdjsonBuffer();
@@ -174,5 +148,11 @@ describe('NdjsonBuffer', () => {
   it('skips empty lines between events', () => {
     const buf = new NdjsonBuffer();
     expect(buf.push('a\n\nb\n')).toEqual(['a', 'b']);
+  });
+
+  it('drops buffered bytes past the cap when no newline arrives (OOM guard)', () => {
+    const buf = new NdjsonBuffer(16);
+    expect(buf.push('x'.repeat(64))).toEqual([]);
+    expect(buf.flush()).toEqual([]);
   });
 });

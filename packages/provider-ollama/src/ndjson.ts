@@ -4,6 +4,7 @@ export async function* ndjsonLines(
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let consumerDone = false;
   try {
     while (true) {
       const { value, done } = await reader.read();
@@ -20,7 +21,15 @@ export async function* ndjsonLines(
     buffer += decoder.decode();
     const trailing = buffer.trim();
     if (trailing.length > 0) yield trailing;
+    consumerDone = true;
   } finally {
+    if (!consumerDone) {
+      try {
+        await reader.cancel();
+      } catch {
+        // swallow cancel errors — connection cleanup is best-effort
+      }
+    }
     reader.releaseLock();
   }
 }

@@ -36,6 +36,12 @@ export interface AnthropicTool {
   input_schema: Record<string, unknown>;
 }
 
+export type AnthropicToolChoice =
+  | { type: 'auto' }
+  | { type: 'any' }
+  | { type: 'none' }
+  | { type: 'tool'; name: string };
+
 export interface AnthropicChatRequestBody {
   model: string;
   messages: AnthropicMessage[];
@@ -46,6 +52,7 @@ export interface AnthropicChatRequestBody {
   top_p?: number;
   stop_sequences?: string[];
   stream?: boolean;
+  tool_choice?: AnthropicToolChoice;
 }
 
 export function extractSystem(messages: Message[]): { system: string; rest: Message[] } {
@@ -125,8 +132,7 @@ function translateBlock(block: ContentBlock): AnthropicContentPart | undefined {
 }
 
 function translateToolResult(block: ToolResultBlock): AnthropicToolResultPart {
-  const content =
-    typeof block.output === 'string' ? block.output : JSON.stringify(block.output ?? '');
+  const content = stringifyToolOutput(block.output);
   const part: AnthropicToolResultPart = {
     type: 'tool_result',
     tool_use_id: block.toolUseId,
@@ -134,6 +140,13 @@ function translateToolResult(block: ToolResultBlock): AnthropicToolResultPart {
   };
   if (block.isError) part.is_error = true;
   return part;
+}
+
+function stringifyToolOutput(output: unknown): string {
+  if (typeof output === 'string') return output;
+  if (output === null) return 'null';
+  if (output === undefined) return '';
+  return JSON.stringify(output);
 }
 
 function parseToolInput(args: unknown): unknown {
@@ -172,5 +185,21 @@ export function buildChatRequestBody(
   if (req.temperature !== undefined) body.temperature = req.temperature;
   if (req.topP !== undefined) body.top_p = req.topP;
   if (req.stop && req.stop.length > 0) body.stop_sequences = req.stop;
+  if (req.toolChoice !== undefined) {
+    const tc = translateToolChoice(req.toolChoice);
+    if (tc) body.tool_choice = tc;
+  }
   return body;
+}
+
+function translateToolChoice(
+  choice: NonNullable<ChatRequest['toolChoice']>,
+): AnthropicToolChoice | undefined {
+  if (choice === 'auto') return { type: 'auto' };
+  if (choice === 'required') return { type: 'any' };
+  if (choice === 'none') return { type: 'none' };
+  if (typeof choice === 'object' && typeof choice.name === 'string') {
+    return { type: 'tool', name: choice.name };
+  }
+  return undefined;
 }

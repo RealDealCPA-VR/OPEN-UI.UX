@@ -2,7 +2,13 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { WorkspaceWatcher, type WatcherBatch } from './watcher';
+import {
+  WorkspaceWatcher,
+  setWatchedWorkspace,
+  stopWatchedWorkspace,
+  getWatchedWorkspace,
+  type WatcherBatch,
+} from './watcher';
 
 interface Tmp {
   root: string;
@@ -110,6 +116,28 @@ describe('WorkspaceWatcher', () => {
     expect(seen).not.toContain('secrets.txt');
   });
 
+  it('re-reads .gitignore when it changes', async () => {
+    const batches: WatcherBatch[] = [];
+    await watcher.start(tmp.root, (b) => {
+      batches.push(b);
+    });
+
+    await fs.writeFile(path.join(tmp.root, 'first.log'), 'visible at first');
+    await waitFor(() => batches.some((b) => b.added.includes('first.log')));
+
+    await fs.writeFile(path.join(tmp.root, '.gitignore'), '*.log\n');
+    await delay(300);
+
+    await fs.writeFile(path.join(tmp.root, 'second.log'), 'should be ignored now');
+    await fs.writeFile(path.join(tmp.root, 'kept.txt'), 'still visible');
+    await waitFor(() => batches.some((b) => b.added.includes('kept.txt')));
+
+    await delay(200);
+    const allAdded = batches.flatMap((b) => b.added);
+    expect(allAdded).toContain('first.log');
+    expect(allAdded).not.toContain('second.log');
+  });
+
   it('stops cleanly and emits no further events after stop', async () => {
     const batches: WatcherBatch[] = [];
     await watcher.start(tmp.root, (b) => {
@@ -123,5 +151,40 @@ describe('WorkspaceWatcher', () => {
     await delay(200);
     const seen = batches.flatMap((b) => [...b.added, ...b.changed, ...b.removed]);
     expect(seen).not.toContain('late.txt');
+  });
+});
+
+describe('setWatchedWorkspace singleton', () => {
+  let tmpA: Tmp;
+  let tmpB: Tmp;
+
+  beforeEach(async () => {
+    tmpA = await createTmp();
+    tmpB = await createTmp();
+  });
+
+  afterEach(async () => {
+    await stopWatchedWorkspace();
+    await tmpA.cleanup();
+    await tmpB.cleanup();
+  });
+
+  it('serializes concurrent transitions so prior close finishes before next start', async () => {
+    const noop = (): void => undefined;
+    const p1 = setWatchedWorkspace(tmpA.root, noop);
+    const p2 = setWatchedWorkspace(tmpB.root, noop);
+    await Promise.all([p1, p2]);
+    expect(getWatchedWorkspace()).toBe(tmpB.root);
+  });
+
+  it('stop after rapid swaps still closes everything', async () => {
+    const noop = (): void => undefined;
+    await Promise.all([
+      setWatchedWorkspace(tmpA.root, noop),
+      setWatchedWorkspace(tmpB.root, noop),
+      setWatchedWorkspace(null, noop),
+    ]);
+    await stopWatchedWorkspace();
+    expect(getWatchedWorkspace()).toBeNull();
   });
 });

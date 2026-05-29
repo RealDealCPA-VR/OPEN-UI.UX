@@ -1,3 +1,5 @@
+import type { RoutingDecision } from '@opencodex/core';
+
 export type ToolCallAuditDecision =
   | 'auto'
   | 'prompt-allowed'
@@ -23,6 +25,7 @@ export interface ToolCallAuditRow {
   outputTruncated: boolean;
   triggerSource: ToolCallAuditTriggerSource;
   runnerId: string | null;
+  routingDecision: RoutingDecision | null;
 }
 
 export interface ToolCallAuditQueryRow extends ToolCallAuditRow {

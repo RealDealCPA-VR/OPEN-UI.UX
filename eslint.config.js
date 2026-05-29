@@ -1,3 +1,11 @@
+// Config file lint stance:
+//   *.config.ts  -> linted + typechecked under the standard TS ruleset.
+//   *.config.js  -> ignored (no type info, mostly tool boilerplate, low risk).
+//   *.config.mjs -> ignored (same as .js: no type info, ESM build tool plumbing).
+// Rationale: TS configs are first-class source we own; JS/MJS configs are
+// vendored shapes (vitest, electron-vite, eslint itself) where false positives
+// outweigh the marginal lint coverage. If a JS/MJS config grows real logic,
+// rename it to .ts and it picks up the full ruleset automatically.
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import react from 'eslint-plugin-react';
@@ -15,6 +23,19 @@ export default tseslint.config(
       '**/coverage/**',
       '**/*.config.js',
       '**/*.config.mjs',
+      // Workflow-tool scratch scripts kept in the repo for reference. They run
+      // inside the Workflow runtime (phase/agent/parallel/log are injected
+      // globals, not Node), so they cannot lint as standalone modules.
+      '.audit-workflow.mjs',
+      '.phase-14-workflow.mjs',
+      '.phase-15-workflow.mjs',
+      // Stray tsc emit artifacts that occasionally land in src/ (e.g. if
+      // someone runs `tsc` without `-p tsconfig.json`). Source is always
+      // .ts / .tsx; .js / .d.ts in src/ are never authored.
+      'packages/*/src/**/*.js',
+      'packages/*/src/**/*.js.map',
+      'packages/*/src/**/*.d.ts',
+      'packages/*/src/**/*.d.ts.map',
     ],
   },
 
@@ -35,6 +56,18 @@ export default tseslint.config(
     files: ['**/*.cjs'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+
+  {
+    // Perf bench drives a real browser via Playwright; the bodies of
+    // `window.evaluate(() => ...)` run in the renderer, so they legitimately
+    // reference DOM globals (document, HTMLTextAreaElement, requestAnimationFrame).
+    files: ['apps/desktop/scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
     },
   },
 

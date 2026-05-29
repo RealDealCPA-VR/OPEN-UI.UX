@@ -41,7 +41,8 @@ export class RoutingProvider implements LLMProvider {
 
   chat(req: ChatRequest): AsyncIterable<ChatEvent> {
     const trait = this.classifyChat(req);
-    const decision = this.resolve(trait);
+    const initial = this.resolve(trait);
+    const decision = this.degradeToDefaultIfMissing(initial);
     const provider = this.providers.get(decision.providerId);
     if (!provider) {
       return errorOnce(`RoutingProvider: provider "${decision.providerId}" is not available`);
@@ -51,7 +52,8 @@ export class RoutingProvider implements LLMProvider {
   }
 
   async embed(req: EmbedRequest): Promise<EmbedResult> {
-    const decision = this.resolve('embedding');
+    const initial = this.resolve('embedding');
+    const decision = this.degradeToDefaultIfMissing(initial);
     const provider = this.providers.get(decision.providerId);
     if (!provider) {
       throw new Error(
@@ -60,6 +62,24 @@ export class RoutingProvider implements LLMProvider {
     }
     this.emitDecision(decision);
     return provider.embed({ ...req, model: decision.modelId });
+  }
+
+  private degradeToDefaultIfMissing(decision: RoutingDecision): RoutingDecision {
+    if (this.providers.has(decision.providerId)) return decision;
+    if (
+      decision.providerId === this.defaultRef.providerId &&
+      decision.modelId === this.defaultRef.modelId
+    ) {
+      return decision;
+    }
+    return {
+      matched: decision.matched,
+      ruleId: decision.ruleId,
+      providerId: this.defaultRef.providerId,
+      modelId: this.defaultRef.modelId,
+      usedFallback: true,
+      degradedReason: 'provider_missing',
+    };
   }
 
   async listModels(): Promise<ModelCapabilities[]> {
@@ -143,6 +163,7 @@ export class RoutingProvider implements LLMProvider {
         providerId: rule.fallback.providerId,
         modelId: rule.fallback.modelId,
         usedFallback: true,
+        degradedReason: 'provider_missing',
       };
     }
     return {
@@ -151,6 +172,7 @@ export class RoutingProvider implements LLMProvider {
       providerId: this.defaultRef.providerId,
       modelId: this.defaultRef.modelId,
       usedFallback: true,
+      degradedReason: 'provider_missing',
     };
   }
 
@@ -165,10 +187,9 @@ export class RoutingProvider implements LLMProvider {
 }
 
 function hasReasoningSignal(req: ChatRequest): boolean {
-  const flagged = req as unknown as { reasoning?: unknown; hasReasoning?: unknown };
-  if (flagged.reasoning === true) return true;
-  if (flagged.hasReasoning === true) return true;
-  if (typeof flagged.reasoning === 'object' && flagged.reasoning !== null) return true;
+  const r = req.reasoning;
+  if (r === true) return true;
+  if (typeof r === 'object' && r !== null) return true;
   return false;
 }
 

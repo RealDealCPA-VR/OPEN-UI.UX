@@ -72,7 +72,8 @@ describe('xaiProvider', () => {
 
     expect(events).toContainEqual({ type: 'text_delta', delta: 'Hello' });
     expect(events).toContainEqual({ type: 'text_delta', delta: ' there' });
-    expect(events).toContainEqual({ type: 'usage', inputTokens: 4, outputTokens: 2 });
+    const usage = events.find((e) => e.type === 'usage');
+    expect(usage).toMatchObject({ type: 'usage', inputTokens: 4, outputTokens: 2 });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'end_turn' });
 
     expect(calls).toHaveLength(1);
@@ -144,7 +145,8 @@ describe('xaiProvider', () => {
       name: 'grep',
       arguments: { q: 'foo' },
     });
-    expect(events).toContainEqual({ type: 'usage', inputTokens: 12, outputTokens: 7 });
+    const usage = events.find((e) => e.type === 'usage');
+    expect(usage).toMatchObject({ type: 'usage', inputTokens: 12, outputTokens: 7 });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'tool_use' });
 
     expect(calls[0]?.url).toBe('https://api.x.ai/v1/chat/completions');

@@ -286,6 +286,187 @@ describe('queryToolCalls', () => {
     expect(result.facets.toolNames).toEqual([]);
     expect(result.facets.decisions).toEqual([]);
   });
+
+  describe('filePath + runnerIds filters', () => {
+    function seedRunnerRows(): void {
+      const conv = createConversation({ title: 'Mixed' });
+      const msg = appendMessage({ conversationId: conv.id, role: 'assistant', content: '' });
+      const insert = db.prepare(
+        `INSERT INTO tool_calls
+           (id, message_id, tool_name, input_json, output_json, decision, is_error, duration_ms, created_at, trigger_source, runner_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      insert.run(
+        'oc-null',
+        msg.id,
+        'read_file',
+        '{"path":"src/main/index.ts"}',
+        '"ok"',
+        'auto',
+        0,
+        1,
+        '2026-05-19 09:00:00',
+        'user',
+        null,
+      );
+      insert.run(
+        'oc-internal',
+        msg.id,
+        'read_file',
+        '{"path":"docs/README.md"}',
+        '"ok"',
+        'auto',
+        0,
+        1,
+        '2026-05-19 09:30:00',
+        'user',
+        'internal',
+      );
+      insert.run(
+        'r-claude',
+        msg.id,
+        'write_file',
+        '{"path":"src/main/index.ts"}',
+        '"ok"',
+        'auto',
+        0,
+        1,
+        '2026-05-19 10:00:00',
+        'user',
+        'runner-claude',
+      );
+      insert.run(
+        'r-codex',
+        msg.id,
+        'web_fetch',
+        '{"url":"https://example.com/file.txt"}',
+        '"ok"',
+        'auto',
+        0,
+        1,
+        '2026-05-19 11:00:00',
+        'user',
+        'runner-codex',
+      );
+    }
+
+    it('filters by filePath substring match against input_json', () => {
+      seedRunnerRows();
+      const result = queryToolCalls({ filePath: 'src/main/index.ts' });
+      const ids = result.rows.map((r) => r.id).sort();
+      expect(ids).toEqual(['oc-null', 'r-claude']);
+      expect(result.total).toBe(2);
+    });
+
+    it('escapes LIKE wildcards in filePath so % and _ are literal', () => {
+      const conv = createConversation({});
+      const msg = appendMessage({ conversationId: conv.id, role: 'assistant', content: '' });
+      const insert = db.prepare(
+        `INSERT INTO tool_calls (id, message_id, tool_name, input_json, output_json, decision, is_error, duration_ms, created_at, trigger_source, runner_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      insert.run(
+        'a',
+        msg.id,
+        'read_file',
+        '{"path":"a_b"}',
+        '"x"',
+        'auto',
+        0,
+        1,
+        '2026-05-19 09:00:00',
+        'user',
+        null,
+      );
+      insert.run(
+        'b',
+        msg.id,
+        'read_file',
+        '{"path":"aXb"}',
+        '"x"',
+        'auto',
+        0,
+        1,
+        '2026-05-19 09:00:01',
+        'user',
+        null,
+      );
+      const result = queryToolCalls({ filePath: 'a_b' });
+      expect(result.rows.map((r) => r.id)).toEqual(['a']);
+    });
+
+    it('filters by runnerIds (external runner only)', () => {
+      seedRunnerRows();
+      const result = queryToolCalls({ runnerIds: ['runner-claude'] });
+      expect(result.rows.map((r) => r.id)).toEqual(['r-claude']);
+      expect(result.total).toBe(1);
+    });
+
+    it('filters by runnerIds with __opencodex__ sentinel matching null/empty/internal', () => {
+      seedRunnerRows();
+      const result = queryToolCalls({ runnerIds: ['__opencodex__'] });
+      const ids = result.rows.map((r) => r.id).sort();
+      expect(ids).toEqual(['oc-internal', 'oc-null']);
+      expect(result.total).toBe(2);
+    });
+
+    it('combines __opencodex__ sentinel with explicit runner ids', () => {
+      seedRunnerRows();
+      const result = queryToolCalls({
+        runnerIds: ['__opencodex__', 'runner-codex'],
+      });
+      const ids = result.rows.map((r) => r.id).sort();
+      expect(ids).toEqual(['oc-internal', 'oc-null', 'r-codex']);
+      expect(result.total).toBe(3);
+    });
+
+    it('filters by triggerSource', () => {
+      const conv = createConversation({});
+      const msg = appendMessage({ conversationId: conv.id, role: 'assistant', content: '' });
+      const insert = db.prepare(
+        `INSERT INTO tool_calls (id, message_id, tool_name, input_json, output_json, decision, is_error, duration_ms, created_at, trigger_source, runner_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      insert.run(
+        'u',
+        msg.id,
+        'read_file',
+        '{"path":"a"}',
+        '"x"',
+        'auto',
+        0,
+        1,
+        '2026-05-19 09:00:00',
+        'user',
+        null,
+      );
+      insert.run(
+        's',
+        msg.id,
+        'read_file',
+        '{"path":"b"}',
+        '"x"',
+        'auto',
+        0,
+        1,
+        '2026-05-19 09:00:01',
+        'scheduled',
+        null,
+      );
+      expect(queryToolCalls({ triggerSource: 'user' }).rows.map((r) => r.id)).toEqual(['u']);
+      expect(queryToolCalls({ triggerSource: 'scheduled' }).rows.map((r) => r.id)).toEqual(['s']);
+    });
+
+    it('composes filePath + runnerIds together', () => {
+      seedRunnerRows();
+      const result = queryToolCalls({
+        filePath: 'src/main/index.ts',
+        runnerIds: ['__opencodex__'],
+      });
+      expect(result.rows.map((r) => r.id)).toEqual(['oc-null']);
+      expect(result.total).toBe(1);
+    });
+  });
 });
 
 describe('purgeToolCallsOlderThan', () => {
@@ -357,5 +538,80 @@ describe('clearAllToolCalls', () => {
     expect(clearAllToolCalls(db).deletedCount).toBe(3);
     expect((db.prepare('SELECT COUNT(*) AS n FROM tool_calls').get() as { n: number }).n).toBe(0);
     expect(clearAllToolCalls(db).deletedCount).toBe(0);
+  });
+});
+
+describe('routingDecision audit field', () => {
+  it('round-trips the routing decision through the tool_calls row', () => {
+    const conv = createConversation({});
+    const msg = appendMessage({ conversationId: conv.id, role: 'assistant', content: '' });
+    recordToolCall({
+      messageId: msg.id,
+      toolName: 'read_file',
+      input: { path: 'a.ts' },
+      output: 'ok',
+      decision: 'auto',
+      isError: false,
+      durationMs: 5,
+      routingDecision: {
+        matched: 'tool_call',
+        ruleId: 'rule-tools',
+        providerId: 'anthropic',
+        modelId: 'claude-3-5-sonnet',
+        usedFallback: false,
+      },
+    });
+
+    const rows = listToolCallsForMessage(msg.id);
+    expect(rows[0]?.routingDecision).toEqual({
+      matched: 'tool_call',
+      ruleId: 'rule-tools',
+      providerId: 'anthropic',
+      modelId: 'claude-3-5-sonnet',
+      usedFallback: false,
+    });
+  });
+
+  it('persists null when no routing decision was supplied', () => {
+    const conv = createConversation({});
+    const msg = appendMessage({ conversationId: conv.id, role: 'assistant', content: '' });
+    recordToolCall({
+      messageId: msg.id,
+      toolName: 'read_file',
+      input: { path: 'a.ts' },
+      output: 'ok',
+      decision: 'auto',
+      isError: false,
+      durationMs: 5,
+    });
+
+    const rows = listToolCallsForMessage(msg.id);
+    expect(rows[0]?.routingDecision).toBeNull();
+  });
+
+  it('preserves degradedReason when the provider was missing', () => {
+    const conv = createConversation({});
+    const msg = appendMessage({ conversationId: conv.id, role: 'assistant', content: '' });
+    recordToolCall({
+      messageId: msg.id,
+      toolName: 'edit_file',
+      input: { path: 'a.ts' },
+      output: 'ok',
+      decision: 'prompt-allowed',
+      isError: false,
+      durationMs: 8,
+      routingDecision: {
+        matched: 'reasoning',
+        ruleId: 'rule-reasoning',
+        providerId: 'openai',
+        modelId: 'gpt-4o',
+        usedFallback: true,
+        degradedReason: 'provider_missing',
+      },
+    });
+
+    const [row] = listToolCallsForMessage(msg.id);
+    expect(row?.routingDecision?.degradedReason).toBe('provider_missing');
+    expect(row?.routingDecision?.usedFallback).toBe(true);
   });
 });

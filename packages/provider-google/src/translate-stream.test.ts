@@ -114,14 +114,21 @@ describe('streamChunksToEvents', () => {
     expect(out.at(-1)).toEqual({ type: 'done', stopReason: 'max_tokens' });
   });
 
-  it('maps SAFETY finish reason to stop_sequence', async () => {
+  it('maps SAFETY finish reason to a content_filter error event then done', async () => {
     const chunks: StreamChunk[] = [
       {
         candidates: [{ finishReason: 'SAFETY' }],
       },
     ];
     const out = await collect(streamChunksToEvents(fromArray(chunks)));
-    expect(out.at(-1)).toEqual({ type: 'done', stopReason: 'stop_sequence' });
+    expect(out).toContainEqual(
+      expect.objectContaining({
+        type: 'error',
+        code: 'content_filter',
+        retryable: false,
+      }),
+    );
+    expect(out.at(-1)).toEqual({ type: 'done', stopReason: 'content_filter' });
   });
 
   it('includes cachedInputTokens from cachedContentTokenCount', async () => {

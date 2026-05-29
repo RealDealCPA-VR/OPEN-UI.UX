@@ -17,6 +17,7 @@ export const modelCapabilitiesSchema = z.object({
   streaming: z.boolean(),
   embeddings: z.boolean(),
   promptCaching: z.boolean().optional(),
+  reasoning: z.boolean().optional(),
   pricing: modelPricingSchema.optional(),
 });
 

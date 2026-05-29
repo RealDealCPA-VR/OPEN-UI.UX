@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetForTests, listRuns as listAgentRuns } from '../agent/run-registry';
 import { applyMigrations, setDbForTesting } from '../storage/db';
-import { fireScheduledTask } from './runner';
+import { CURRENT_SELECTED_MODEL_MARKER, fireScheduledTask } from './runner';
 import { createTask, getRun, listRuns } from './store';
 import type { SubagentResult } from '../agent/subagent';
 
@@ -217,5 +217,24 @@ describe('fireScheduledTask + worktree fallback', () => {
     expect(receivedWorkspaceRoot).toBe(task.workspacePath);
     const agentRuns = listAgentRuns();
     expect(agentRuns[0]!.worktreePath).toBeNull();
+  });
+});
+
+describe('fireScheduledTask + CURRENT_SELECTED_MODEL_MARKER', () => {
+  it('fails the run with a clear error when no model is selected', async () => {
+    const task = createTask({
+      name: 'marker-no-select',
+      trigger: { type: 'manual' },
+      prompt: 'p',
+      providerId: CURRENT_SELECTED_MODEL_MARKER,
+      model: CURRENT_SELECTED_MODEL_MARKER,
+      workspacePath: '/tmp/scheduler-test-non-git',
+      useWorktree: false,
+    });
+    const res = await fireScheduledTask(task, {
+      runOverride: async () => fakeResult(),
+    });
+    expect(res.status).toBe('failed');
+    expect(res.error).toMatch(/no model is selected/);
   });
 });

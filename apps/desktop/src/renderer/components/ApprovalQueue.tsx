@@ -68,6 +68,7 @@ export function ApprovalQueue(): JSX.Element | null {
 
   const current = queue[0] ?? null;
   const buttonsRef = useRef<HTMLButtonElement[]>([]);
+  const modalRootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!current) return;
@@ -77,6 +78,11 @@ export function ApprovalQueue(): JSX.Element | null {
       if (target) {
         const tag = target.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+      }
+      const root = modalRootRef.current;
+      const active = document.activeElement;
+      if (root && active && active !== document.body && !root.contains(active)) {
+        return;
       }
       const idx = '123456'.indexOf(e.key);
       if (idx === -1) return;
@@ -100,7 +106,7 @@ export function ApprovalQueue(): JSX.Element | null {
   };
 
   return (
-    <div className="approval-modal-backdrop" role="dialog" aria-modal="true">
+    <div className="approval-modal-backdrop" role="dialog" aria-modal="true" ref={modalRootRef}>
       <div className="approval-modal">
         <header className="approval-modal-header">
           <span

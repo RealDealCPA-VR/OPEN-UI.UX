@@ -23,6 +23,7 @@ function fakeRow(overrides: Partial<ToolCallAuditRow> = {}): ToolCallAuditRow {
     outputTruncated: false,
     triggerSource: 'user',
     runnerId: null,
+    routingDecision: null,
     ...overrides,
   };
 }
@@ -101,15 +102,21 @@ describe('worm-mirror', () => {
     expect(parsed.id).toBe('first');
   });
 
-  it('does not crash if open throws', () => {
+  it('does not crash if open throws and reverts the toggle so future writes are skipped', () => {
+    const writes: Buffer[] = [];
     configureWormMirror({
       userDataPathResolver: () => '/tmp/test',
       open: () => {
         throw new Error('disk full');
       },
-      write: vi.fn(),
+      write: vi.fn((_fd: number, buf: Buffer) => {
+        writes.push(buf);
+        return buf.length;
+      }),
     });
-    setWormEnabled(true);
+    expect(() => setWormEnabled(true)).not.toThrow();
+    expect(isWormEnabled()).toBe(false);
     expect(() => appendToWorm(fakeRow())).not.toThrow();
+    expect(writes).toHaveLength(0);
   });
 });

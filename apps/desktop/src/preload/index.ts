@@ -540,9 +540,17 @@ const mcp = {
 };
 
 const onboarding = {
-  getState: (): Promise<{ complete: boolean }> => ipcRenderer.invoke('onboarding:get-state'),
+  getState: (): Promise<{ complete: boolean; steps: Record<string, unknown> }> =>
+    ipcRenderer.invoke('onboarding:get-state'),
   setComplete: (complete: boolean): Promise<{ complete: boolean }> =>
     ipcRenderer.invoke('onboarding:set-complete', { complete }),
+  getStep: (stepName: string): Promise<{ value: unknown }> =>
+    ipcRenderer.invoke('onboarding:get-step', { stepName }),
+  setStep: (stepName: string, value: unknown): Promise<{ steps: Record<string, unknown> }> =>
+    ipcRenderer.invoke('onboarding:set-step', { stepName, value }),
+  clearSteps: (): Promise<{ steps: Record<string, unknown> }> =>
+    ipcRenderer.invoke('onboarding:clear-steps'),
+  getDefaults: (): Promise<{ homedir: string }> => ipcRenderer.invoke('onboarding:get-defaults'),
 };
 
 const plugins = {
@@ -563,6 +571,14 @@ const plugins = {
     ipcRenderer.invoke('plugins:set-registry-url', { url }),
   fetchRegistry: (): Promise<{ entries: unknown[]; error: string | null }> =>
     ipcRenderer.invoke('plugins:fetch-registry'),
+  installFromRegistry: (req: {
+    installUrl: string;
+    acceptUnsigned?: boolean;
+  }): Promise<
+    | { ok: true; plugins: PluginListItem[] }
+    | { ok: false; reason: 'unsigned'; pluginName: string }
+    | { ok: false; reason: 'error'; error: string }
+  > => ipcRenderer.invoke('plugins:install-from-registry', req),
   listPanels: (): Promise<{ panels: PluginPanelDescriptor[] }> =>
     ipcRenderer.invoke('plugins:list-panels'),
   listPresets: (): Promise<PluginPreset[]> => ipcRenderer.invoke('plugins:list-presets'),
@@ -961,7 +977,9 @@ const replay = {
     req: ExportProvenanceBundleRequest,
   ): Promise<ExportProvenanceBundleResponse> =>
     ipcRenderer.invoke('replay:export-provenance-bundle', req),
-  getConversationBundle: (id: string): Promise<{ bundle: ProvenanceBundle | null }> =>
+  getConversationBundle: (
+    id: string,
+  ): Promise<{ bundle: ProvenanceBundle | null; signature: string | null }> =>
     ipcRenderer.invoke('replay:get-conversation-bundle', { id }),
   replayConversation: (req: ReplayConversationRequest): Promise<ReplayResult> =>
     ipcRenderer.invoke('replay:replay-conversation', req),

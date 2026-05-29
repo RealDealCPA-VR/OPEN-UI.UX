@@ -2,27 +2,29 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { MultiWorkspaceIndexer } from './multi-workspace-indexer';
-import type { LanceVectorStore, VectorSearchHit } from './vector-store';
-import { WorkspaceWatcher } from './watcher';
+import { MultiWorkspaceIndexer, type EmbeddingProviderResolver } from './multi-workspace-indexer';
+import type { SqliteVectorStore, VectorSearchHit } from './vector-store';
+import { WorkspaceWatcher, type WatcherBatch, type WatcherChangeHandler } from './watcher';
 import type { WorkspaceEntry } from '../../shared/workspaces';
 
 interface FakeStoreHandle {
   open: Mock;
   close: Mock;
   searchByVector: Mock;
+  upsert: Mock;
 }
 
 function makeFakeStore(hits: VectorSearchHit[]): {
-  store: LanceVectorStore;
+  store: SqliteVectorStore;
   handle: FakeStoreHandle;
 } {
   const handle: FakeStoreHandle = {
     open: vi.fn(),
     close: vi.fn(),
     searchByVector: vi.fn(() => hits),
+    upsert: vi.fn(),
   };
-  const store = handle as unknown as LanceVectorStore;
+  const store = handle as unknown as SqliteVectorStore;
   return { store, handle };
 }
 
@@ -32,6 +34,19 @@ class StubWatcher extends WorkspaceWatcher {
   }
   override async stop(): Promise<void> {
     /* no-op */
+  }
+}
+
+class CapturingWatcher extends WorkspaceWatcher {
+  private captured: WatcherChangeHandler | null = null;
+  override async start(_root: string, onChange: WatcherChangeHandler): Promise<void> {
+    this.captured = onChange;
+  }
+  override async stop(): Promise<void> {
+    this.captured = null;
+  }
+  trigger(batch: WatcherBatch): void {
+    this.captured?.(batch);
   }
 }
 
@@ -158,6 +173,107 @@ describe('MultiWorkspaceIndexer', () => {
     expect(handles['ws1']?.searchByVector).toHaveBeenCalled();
     expect(handles['ws2']?.searchByVector).toHaveBeenCalled();
 
+    await indexer.stop();
+  });
+
+  it('wires watcher batches end-to-end: chunk → embed → upsert', async () => {
+    const ws = makeWorkspace('ws1', baseDir, true);
+    const captured: CapturingWatcher[] = [];
+    const { store: fakeStore, handle } = makeFakeStore([]);
+
+    const embed = vi.fn(async (req: { inputs: string[] }) => ({
+      embeddings: req.inputs.map((_, i) => [i + 1, 0, 0]),
+      usage: { tokens: req.inputs.length * 2 },
+    }));
+    const resolver: EmbeddingProviderResolver = {
+      resolve: async () => ({
+        provider: { embed },
+        config: { providerId: 'voyage', modelId: 'voyage-2' },
+      }),
+    };
+
+    const indexer = new MultiWorkspaceIndexer({
+      baseDir,
+      storeFactory: () => fakeStore,
+      listWorkspaces: () => [ws],
+      getWorkspace: (id) => (id === ws.id ? ws : null),
+      watcherFactory: () => {
+        const w = new CapturingWatcher();
+        captured.push(w);
+        return w;
+      },
+      embeddingResolver: resolver,
+      readFile: async () => 'export const a = 1;\nexport const b = 2;\n',
+      chunkFn: (text: string) => [
+        { content: text, startLine: 1, endLine: text.split('\n').length },
+      ],
+    });
+    await indexer.start();
+
+    captured[0]?.trigger({ added: ['src/a.ts'], changed: [], removed: [] });
+    await indexer.waitForReindex();
+
+    expect(embed).toHaveBeenCalledTimes(1);
+    expect(handle.upsert).toHaveBeenCalled();
+    const [argPath, argChunks] = handle.upsert.mock.calls[0] ?? [];
+    expect(argPath).toBe('src/a.ts');
+    expect(Array.isArray(argChunks)).toBe(true);
+    expect((argChunks as Array<{ embedding: number[] }>).length).toBe(1);
+
+    await indexer.stop();
+  });
+
+  it('removed paths trigger empty upsert without invoking embedder', async () => {
+    const ws = makeWorkspace('ws1', baseDir, true);
+    const captured: CapturingWatcher[] = [];
+    const { store: fakeStore, handle } = makeFakeStore([]);
+    const embed = vi.fn();
+    const resolver: EmbeddingProviderResolver = {
+      resolve: async () => ({
+        provider: { embed: embed as never },
+        config: { providerId: 'voyage', modelId: 'voyage-2' },
+      }),
+    };
+    const indexer = new MultiWorkspaceIndexer({
+      baseDir,
+      storeFactory: () => fakeStore,
+      listWorkspaces: () => [ws],
+      getWorkspace: (id) => (id === ws.id ? ws : null),
+      watcherFactory: () => {
+        const w = new CapturingWatcher();
+        captured.push(w);
+        return w;
+      },
+      embeddingResolver: resolver,
+    });
+    await indexer.start();
+    captured[0]?.trigger({ added: [], changed: [], removed: ['gone.ts'] });
+    await indexer.waitForReindex();
+    expect(handle.upsert).toHaveBeenCalledWith('gone.ts', []);
+    expect(embed).not.toHaveBeenCalled();
+    await indexer.stop();
+  });
+
+  it('skips reindex when no embedding resolver is configured', async () => {
+    const ws = makeWorkspace('ws1', baseDir, true);
+    const captured: CapturingWatcher[] = [];
+    const { store: fakeStore, handle } = makeFakeStore([]);
+    const indexer = new MultiWorkspaceIndexer({
+      baseDir,
+      storeFactory: () => fakeStore,
+      listWorkspaces: () => [ws],
+      getWorkspace: (id) => (id === ws.id ? ws : null),
+      watcherFactory: () => {
+        const w = new CapturingWatcher();
+        captured.push(w);
+        return w;
+      },
+      readFile: async () => 'hi',
+    });
+    await indexer.start();
+    captured[0]?.trigger({ added: ['x.ts'], changed: [], removed: [] });
+    await indexer.waitForReindex();
+    expect(handle.upsert).not.toHaveBeenCalled();
     await indexer.stop();
   });
 

@@ -172,8 +172,15 @@ export function translateClaudeJson(
   return [];
 }
 
+const NDJSON_DEFAULT_MAX_BYTES = 1 * 1024 * 1024;
+
 export class NdjsonBuffer {
   private buffer = '';
+  private readonly maxBytes: number;
+
+  constructor(maxBytes: number = NDJSON_DEFAULT_MAX_BYTES) {
+    this.maxBytes = maxBytes;
+  }
 
   push(chunk: string): string[] {
     this.buffer += chunk;
@@ -184,6 +191,9 @@ export class NdjsonBuffer {
       this.buffer = this.buffer.slice(newlineIdx + 1);
       if (line.length > 0) lines.push(line);
       newlineIdx = this.buffer.indexOf('\n');
+    }
+    if (this.buffer.length > this.maxBytes) {
+      this.buffer = '';
     }
     return lines;
   }

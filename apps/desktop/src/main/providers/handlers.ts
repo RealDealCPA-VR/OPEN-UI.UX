@@ -1,8 +1,15 @@
+import { BrowserWindow } from 'electron';
 import { z } from 'zod';
 import { registerInvoke } from '../ipc/registry';
 import { logger } from '../logger';
 import { deleteSecret, getSecret, setSecret } from '../storage/secrets';
-import { deleteProviderEntry, getProviderEntry, setProviderEntry } from '../storage/settings';
+import {
+  clearSelectedModelEverywhere,
+  deleteProviderEntry,
+  getProviderEntry,
+  setProviderEntry,
+} from '../storage/settings';
+import type { SelectedModel } from '../../shared/selected-model';
 import type {
   ProviderConfigIssue,
   ProviderListItem,
@@ -20,6 +27,42 @@ import {
 import { ping } from './ping';
 
 const apiKeyAccount = (id: string): string => `provider:${id}:apiKey`;
+
+export const SELECTED_MODEL_TOAST_CHANNEL = 'selected-model:cleared';
+
+interface ClearedToastPayload {
+  removed: number;
+  reason: 'model_missing';
+  providerId: string;
+}
+
+function broadcastClearedToast(payload: ClearedToastPayload): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(SELECTED_MODEL_TOAST_CHANNEL, payload);
+  }
+}
+
+/**
+ * After a provider's catalog gets re-fetched, walk every SelectedModel slot
+ * (global, per-conversation, per-workspace) and clear the ones pointing at a
+ * model id that no longer exists. Surfaces a renderer toast so the user can
+ * notice their default was reset.
+ */
+export async function reconcileSelectedModelsForProvider(providerId: string): Promise<void> {
+  const info = await getProviderInfo(providerId);
+  if (!info) return;
+  const known = new Set(info.models.map((m) => m.id));
+  const result = clearSelectedModelEverywhere(
+    (sel: SelectedModel) => sel.providerId === providerId && !known.has(sel.modelId),
+  );
+  if (result.removed > 0) {
+    logger.info(
+      { providerId, removed: result.removed },
+      'selected-model entries cleared after catalog refresh',
+    );
+    broadcastClearedToast({ removed: result.removed, reason: 'model_missing', providerId });
+  }
+}
 
 async function buildStatus(id: string): Promise<ProviderStatus> {
   const entry = getProviderEntry(id);
@@ -96,6 +139,7 @@ export function registerProviderHandlers(): void {
         return { item, errors };
       }
 
+      const apiKeyChanged = req.apiKey !== undefined && req.apiKey !== existingKey;
       if (req.apiKey !== undefined) {
         if (req.apiKey && req.apiKey.length > 0) {
           await setSecret(apiKeyAccount(req.id), req.apiKey);
@@ -104,12 +148,18 @@ export function registerProviderHandlers(): void {
         }
       }
 
-      setProviderEntry(req.id, {
+      const patch: Parameters<typeof setProviderEntry>[1] = {
         baseUrl: nextBaseUrl,
         extra: nextExtra,
-      });
+      };
+      if (apiKeyChanged) {
+        patch.lastTestResult = null;
+        patch.lastTestedAt = null;
+      }
+      setProviderEntry(req.id, patch);
 
       invalidateProviderInfo(req.id);
+      await reconcileSelectedModelsForProvider(req.id);
       const item = await buildItem(req.id);
       if (!item) throw new Error(`Unknown provider "${req.id}"`);
       logger.info({ id: req.id }, 'provider config saved');

@@ -2,7 +2,7 @@
 
 OpenCodex plugins are npm packages that extend the host with tools, providers, slash commands, and UI panels. The same registries that hold built-in code accept plugin contributions, so a plugin tool is indistinguishable from a built-in tool at the agent layer.
 
-> **Status**: the plugin SDK contracts (`@opencodex/plugin-sdk`) are stable in shape; the plugin loader, VM sandbox, and install UI are **planned for v0.1**. Anything tagged "PLANNED API" below describes behavior that is specified but not yet wired in `apps/desktop`.
+> **Status**: the plugin SDK contracts (`@opencodex/plugin-sdk`) are stable in shape. The plugin loader and install UI are shipped today but plugins run **with full Electron main-process privileges** — `await import(file://<plugin>)` in the main process, no `vm`, no `utilityProcess`. The manifest `permissions[]` array only gates `PluginHost` helper calls; module-level code can reach `node:fs`, `node:child_process`, the keychain via `keytar`, and IPC handles. **Only install plugins you trust to run arbitrary code on your machine.** See [security-model.md → Plugin sandbox](./security-model.md#plugin-sandbox) for the target v0.1 hardening. Anything tagged "PLANNED API" below describes behavior that is specified but not yet wired in `apps/desktop`.
 
 ## What plugins can contribute
 
@@ -78,7 +78,7 @@ Example manifest (`examples/plugins/hello-world/opencodex.plugin.json`):
 1. **Install** — user picks a tarball, registry URL, or local path. The loader extracts and locates `opencodex.plugin.json`.
 2. **Manifest validation** — `ManifestSchema.safeParse()` runs. Anything that fails the Zod schema is rejected before code executes.
 3. **Permission grant** — OpenCodex shows the user the requested `permissions[]` and contributions. The user confirms or denies.
-4. **Activation** — the loader requires the `entry` module in a sandboxed VM context and calls `activate(host)`. Contributions register with the host registries.
+4. **Activation** — the loader dynamically imports the `entry` module (currently unsandboxed in the main process — see warning at top of this file) and calls `activate(host)`. Contributions register with the host registries.
 5. **Deactivation** — `deactivate()` is called on uninstall / disable; the host unregisters everything the plugin contributed.
 
 ## Permission model

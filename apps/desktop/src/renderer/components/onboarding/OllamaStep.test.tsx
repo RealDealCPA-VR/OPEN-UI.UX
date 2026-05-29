@@ -2,7 +2,7 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { OllamaStep } from './OllamaStep';
+import { OllamaStep, pickSmallestModelId } from './OllamaStep';
 import type { OllamaInstallProgress, OllamaProbeResult } from '../../../shared/ollama';
 
 interface BridgeOpts {
@@ -89,10 +89,10 @@ describe('OllamaStep', () => {
     await waitFor(() => screen.getByTestId('ollama-running'));
     expect(screen.getByText('llama3:8b')).toBeTruthy();
     expect(screen.getByText('qwen:7b')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Use Ollama only/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Skip provider setup — use Ollama/i })).toBeTruthy();
   });
 
-  it('Use Ollama only calls onAcceptLocalOnly with selected model id', async () => {
+  it('Skip provider setup — use Ollama calls onAcceptLocalOnly with selected model id', async () => {
     setBridge({
       probe: { running: true, models: [{ id: 'llama3:8b', sizeGb: 4.7 }] },
     });
@@ -106,7 +106,7 @@ describe('OllamaStep', () => {
     );
     await waitFor(() => screen.getByTestId('ollama-running'));
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Use Ollama only/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Skip provider setup — use Ollama/i }));
     });
     expect(onAcceptLocalOnly).toHaveBeenCalledWith('llama3:8b');
   });
@@ -169,5 +169,66 @@ describe('OllamaStep', () => {
     setBridge({ probe: { running: true, models: [] } });
     render(<OllamaStep onSkip={vi.fn()} onContinueCloud={vi.fn()} onAcceptLocalOnly={vi.fn()} />);
     await waitFor(() => screen.getByText(/No models installed/i));
+  });
+
+  it('auto-selects the smallest installed model on probe success', async () => {
+    setBridge({
+      probe: {
+        running: true,
+        models: [
+          { id: 'llama3:70b', sizeGb: 40 },
+          { id: 'tinyllama', sizeGb: 0.6 },
+          { id: 'qwen:7b', sizeGb: 4.1 },
+        ],
+      },
+    });
+    const onAcceptLocalOnly = vi.fn();
+    render(
+      <OllamaStep
+        onSkip={vi.fn()}
+        onContinueCloud={vi.fn()}
+        onAcceptLocalOnly={onAcceptLocalOnly}
+      />,
+    );
+    await waitFor(() => screen.getByTestId('ollama-running'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Skip provider setup — use Ollama/i }));
+    });
+    expect(onAcceptLocalOnly).toHaveBeenCalledWith('tinyllama');
+  });
+});
+
+describe('pickSmallestModelId', () => {
+  it('returns null on empty input', () => {
+    expect(pickSmallestModelId([])).toBe(null);
+  });
+
+  it('picks the smallest sizeGb entry', () => {
+    expect(
+      pickSmallestModelId([
+        { id: 'big', sizeGb: 40 },
+        { id: 'small', sizeGb: 0.6 },
+        { id: 'mid', sizeGb: 4.1 },
+      ]),
+    ).toBe('small');
+  });
+
+  it('falls back to first entry when all sizes are zero', () => {
+    expect(
+      pickSmallestModelId([
+        { id: 'a', sizeGb: 0 },
+        { id: 'b', sizeGb: 0 },
+      ]),
+    ).toBe('a');
+  });
+
+  it('ignores zero-sized entries when comparing', () => {
+    expect(
+      pickSmallestModelId([
+        { id: 'unknown', sizeGb: 0 },
+        { id: 'small', sizeGb: 1.2 },
+        { id: 'big', sizeGb: 8.5 },
+      ]),
+    ).toBe('small');
   });
 });

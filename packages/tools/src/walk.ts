@@ -5,6 +5,11 @@ export interface WalkOptions {
   ignoreDirs?: ReadonlySet<string>;
   signal?: AbortSignal;
   maxFiles?: number;
+  // When true (default), do not descend into symbolic links. Setting this to
+  // false re-enables symlink following — use only when the caller has already
+  // verified each target via `resolveWithinWorkspace` (which realpath-checks
+  // against the workspace root).
+  skipSymlinks?: boolean;
 }
 
 export const DEFAULT_IGNORE_DIRS: ReadonlySet<string> = new Set([
@@ -20,6 +25,7 @@ export const DEFAULT_IGNORE_DIRS: ReadonlySet<string> = new Set([
 
 export async function* walkFiles(root: string, options: WalkOptions = {}): AsyncGenerator<string> {
   const ignore = options.ignoreDirs ?? DEFAULT_IGNORE_DIRS;
+  const skipSymlinks = options.skipSymlinks ?? true;
   const max = options.maxFiles;
   let yielded = 0;
 
@@ -34,6 +40,11 @@ export async function* walkFiles(root: string, options: WalkOptions = {}): Async
     entries.sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of entries) {
       if (max != null && yielded >= max) return;
+      // Skip symlinks by default — Dirent.isSymbolicLink() returns true for
+      // both file- and dir-typed targets. Without this, a symlink inside the
+      // workspace that points outside it would let the walker silently leak
+      // out of the sandbox.
+      if (skipSymlinks && entry.isSymbolicLink()) continue;
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         if (ignore.has(entry.name)) continue;

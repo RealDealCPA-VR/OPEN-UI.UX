@@ -7,6 +7,7 @@ import type {
   ModelCapabilities,
   ProviderFactory,
 } from '@opencodex/core';
+import { assertValidApiKey, fetchWithRetry, sanitizeErrorDetail } from '@opencodex/core';
 import { googleConfigSchema, type GoogleConfig } from './config';
 import { findModel, knownModels } from './models';
 import { sseEvents } from './sse';
@@ -21,7 +22,9 @@ class GoogleProvider implements LLMProvider {
   readonly id = 'google';
   readonly displayName = 'Google Gemini';
 
-  constructor(private readonly config: GoogleConfig) {}
+  constructor(private readonly config: GoogleConfig) {
+    assertValidApiKey(config.apiKey, 'Google');
+  }
 
   async *chat(req: ChatRequest): AsyncIterable<ChatEvent> {
     const body = buildChatRequestBody(req);
@@ -37,7 +40,7 @@ class GoogleProvider implements LLMProvider {
       yield { type: 'done', stopReason: 'error' };
       return;
     }
-    yield* streamChunksToEvents(this.chunksFromBody(response.body));
+    yield* streamChunksToEvents(this.chunksFromBody(response.body), { model: req.model });
   }
 
   async embed(_req: EmbedRequest): Promise<EmbedResult> {
@@ -81,12 +84,12 @@ class GoogleProvider implements LLMProvider {
       body: JSON.stringify(body),
     };
     if (signal) init.signal = signal;
-    return fetch(url, init);
+    return fetchWithRetry(() => fetch(url, init), signal ? { signal } : {});
   }
 
   private async safeReadText(response: Response): Promise<string> {
     try {
-      return await response.text();
+      return sanitizeErrorDetail(await response.text());
     } catch {
       return '<unreadable body>';
     }

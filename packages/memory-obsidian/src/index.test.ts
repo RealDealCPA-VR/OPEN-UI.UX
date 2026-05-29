@@ -58,6 +58,25 @@ describe('renderFrontMatter', () => {
   it('returns empty when no keys', () => {
     expect(renderFrontMatter({})).toBe('');
   });
+  it('escapes values that contain double quotes', () => {
+    const out = renderFrontMatter({ title: 'has "quotes"' });
+    expect(out).toContain('title:');
+    const parsed = parseFrontMatter(out + 'body');
+    expect(parsed.data['title']).toBe('has "quotes"');
+  });
+  it('round-trips values that look like YAML literals', () => {
+    const cases = ['true', 'null', '2024-01-02', '3.14', 'a: b', '  leading'];
+    for (const v of cases) {
+      const out = renderFrontMatter({ k: v });
+      const parsed = parseFrontMatter(out + 'body');
+      expect(parsed.data['k']).toBe(v);
+    }
+  });
+  it('round-trips values containing both single and double quotes', () => {
+    const out = renderFrontMatter({ title: `she said "hi" and 'bye'` });
+    const parsed = parseFrontMatter(out + 'body');
+    expect(parsed.data['title']).toBe(`she said "hi" and 'bye'`);
+  });
 });
 
 describe('tokenize + bm25', () => {
@@ -153,6 +172,13 @@ describe('ObsidianMemory', () => {
 
   it('createNote errors if the file exists', async () => {
     await expect(mem.createNote('random.md', 't', 'b', {})).rejects.toThrow(/already exists/);
+  });
+
+  it('createNote: explicit title arg overrides extraFrontMatter.title', async () => {
+    await mem.createNote('ideas/precedence.md', 'Explicit', 'body', { title: 'FromExtra' });
+    const raw = await fs.readFile(path.join(tmp.root, 'ideas/precedence.md'), 'utf8');
+    expect(raw).toMatch(/title: Explicit/);
+    expect(raw).not.toMatch(/title: FromExtra/);
   });
 
   it('createNote adds .md extension if missing', async () => {

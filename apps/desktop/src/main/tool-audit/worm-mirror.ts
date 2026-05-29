@@ -3,7 +3,29 @@ import { join } from 'node:path';
 import type { ToolCallAuditRow } from '../../shared/tool-audit';
 import { logger } from '../logger';
 
+/*
+ * Platform-specific honesty: this is a *best-effort* append-only mirror, not a
+ * true write-once tamper-evident log.
+ *
+ * - On Windows we have no native append-only attribute we can flip from the
+ *   sandbox we run in, so the file is only as safe as the surrounding
+ *   filesystem ACLs. A user with the same uid can overwrite or truncate it.
+ * - On POSIX we chmod the file to 0o400 once it exists, which means a casual
+ *   `>` redirect won't append, but a determined attacker with the same uid
+ *   can `chmod +w` it back. True append-only requires `chattr +a` on Linux
+ *   (CAP_LINUX_IMMUTABLE) or `chflags uappnd` on macOS, neither of which is
+ *   safe to run from a userland Electron build.
+ *
+ * Reflect this in the UI tooltip wherever WORM is exposed (AuditLogPanel)
+ * and in user-facing docs — don't promise an integrity guarantee we can't
+ * keep.
+ */
 const WORM_FILENAME = 'audit-worm.ndjson';
+
+export const WORM_PLATFORM_DISCLAIMER =
+  process.platform === 'win32'
+    ? 'WORM mirror on Windows is best-effort: file permissions cannot be hardened, rely on filesystem ACLs and parent-directory restrictions.'
+    : 'WORM mirror is best-effort: the file is chmod 0o400, but a user with the same uid can clear that bit. True append-only requires chattr +a (Linux) or chflags uappnd (macOS) and root.';
 
 interface WormState {
   fd: number;
@@ -39,7 +61,13 @@ export function setWormEnabled(next: boolean): void {
   if (next === enabled) return;
   enabled = next;
   if (next) {
-    openHandleIfNeeded();
+    try {
+      openHandleIfNeeded();
+    } catch (err) {
+      enabled = false;
+      state = null;
+      logger.warn({ err }, 'WORM mirror failed to open underlying file; toggle reverted to off');
+    }
   }
   // We deliberately do NOT close the FD when turning off — the WORM contract
   // is append-only and the file persists; we just stop appending.

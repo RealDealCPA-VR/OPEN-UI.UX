@@ -17,7 +17,7 @@ export function parseFrontMatter(raw: string): ParsedFrontMatter {
     const key = line.slice(0, colon).trim();
     const value = line.slice(colon + 1).trim();
     if (key.length === 0) continue;
-    data[key] = stripQuotes(value);
+    data[key] = decodeScalar(value);
   }
   return { data, body: raw.slice(match[0].length) };
 }
@@ -25,24 +25,61 @@ export function parseFrontMatter(raw: string): ParsedFrontMatter {
 export function renderFrontMatter(data: Record<string, string>): string {
   const keys = Object.keys(data);
   if (keys.length === 0) return '';
-  const lines = keys.map((k) => `${k}: ${escapeValue(data[k] ?? '')}`);
+  const lines = keys.map((k) => `${encodeKey(k)}: ${encodeScalar(data[k] ?? '')}`);
   return `---\n${lines.join('\n')}\n---\n`;
 }
 
-function stripQuotes(s: string): string {
-  if (s.length >= 2) {
-    const first = s[0];
-    const last = s[s.length - 1];
-    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+function decodeScalar(s: string): string {
+  if (s.length === 0) return s;
+  const first = s[0];
+  const last = s[s.length - 1];
+  if (s.length >= 2 && first === '"' && last === '"') {
+    try {
+      return JSON.parse(s) as string;
+    } catch {
       return s.slice(1, -1);
     }
+  }
+  if (s.length >= 2 && first === "'" && last === "'") {
+    return s.slice(1, -1).replace(/''/g, "'");
   }
   return s;
 }
 
-function escapeValue(v: string): string {
-  if (/[:#\n]/.test(v)) return JSON.stringify(v);
+function encodeScalar(v: string): string {
+  if (v.length === 0) return '""';
+  if (mustDoubleQuote(v)) return JSON.stringify(v);
+  if (mustSingleQuote(v)) return `'${v.replace(/'/g, "''")}'`;
   return v;
+}
+
+function encodeKey(k: string): string {
+  if (k.length === 0) return '""';
+  if (/[:#\n\r"'\t]/.test(k) || /^\s|\s$/.test(k)) return JSON.stringify(k);
+  return k;
+}
+
+function mustDoubleQuote(v: string): boolean {
+  for (let i = 0; i < v.length; i++) {
+    const c = v.charCodeAt(i);
+    if (c === 9 || c === 10 || c === 13) return true;
+    if (c <= 8) return true;
+    if (c === 11 || c === 12) return true;
+    if (c >= 14 && c <= 31) return true;
+  }
+  if (v.includes('"') && v.includes("'")) return true;
+  return false;
+}
+
+function mustSingleQuote(v: string): boolean {
+  if (/^\s|\s$/.test(v)) return true;
+  if (v.includes('"')) return true;
+  if (/^(true|false|null|yes|no|on|off|~)$/i.test(v)) return true;
+  if (/^[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?$/.test(v)) return true;
+  if (/^[-?:,[\]{}&*!|>%@`#]/.test(v)) return true;
+  if (v.startsWith('---') || v.startsWith('...')) return true;
+  if (/:\s/.test(v) || /\s#/.test(v)) return true;
+  return false;
 }
 
 export function deriveTitle(

@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { logger } from '../logger';
-import { getSelectedModel } from '../storage/settings';
-import { getSettings } from '../storage/settings';
+import { getSettings, getSkillRegistryUrl } from '../storage/settings';
+import { skillRegistrySchema, type SkillRegistryEntry } from '../../shared/skills';
 import {
   createTask as schedulerCreateTask,
   deleteTask as schedulerDeleteTask,
@@ -10,6 +11,7 @@ import {
   listTasksLinkedToSkills,
   updateTask as schedulerUpdateTask,
 } from '../scheduler/store';
+import { CURRENT_SELECTED_MODEL_MARKER } from '../scheduler/runner';
 import { rescheduleNow, validateCronExpression } from '../scheduler/scheduler';
 import { DISABLED_MARKER, SKILL_FILE_NAME, loadAllSkills, type SkillRoots } from './loader';
 import type { Skill } from '../../shared/skills';
@@ -122,17 +124,6 @@ export function syncLinkedScheduledTasks(skills: ReadonlyArray<Skill>): void {
       );
       continue;
     }
-    const selected = (() => {
-      try {
-        return getSelectedModel();
-      } catch {
-        return null;
-      }
-    })();
-    if (!selected) {
-      logger.info({ skillId: skill.id }, 'skills: cron: no selected model; not registering yet');
-      continue;
-    }
     const name = `skill:${skill.name}`;
     if (existing) {
       try {
@@ -142,6 +133,8 @@ export function syncLinkedScheduledTasks(skills: ReadonlyArray<Skill>): void {
           description: skill.description,
           trigger: { type: 'cron', expr: cronExpr },
           prompt: skill.body,
+          providerId: CURRENT_SELECTED_MODEL_MARKER,
+          model: CURRENT_SELECTED_MODEL_MARKER,
           ...(skill.frontmatter.tools ? { allowedTools: skill.frontmatter.tools } : {}),
         });
       } catch (err) {
@@ -157,8 +150,8 @@ export function syncLinkedScheduledTasks(skills: ReadonlyArray<Skill>): void {
           description: skill.description,
           trigger: { type: 'cron', expr: cronExpr },
           prompt: skill.body,
-          providerId: selected.providerId,
-          model: selected.modelId,
+          providerId: CURRENT_SELECTED_MODEL_MARKER,
+          model: CURRENT_SELECTED_MODEL_MARKER,
           workspacePath,
           allowedTools: skill.frontmatter.tools ?? [],
           useWorktree: true,
@@ -254,11 +247,37 @@ export async function createSkillFromTemplate(opts: CreateFromTemplateOptions): 
 
 export interface ImportFromUrlOptions {
   url: string;
+  /** Test hook: pre-fetched registry entries. Production fetches via getSkillRegistryUrl(). */
+  registryEntriesOverride?: readonly SkillRegistryEntry[];
+}
+
+function sha256Hex(s: string): string {
+  return createHash('sha256').update(s, 'utf8').digest('hex');
+}
+
+async function loadRegistryEntries(): Promise<SkillRegistryEntry[]> {
+  const registryUrl = getSkillRegistryUrl();
+  if (!registryUrl) return [];
+  try {
+    const res = await fetch(registryUrl, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return [];
+    const raw: unknown = await res.json();
+    const candidate = Array.isArray(raw) ? raw : (raw as { entries?: unknown })?.entries;
+    const parsed = skillRegistrySchema.safeParse(candidate);
+    return parsed.success ? parsed.data : [];
+  } catch {
+    return [];
+  }
 }
 
 /**
  * Download a SKILL.md from a public https URL. Refuses non-https, oversized
  * responses, and anything that does not parse as valid skill frontmatter.
+ *
+ * Authenticity: the URL's host must appear in a configured skill-registry
+ * entry AND the downloaded body's sha256 must match the registry entry's
+ * `sha256` field. Without a configured registry, the import is refused.
+ *
  * The caller is expected to have prompted the user with a consent dialog.
  */
 export async function importSkillFromUrl(opts: ImportFromUrlOptions): Promise<Skill[]> {
@@ -271,10 +290,44 @@ export async function importSkillFromUrl(opts: ImportFromUrlOptions): Promise<Sk
     throw new Error('invalid URL');
   }
   if (parsed.protocol !== 'https:') throw new Error('only https URLs are allowed');
+
+  const registryEntries = opts.registryEntriesOverride ?? (await loadRegistryEntries());
+  if (registryEntries.length === 0) {
+    throw new Error(
+      'skill imports require a configured skill registry; set Settings → Skills → Registry URL first',
+    );
+  }
+  const entry = registryEntries.find((e) => {
+    try {
+      const entryUrl = new URL(e.sourceUrl);
+      return entryUrl.host.toLowerCase() === parsed.host.toLowerCase();
+    } catch {
+      return false;
+    }
+  });
+  if (!entry) {
+    throw new Error(
+      `skill source host "${parsed.host}" is not in the configured skill-registry allowlist`,
+    );
+  }
+  if (!entry.sha256) {
+    throw new Error(
+      `skill-registry entry for "${entry.name}" has no sha256 checksum; refusing to import`,
+    );
+  }
+
   const res = await fetch(url, { redirect: 'follow' });
   if (!res.ok) throw new Error(`HTTP ${res.status} fetching skill`);
   const body = await res.text();
   if (body.length > 1024 * 256) throw new Error('skill body too large (>256KB)');
+
+  const actualHash = sha256Hex(body);
+  if (actualHash !== entry.sha256.toLowerCase()) {
+    throw new Error(
+      `skill checksum mismatch — expected ${entry.sha256} but got ${actualHash}; refusing to import`,
+    );
+  }
+
   const { default: matter } = await import('gray-matter');
   let parsedMatter: ReturnType<typeof matter>;
   try {

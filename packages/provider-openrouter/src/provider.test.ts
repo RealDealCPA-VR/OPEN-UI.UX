@@ -227,6 +227,30 @@ describe('openRouterProvider', () => {
     expect(models.some((m) => m.id === 'anthropic/claude-opus-4-7')).toBe(true);
   });
 
+  it('capabilities returns live entries after listModels populates the cache', async () => {
+    stubFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'community/exotic-model',
+                name: 'Exotic',
+                context_length: 8000,
+                architecture: { input_modalities: ['text'] },
+                supported_parameters: [],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const provider = openRouterProvider.create({ apiKey: 'or' });
+    await provider.listModels();
+    const cap = await provider.capabilities('community/exotic-model');
+    expect(cap).toMatchObject({ id: 'community/exotic-model', displayName: 'Exotic' });
+  });
+
   it('forwards tools as OpenAI-style function tools in the request body', async () => {
     const { calls } = stubFetch(() => streamResponse('data: [DONE]\n\n'));
 

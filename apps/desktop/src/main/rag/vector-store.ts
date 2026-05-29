@@ -23,39 +23,53 @@ interface StoredRow {
   start_line: number;
   end_line: number;
   embedding: Buffer;
+  magnitude: number;
+}
+
+const MAGNITUDE_BUCKET_COUNT = 8;
+
+function magnitudeBucket(norm: number): number {
+  if (!Number.isFinite(norm) || norm <= 0) return 0;
+  const log = Math.log2(Math.max(norm, 1e-9));
+  const bucket = Math.floor(log) + (MAGNITUDE_BUCKET_COUNT >> 1);
+  if (bucket < 0) return 0;
+  if (bucket >= MAGNITUDE_BUCKET_COUNT) return MAGNITUDE_BUCKET_COUNT - 1;
+  return bucket;
 }
 
 /**
  * Vector store for RAG retrieval.
  *
- * NOTE: This is a SQLite-backed shim because `@lancedb/lancedb` ships a native
- * binary that did not install in the current toolchain. The public interface
- * (`open`, `upsert`, `searchByVector`, `clear`) mirrors what a thin LanceDB
- * adapter would expose, so swapping in real LanceDB later is a one-class
- * change with no callers needing to update.
+ * This is a SQLite-backed store (better-sqlite3) — not actual LanceDB. The
+ * public surface (`open`, `upsert`, `searchByVector`, `clear`) mirrors what a
+ * thin LanceDB adapter would expose, so swapping in real LanceDB later is a
+ * single-class change with no callers needing to update. The legacy
+ * `LanceVectorStore` export is kept as a deprecated alias so older imports
+ * keep working.
  *
- * Embeddings are persisted as Float32Array buffers and cosine similarity is
- * computed in-process at query time. Fine for small to mid-size workspaces;
- * swap to LanceDB before this matters at scale.
+ * Search is O(N) full-table scan with magnitude-bucketed prefilter that
+ * narrows candidates to nearby norms first; ranking is cosine similarity in
+ * process. Fine up to ~10K vectors per workspace. Above that, swap to real
+ * LanceDB or an HNSW/IVF index — this implementation is not an ANN index.
  */
-export class LanceVectorStore {
+export class SqliteVectorStore {
   private db: Database.Database | null = null;
   private dbPath: string | null = null;
 
   /**
-   * Opens (or creates) the vector store at `<dbPath>/lance.db`. Pass
+   * Opens (or creates) the vector store at `<dbPath>/vectors.db`. Pass
    * `:memory:` to use an in-memory database (intended for tests).
    */
   open(dbPath: string): void {
     if (this.db) {
-      throw new Error('LanceVectorStore is already open');
+      throw new Error('SqliteVectorStore is already open');
     }
     let target: string;
     if (dbPath === ':memory:') {
       target = ':memory:';
     } else {
       mkdirSync(dbPath, { recursive: true });
-      target = join(dbPath, 'lance.db');
+      target = join(dbPath, 'vectors.db');
     }
     const instance = new Database(target);
     if (target !== ':memory:') {
@@ -69,12 +83,23 @@ export class LanceVectorStore {
         content     TEXT NOT NULL,
         start_line  INTEGER NOT NULL,
         end_line    INTEGER NOT NULL,
-        embedding   BLOB NOT NULL
+        embedding   BLOB NOT NULL,
+        magnitude   REAL NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS idx_vectors_path ON vectors(path);
+      CREATE INDEX IF NOT EXISTS idx_vectors_magnitude ON vectors(magnitude);
     `);
+    this.migrateMagnitudeColumn(instance);
     this.db = instance;
     this.dbPath = target;
+  }
+
+  private migrateMagnitudeColumn(instance: Database.Database): void {
+    const cols = instance.prepare("PRAGMA table_info('vectors')").all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === 'magnitude')) {
+      instance.exec('ALTER TABLE vectors ADD COLUMN magnitude REAL NOT NULL DEFAULT 0');
+      instance.exec('CREATE INDEX IF NOT EXISTS idx_vectors_magnitude ON vectors(magnitude)');
+    }
   }
 
   close(): void {
@@ -99,8 +124,8 @@ export class LanceVectorStore {
       db.prepare('DELETE FROM vectors WHERE path = ?').run(path);
       if (chunks.length === 0) return;
       const insert = db.prepare(
-        `INSERT INTO vectors (path, content, start_line, end_line, embedding)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO vectors (path, content, start_line, end_line, embedding, magnitude)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       );
       for (const chunk of chunks) {
         insert.run(
@@ -109,6 +134,7 @@ export class LanceVectorStore {
           chunk.startLine,
           chunk.endLine,
           encodeEmbedding(chunk.embedding),
+          vectorNorm(chunk.embedding),
         );
       }
     });
@@ -127,9 +153,28 @@ export class LanceVectorStore {
     const queryNorm = vectorNorm(embedding);
     if (queryNorm === 0) return [];
 
-    const rows = db
-      .prepare(`SELECT path, content, start_line, end_line, embedding FROM vectors`)
-      .all() as StoredRow[];
+    const queryBucket = magnitudeBucket(queryNorm);
+    const bucketLow = Math.max(0, queryBucket - 1);
+    const bucketHigh = Math.min(MAGNITUDE_BUCKET_COUNT - 1, queryBucket + 1);
+    const lowNorm = Math.pow(2, bucketLow - (MAGNITUDE_BUCKET_COUNT >> 1));
+    const highNorm = Math.pow(2, bucketHigh + 1 - (MAGNITUDE_BUCKET_COUNT >> 1));
+
+    const candidateLimit = Math.max(clamped * 8, 256);
+    let rows = db
+      .prepare(
+        `SELECT path, content, start_line, end_line, embedding, magnitude
+         FROM vectors
+         WHERE magnitude >= ? AND magnitude <= ?
+         ORDER BY ABS(magnitude - ?) ASC
+         LIMIT ?`,
+      )
+      .all(lowNorm, highNorm, queryNorm, candidateLimit) as StoredRow[];
+
+    if (rows.length < clamped) {
+      rows = db
+        .prepare(`SELECT path, content, start_line, end_line, embedding, magnitude FROM vectors`)
+        .all() as StoredRow[];
+    }
 
     const scored: VectorSearchHit[] = [];
     for (const row of rows) {
@@ -163,10 +208,18 @@ export class LanceVectorStore {
   }
 
   private requireDb(): Database.Database {
-    if (!this.db) throw new Error('LanceVectorStore is not open — call open() first');
+    if (!this.db) throw new Error('SqliteVectorStore is not open — call open() first');
     return this.db;
   }
 }
+
+/**
+ * @deprecated Use `SqliteVectorStore`. The class was misleadingly named —
+ * it was never backed by LanceDB. Kept as an alias to avoid a churn-only
+ * rename across call sites; remove once all importers migrate.
+ */
+export const LanceVectorStore = SqliteVectorStore;
+export type LanceVectorStore = SqliteVectorStore;
 
 function encodeEmbedding(values: readonly number[]): Buffer {
   const arr = new Float32Array(values.length);

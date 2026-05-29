@@ -104,10 +104,14 @@ describe('searchMessages', () => {
 });
 
 describe('rebuildMessageFts', () => {
-  it('reindexes all messages from the messages table', () => {
+  it('reindexes all messages from the messages table after the FTS index was wiped', () => {
     const c = createConversation({ title: 'Rebuild me' }, db);
     appendMessage({ conversationId: c.id, role: 'user', content: 'persisted alpha' }, db);
     appendMessage({ conversationId: c.id, role: 'assistant', content: 'persisted beta' }, db);
+    // appendMessage already auto-mirrors into messages_fts, so the rows are
+    // searchable immediately. Simulate FTS corruption / drop so the rebuild
+    // is observable.
+    db.exec('DELETE FROM messages_fts');
     expect(searchMessages('alpha', {}, db)).toEqual([]);
     rebuildMessageFts(db);
     expect(searchMessages('alpha', {}, db)).toHaveLength(1);

@@ -20,7 +20,9 @@ import type { PendingEditEntry } from '../../shared/codebase-search';
 const MAX_PREVIEW_BYTES = 256 * 1024;
 const MAX_FILENAME_MATCHES = 500;
 const MAX_FILENAME_WALK = 20000;
+const MAX_FILENAME_DEPTH = 12;
 const DEFAULT_SEARCH_LIMIT = 200;
+const READ_FILE_CHUNK_BYTES = 64 * 1024;
 
 const searchSchema = z.object({
   workspaceRoot: z.string().min(1),
@@ -50,8 +52,9 @@ async function searchFilenames(
   const hits: CodebaseSearchHit[] = [];
   let walked = 0;
 
-  async function walk(dir: string): Promise<void> {
+  async function walk(dir: string, depth: number): Promise<void> {
     if (hits.length >= limit || walked >= MAX_FILENAME_WALK) return;
+    if (depth > MAX_FILENAME_DEPTH) return;
     let entries: Dirent[];
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
@@ -67,7 +70,7 @@ async function searchFilenames(
       if (entry.name === '.git') continue;
       if (ignore.matches(rel)) continue;
       if (entry.isDirectory()) {
-        await walk(abs);
+        await walk(abs, depth + 1);
         continue;
       }
       if (entry.name.toLowerCase().includes(lower) || rel.toLowerCase().includes(lower)) {
@@ -76,7 +79,7 @@ async function searchFilenames(
     }
   }
 
-  await walk(workspaceRoot);
+  await walk(workspaceRoot, 0);
   return hits;
 }
 
@@ -116,6 +119,24 @@ async function searchContent(
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function readFileSlice(absPath: string, cap: number): Promise<{ buffer: Buffer }> {
+  const handle = await fs.open(absPath, 'r');
+  try {
+    const out = Buffer.alloc(cap);
+    let total = 0;
+    while (total < cap) {
+      const remaining = cap - total;
+      const chunk = Math.min(READ_FILE_CHUNK_BYTES, remaining);
+      const { bytesRead } = await handle.read(out, total, chunk, total);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+    }
+    return { buffer: out.subarray(0, total) };
+  } finally {
+    await handle.close();
+  }
 }
 
 function looksBinary(buf: Buffer): boolean {
@@ -199,17 +220,20 @@ export function registerCodebaseHandlers(): void {
     async (req): Promise<CodebaseReadFileResponse> => {
       let resolved: string;
       try {
-        resolved = resolveWithinWorkspace(req.workspaceRoot, req.path);
+        resolved = await resolveWithinWorkspace(req.workspaceRoot, req.path);
       } catch (err) {
         throw toFriendlyError(err);
       }
       const cap = Math.min(req.maxBytes ?? MAX_PREVIEW_BYTES, MAX_PREVIEW_BYTES);
       let sizeBytes: number;
-      let buf: Buffer;
+      let sliced: Buffer;
+      let truncated: boolean;
       try {
         const stat = await fs.stat(resolved);
         sizeBytes = stat.size;
-        buf = await fs.readFile(resolved);
+        const result = await readFileSlice(resolved, cap);
+        sliced = result.buffer;
+        truncated = sizeBytes > sliced.length;
       } catch (err) {
         logger.warn(
           { err: err instanceof Error ? err.message : String(err), path: req.path },
@@ -217,8 +241,6 @@ export function registerCodebaseHandlers(): void {
         );
         throw toFriendlyError(err);
       }
-      const truncated = buf.length > cap;
-      const sliced = truncated ? buf.subarray(0, cap) : buf;
       if (looksBinary(sliced)) {
         return {
           path: req.path,
@@ -266,7 +288,7 @@ export function registerCodebaseHandlers(): void {
 
   registerInvoke('shell:show-item-in-folder', showItemSchema, async (req) => {
     try {
-      const resolved = resolveWithinWorkspace(req.workspaceRoot, req.path);
+      const resolved = await resolveWithinWorkspace(req.workspaceRoot, req.path);
       shell.showItemInFolder(resolved);
       return { ok: true };
     } catch (err) {
@@ -277,7 +299,7 @@ export function registerCodebaseHandlers(): void {
 
   registerInvoke('shell:open-path', showItemSchema, async (req) => {
     try {
-      const resolved = resolveWithinWorkspace(req.workspaceRoot, req.path);
+      const resolved = await resolveWithinWorkspace(req.workspaceRoot, req.path);
       const err = await shell.openPath(resolved);
       if (err) return { ok: false, error: err };
       return { ok: true };

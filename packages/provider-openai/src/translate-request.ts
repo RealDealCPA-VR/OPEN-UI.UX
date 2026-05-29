@@ -26,6 +26,24 @@ export interface OpenAITool {
   };
 }
 
+export type OpenAIToolChoice =
+  | 'auto'
+  | 'required'
+  | 'none'
+  | { type: 'function'; function: { name: string } };
+
+export type OpenAIResponseFormat =
+  | { type: 'text' }
+  | { type: 'json_object' }
+  | {
+      type: 'json_schema';
+      json_schema: {
+        name: string;
+        schema: Record<string, unknown>;
+        strict?: boolean;
+      };
+    };
+
 export interface OpenAIChatRequestBody {
   model: string;
   messages: OpenAIMessage[];
@@ -36,10 +54,19 @@ export interface OpenAIChatRequestBody {
   tools?: OpenAITool[];
   stream: boolean;
   stream_options?: { include_usage: boolean };
+  tool_choice?: OpenAIToolChoice;
+  response_format?: OpenAIResponseFormat;
 }
 
 export function translateMessages(messages: Message[]): OpenAIMessage[] {
   return messages.flatMap(translateMessage);
+}
+
+function stringifyToolOutput(output: unknown): string {
+  if (typeof output === 'string') return output;
+  if (output === null) return 'null';
+  if (output === undefined) return '';
+  return JSON.stringify(output);
 }
 
 function translateMessage(msg: Message): OpenAIMessage[] {
@@ -92,8 +119,7 @@ function translateMessage(msg: Message): OpenAIMessage[] {
         out.push({
           role: 'tool',
           tool_call_id: block.toolUseId,
-          content:
-            typeof block.output === 'string' ? block.output : JSON.stringify(block.output ?? ''),
+          content: stringifyToolOutput(block.output),
         });
         break;
     }
@@ -130,5 +156,36 @@ export function buildChatRequestBody(
   const tools = translateTools(req.tools);
   if (tools) body.tools = tools;
   if (opts.stream) body.stream_options = { include_usage: true };
+  if (req.toolChoice !== undefined) {
+    const tc = translateToolChoice(req.toolChoice);
+    if (tc !== undefined) body.tool_choice = tc;
+  }
+  if (req.responseFormat !== undefined) {
+    body.response_format = translateResponseFormat(req.responseFormat);
+  }
   return body;
+}
+
+function translateToolChoice(
+  choice: NonNullable<ChatRequest['toolChoice']>,
+): OpenAIToolChoice | undefined {
+  if (choice === 'auto' || choice === 'required' || choice === 'none') return choice;
+  if (typeof choice === 'object' && typeof choice.name === 'string') {
+    return { type: 'function', function: { name: choice.name } };
+  }
+  return undefined;
+}
+
+function translateResponseFormat(
+  format: NonNullable<ChatRequest['responseFormat']>,
+): OpenAIResponseFormat {
+  if (format.type === 'text') return { type: 'text' };
+  if (format.type === 'json_object') return { type: 'json_object' };
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: format.name ?? 'response',
+      schema: format.schema as Record<string, unknown>,
+    },
+  };
 }

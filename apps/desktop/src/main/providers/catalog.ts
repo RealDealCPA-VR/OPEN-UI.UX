@@ -34,6 +34,18 @@ export interface CatalogEntry {
   buildPingSpec(input: PingInput): PingSpec;
 }
 
+/*
+ * TODO(v0.1): refresh this catalog from the live provider /models endpoints on
+ * a cadence (or on demand) so we don't drift behind upstream model releases.
+ * For v15 we keep the static list per provider because:
+ *   1. /models endpoints require valid API keys, which we don't always have.
+ *   2. Most providers' /models lists are noisy (legacy / unreleased entries).
+ *   3. Capability metadata (context window, supports tools, supports vision)
+ *      isn't returned, so we'd still need a curated map anyway.
+ * Plan: add a `refreshCatalog()` IPC that fetches /models for any provider
+ * with a configured + valid key, then merges live IDs into the curated
+ * capabilities map. Tracked in the v0.1 backlog.
+ */
 const stripSlash = (s: string): string => s.replace(/\/$/, '');
 
 const OPENAI_BASE = 'https://api.openai.com/v1';
@@ -190,6 +202,11 @@ export const catalog: CatalogEntry[] = [
       },
     ],
     factory: ollamaProvider,
+    // TODO(v0.1): swap this for the live `/api/tags` list returned by the local
+    // Ollama daemon (see ollama-probe.ts) so the model picker reflects what the
+    // user has actually pulled. We currently fall back to the static curated
+    // list because (a) the daemon may not be running, and (b) /api/tags lacks
+    // the capability metadata (context window, supports tools) we need.
     loadModels: (config) =>
       ollamaProvider.create(ollamaProvider.configSchema.parse(config)).listModels(),
     buildPingSpec: ({ baseUrl }) => ({

@@ -32,6 +32,11 @@ export interface SubstituteResult {
   unknownTokens: string[];
 }
 
+function fenceArgValue(name: string, value: string): string {
+  const safeValue = value.replace(/<\/arg>/gi, '</arg​>').replace(/<arg(\s|>)/gi, '<arg​$1');
+  return `<arg name="${name}">${safeValue}</arg>`;
+}
+
 export function substitute(template: string, vars: SubstituteVars): SubstituteResult {
   const unknown = new Set<string>();
   const out = template.replace(TOKEN_RE, (_match, rawName: string) => {
@@ -41,7 +46,7 @@ export function substitute(template: string, vars: SubstituteVars): SubstituteRe
     if (name === 'git_branch') return vars.gitBranch;
     if (Object.prototype.hasOwnProperty.call(vars.args, name)) {
       const v = vars.args[name];
-      if (v !== undefined) return v;
+      if (v !== undefined) return fenceArgValue(name, v);
     }
     unknown.add(name);
     return `{{${name}}}`;

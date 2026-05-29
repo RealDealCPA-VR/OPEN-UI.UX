@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'r
 import type { RunnerInfo, RunnerInstallCheck } from '../../shared/ipc-types';
 import type { GitInitResult, RunnerProbeResult } from '../../shared/runner-discovery';
 import { useSelectedModel } from '../state/selected-model-context';
+import { Modal } from './Modal';
 import { useToast } from './Toasts';
 
 interface RunnerBridge {
@@ -293,10 +294,11 @@ export function AgentSpawnModal({
       e.preventDefault();
       if (canSubmit) void submit();
     }
-    if (e.key === 'Escape' && !busy) {
-      e.preventDefault();
-      onClose();
-    }
+  };
+
+  const handleClose = (): void => {
+    if (busy) return;
+    onClose();
   };
 
   const selectedRunner = runners.find((r) => r.id === runnerId);
@@ -314,10 +316,16 @@ export function AgentSpawnModal({
     : '';
 
   return (
-    <div className="approval-modal-backdrop" role="dialog" aria-modal="true" onKeyDown={onKeyDown}>
-      <div className="approval-modal agent-spawn-modal">
+    <Modal
+      open
+      onClose={handleClose}
+      labelledBy="agent-spawn-modal-title"
+      className="approval-modal agent-spawn-modal"
+      closeOnBackdrop={!busy}
+    >
+      <div onKeyDown={onKeyDown}>
         <header className="approval-modal-header">
-          <h2>Spawn task</h2>
+          <h2 id="agent-spawn-modal-title">Spawn task</h2>
         </header>
 
         <label className="agent-spawn-field">
@@ -588,6 +596,6 @@ export function AgentSpawnModal({
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

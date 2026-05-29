@@ -1,18 +1,22 @@
 import type { Transport } from './transport';
 import type { HttpServerConfig } from './config';
+import { assertHostAllowed } from './host-guard';
 
 type MessageHandler = (message: unknown) => void;
 type CloseHandler = () => void;
 
 export class HttpTransport implements Transport {
   readonly kind = 'http' as const;
-  private messageHandler: MessageHandler | null = null;
-  private closeHandler: CloseHandler | null = null;
+  private readonly messageHandlers: MessageHandler[] = [];
+  private readonly closeHandlers: CloseHandler[] = [];
   private sessionId: string | null = null;
   private started = false;
   private abort: AbortController | null = null;
+  private listenChannelStarted = false;
 
-  constructor(private readonly config: HttpServerConfig) {}
+  constructor(private readonly config: HttpServerConfig) {
+    assertHostAllowed(config.url, { allowlist: config.hostAllowlist });
+  }
 
   async start(): Promise<void> {
     if (this.started) return;
@@ -26,7 +30,7 @@ export class HttpTransport implements Transport {
       this.abort = null;
     }
     this.started = false;
-    this.closeHandler?.();
+    this.fireClose();
   }
 
   async send(message: unknown): Promise<void> {
@@ -48,18 +52,53 @@ export class HttpTransport implements Transport {
     if (!response.ok) throw new Error(`HTTP transport ${response.status}`);
 
     const newSession = response.headers.get('mcp-session-id');
-    if (newSession) this.sessionId = newSession;
+    if (newSession) {
+      this.sessionId = newSession;
+      this.maybeStartListenChannel();
+    }
 
-    if (response.status === 202) return; // notification accepted
+    if (response.status === 202) return;
 
     const contentType = response.headers.get('content-type') ?? '';
     if (contentType.includes('application/json')) {
       const parsed: unknown = await response.json();
-      this.messageHandler?.(parsed);
+      this.dispatchMessage(parsed);
       return;
     }
     if (contentType.includes('text/event-stream') && response.body) {
       void this.consumeStream(response.body);
+    }
+  }
+
+  private maybeStartListenChannel(): void {
+    if (this.listenChannelStarted) return;
+    this.listenChannelStarted = true;
+    void this.openListenChannel();
+  }
+
+  private async openListenChannel(): Promise<void> {
+    if (!this.abort) return;
+    try {
+      const headers: Record<string, string> = {
+        accept: 'text/event-stream',
+        ...(this.config.headers ?? {}),
+      };
+      if (this.sessionId) headers['mcp-session-id'] = this.sessionId;
+
+      const response = await fetch(this.config.url, {
+        method: 'GET',
+        headers,
+        signal: this.abort.signal,
+      });
+
+      if (!response.ok || !response.body) return;
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!contentType.includes('text/event-stream')) return;
+      await this.consumeStream(response.body);
+    } catch {
+      // listen channel ended; not fatal
+    } finally {
+      this.listenChannelStarted = false;
     }
   }
 
@@ -100,17 +139,25 @@ export class HttpTransport implements Transport {
   private dispatch(data: string): void {
     try {
       const parsed: unknown = JSON.parse(data);
-      this.messageHandler?.(parsed);
+      this.dispatchMessage(parsed);
     } catch {
       // ignore malformed
     }
   }
 
+  private dispatchMessage(parsed: unknown): void {
+    for (const handler of this.messageHandlers) handler(parsed);
+  }
+
+  private fireClose(): void {
+    for (const handler of this.closeHandlers) handler();
+  }
+
   onMessage(handler: MessageHandler): void {
-    this.messageHandler = handler;
+    this.messageHandlers.push(handler);
   }
 
   onClose(handler: CloseHandler): void {
-    this.closeHandler = handler;
+    this.closeHandlers.push(handler);
   }
 }

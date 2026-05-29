@@ -2,7 +2,14 @@ import type { ConversationSearchHit } from '../../shared/conversation-search';
 import type { CodebaseSearchHit } from '../../shared/codebase-search';
 import type { Skill } from '../../shared/skills';
 
-export type PaletteCategory = 'message' | 'file' | 'skill';
+export type PaletteCategory = 'message' | 'file' | 'skill' | 'mcp-tool';
+
+export interface PaletteMcpTool {
+  serverId: string;
+  serverDisplayName: string;
+  toolName: string;
+  description?: string;
+}
 
 export interface PaletteEntry {
   id: string;
@@ -14,6 +21,7 @@ export interface PaletteEntry {
   message?: ConversationSearchHit;
   file?: CodebaseSearchHit;
   skill?: Skill;
+  mcpTool?: PaletteMcpTool;
 }
 
 interface MergeOptions {
@@ -27,7 +35,7 @@ export function mergePaletteResults(
   fileHits: ReadonlyArray<CodebaseSearchHit>,
   skillHits: ReadonlyArray<Skill>,
   query: string,
-  options: MergeOptions = {},
+  options: MergeOptions & { mcpTools?: ReadonlyArray<PaletteMcpTool> } = {},
 ): PaletteEntry[] {
   const limit = options.perCategoryLimit ?? DEFAULT_PER_CATEGORY;
   const normalizedQuery = query.trim().toLowerCase();
@@ -65,12 +73,32 @@ export function mergePaletteResults(
       skill,
     }));
 
-  return [...messageEntries, ...fileEntries, ...skillEntries];
+  const mcpToolEntries: PaletteEntry[] = (options.mcpTools ?? [])
+    .filter((t) => matchesMcpTool(t, normalizedQuery))
+    .slice(0, limit)
+    .map((tool, idx) => ({
+      id: `mcp-tool:${tool.serverId}:${tool.toolName}`,
+      category: 'mcp-tool',
+      title: `Run ${tool.toolName}`,
+      subtitle: tool.description ?? `MCP tool on ${tool.serverDisplayName}`,
+      detail: tool.serverDisplayName,
+      rank: idx,
+      mcpTool: tool,
+    }));
+
+  return [...messageEntries, ...fileEntries, ...skillEntries, ...mcpToolEntries];
 }
 
 function matchesSkill(skill: Skill, normalizedQuery: string): boolean {
   if (!normalizedQuery) return true;
   const haystack = `${skill.name} ${skill.description}`.toLowerCase();
+  return haystack.includes(normalizedQuery);
+}
+
+function matchesMcpTool(tool: PaletteMcpTool, normalizedQuery: string): boolean {
+  if (!normalizedQuery) return true;
+  const haystack =
+    `${tool.toolName} ${tool.serverDisplayName} ${tool.description ?? ''}`.toLowerCase();
   return haystack.includes(normalizedQuery);
 }
 
@@ -101,10 +129,11 @@ export function groupByCategory(
     message: entries.filter((e) => e.category === 'message'),
     file: entries.filter((e) => e.category === 'file'),
     skill: entries.filter((e) => e.category === 'skill'),
+    'mcp-tool': entries.filter((e) => e.category === 'mcp-tool'),
   };
 }
 
 export function flattenForKeyboardNav(entries: ReadonlyArray<PaletteEntry>): PaletteEntry[] {
   const groups = groupByCategory(entries);
-  return [...groups.message, ...groups.file, ...groups.skill];
+  return [...groups.message, ...groups.file, ...groups.skill, ...groups['mcp-tool']];
 }

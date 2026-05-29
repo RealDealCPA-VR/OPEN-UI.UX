@@ -79,9 +79,9 @@ export class WorkspaceWatcher {
       ignored: (path: string): boolean => this.shouldIgnore(path),
     });
 
-    watcher.on('add', (p) => this.queue('added', p));
-    watcher.on('change', (p) => this.queue('changed', p));
-    watcher.on('unlink', (p) => this.queue('removed', p));
+    watcher.on('add', (p) => this.handleFsEvent('added', p));
+    watcher.on('change', (p) => this.handleFsEvent('changed', p));
+    watcher.on('unlink', (p) => this.handleFsEvent('removed', p));
 
     this.fsWatcher = watcher;
     await new Promise<void>((resolve) => watcher.once('ready', () => resolve()));
@@ -110,9 +110,20 @@ export class WorkspaceWatcher {
     if (path === this.workspaceRoot) return false;
     const rel = toRelPosix(this.workspaceRoot, path);
     if (rel.length === 0 || rel.startsWith('..')) return false;
+    if (rel === '.gitignore' || rel === '.opencodexignore') return false;
     if (isInHeavyDir(rel)) return true;
     if (this.ignore?.matches(rel)) return true;
     return false;
+  }
+
+  private handleFsEvent(kind: 'added' | 'changed' | 'removed', abs: string): void {
+    if (!this.workspaceRoot) return;
+    const rel = toRelPosix(this.workspaceRoot, abs);
+    if (rel === '.gitignore' || rel === '.opencodexignore') {
+      this.ignore = readIgnoreMatcherForWorkspace(this.workspaceRoot);
+      return;
+    }
+    this.queue(kind, abs);
   }
 
   private queue(kind: 'added' | 'changed' | 'removed', abs: string): void {
@@ -165,35 +176,47 @@ export class WorkspaceWatcher {
 
 let activeWatcher: WorkspaceWatcher | null = null;
 let activeRoot: string | null = null;
+let pendingTransition: Promise<void> = Promise.resolve();
 
 /**
  * Updates the singleton workspace watcher. Pass null to stop watching.
  * Safe to call repeatedly; no-ops when target matches the currently watched root.
+ *
+ * Concurrent calls are serialized so the prior watcher's `close()` always
+ * resolves before the next watcher starts — otherwise chokidar handles leak.
  */
 export async function setWatchedWorkspace(
   root: string | null,
   onChange: WatcherChangeHandler,
 ): Promise<void> {
-  if (root === activeRoot && activeWatcher !== null) return;
-  if (activeWatcher) {
+  const next = pendingTransition.then(async () => {
+    if (root === activeRoot && activeWatcher !== null) return;
+    if (activeWatcher) {
+      const prev = activeWatcher;
+      activeWatcher = null;
+      activeRoot = null;
+      await prev.stop();
+    }
+    if (root === null) return;
+    const w = new WorkspaceWatcher();
+    await w.start(root, onChange);
+    activeWatcher = w;
+    activeRoot = root;
+  });
+  pendingTransition = next.catch(() => undefined);
+  return next;
+}
+
+export async function stopWatchedWorkspace(): Promise<void> {
+  const next = pendingTransition.then(async () => {
+    if (!activeWatcher) return;
     const prev = activeWatcher;
     activeWatcher = null;
     activeRoot = null;
     await prev.stop();
-  }
-  if (root === null) return;
-  const next = new WorkspaceWatcher();
-  await next.start(root, onChange);
-  activeWatcher = next;
-  activeRoot = root;
-}
-
-export async function stopWatchedWorkspace(): Promise<void> {
-  if (!activeWatcher) return;
-  const prev = activeWatcher;
-  activeWatcher = null;
-  activeRoot = null;
-  await prev.stop();
+  });
+  pendingTransition = next.catch(() => undefined);
+  return next;
 }
 
 export function getWatchedWorkspace(): string | null {

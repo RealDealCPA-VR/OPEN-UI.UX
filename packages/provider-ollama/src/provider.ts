@@ -7,6 +7,7 @@ import type {
   ModelCapabilities,
   ProviderFactory,
 } from '@opencodex/core';
+import { sanitizeErrorDetail } from '@opencodex/core';
 import { ollamaConfigSchema, type OllamaConfig } from './config';
 import { findModel, knownModels } from './models';
 import { ndjsonLines } from './ndjson';
@@ -35,7 +36,7 @@ class OllamaProvider implements LLMProvider {
       yield { type: 'done', stopReason: 'error' };
       return;
     }
-    yield* streamChunksToEvents(this.chunksFromBody(response.body));
+    yield* streamChunksToEvents(this.chunksFromBody(response.body), { model: req.model });
   }
 
   async embed(req: EmbedRequest): Promise<EmbedResult> {
@@ -97,7 +98,7 @@ class OllamaProvider implements LLMProvider {
 
   private async safeReadText(response: Response): Promise<string> {
     try {
-      return await response.text();
+      return sanitizeErrorDetail(await response.text());
     } catch {
       return '<unreadable body>';
     }

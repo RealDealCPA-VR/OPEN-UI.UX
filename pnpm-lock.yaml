@@ -95,6 +95,9 @@ importers:
       '@opencodex/provider-xai':
         specifier: workspace:*
         version: link:../../packages/provider-xai
+      '@opencodex/rag-chunker':
+        specifier: workspace:*
+        version: link:../../packages/rag-chunker
       '@opencodex/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
@@ -275,6 +278,9 @@ importers:
       zod:
         specifier: ^3.22.0
         version: 3.25.76
+      zod-to-json-schema:
+        specifier: ^3.25.2
+        version: 3.25.2(zod@3.25.76)
     devDependencies:
       typescript:
         specifier: ^5.4.0
@@ -320,6 +326,9 @@ importers:
       '@opencodex/core':
         specifier: workspace:*
         version: link:../core
+      '@opencodex/memory-utils':
+        specifier: workspace:*
+        version: link:../memory-utils
       zod:
         specifier: ^3.22.0
         version: 3.25.76
@@ -352,9 +361,21 @@ importers:
       '@opencodex/core':
         specifier: workspace:*
         version: link:../core
+      '@opencodex/memory-utils':
+        specifier: workspace:*
+        version: link:../memory-utils
       zod:
         specifier: ^3.22.0
         version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.1(@types/node@20.19.41)(jsdom@25.0.1)
+
+  packages/memory-utils:
     devDependencies:
       typescript:
         specifier: ^5.4.0
@@ -604,10 +625,16 @@ importers:
       '@opencodex/core':
         specifier: workspace:*
         version: link:../core
+      picomatch:
+        specifier: ^4.0.4
+        version: 4.0.4
       zod:
         specifier: ^3.22.0
         version: 3.25.76
     devDependencies:
+      '@types/picomatch':
+        specifier: ^3.0.1
+        version: 3.0.2
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
@@ -1541,6 +1568,9 @@ packages:
 
   '@types/pg@8.6.1':
     resolution: {integrity: sha512-1Kc4oAGzAl7uqUStZCDvaLFqZrW9qWSjXOmBfdgyBP5La7Us6Mg4GBvRlSoaZMhQF/zSj1C8CtKMBkoiT8eL8w==}
+
+  '@types/picomatch@3.0.2':
+    resolution: {integrity: sha512-n0i8TD3UDB7paoMMxA3Y65vUncFJXjcUf7lQY7YyKGl6031FNjfsLs6pdLFCy2GNFxItPJG8GvvpbZc2skH7WA==}
 
   '@types/plist@3.0.5':
     resolution: {integrity: sha512-E6OCaRmAe4WDmWNsL/9RMqdkkzDCY1etutkflWk4c+AcjDU07Pcz1fQwTX0TQz+Pxqn9i4L1TU3UFpjnrcDgxA==}
@@ -4346,6 +4376,11 @@ packages:
     resolution: {integrity: sha512-9qv4rlDiopXg4E69k+vMHjNN63YFMe9sZMrdlvKnCjlCRWeCBswPPMPUfx+ipsAWq1LXHe70RcbaHdJJpS6hyQ==}
     engines: {node: '>= 10'}
 
+  zod-to-json-schema@3.25.2:
+    resolution: {integrity: sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==}
+    peerDependencies:
+      zod: ^3.25.28 || ^4
+
   zod-validation-error@4.0.2:
     resolution: {integrity: sha512-Q6/nZLe6jxuU80qb/4uJ4t5v2VEZ44lzQjPDhYJNztRQ4wyWc6VF3D3Kb/fAuPetZQnhS3hnajCf9CsWesghLQ==}
     engines: {node: '>=18.0.0'}
@@ -5385,6 +5420,8 @@ snapshots:
       '@types/node': 20.19.41
       pg-protocol: 1.14.0
       pg-types: 2.2.0
+
+  '@types/picomatch@3.0.2': {}
 
   '@types/plist@3.0.5':
     dependencies:
@@ -8682,6 +8719,10 @@ snapshots:
       archiver-utils: 3.0.4
       compress-commons: 4.1.2
       readable-stream: 3.6.2
+
+  zod-to-json-schema@3.25.2(zod@3.25.76):
+    dependencies:
+      zod: 3.25.76
 
   zod-validation-error@4.0.2(zod@3.25.76):
     dependencies:

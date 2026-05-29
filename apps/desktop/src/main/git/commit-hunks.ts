@@ -5,6 +5,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { logger } from '../logger';
 import { isGitRepo } from '../agent/worktrees';
+import { scrubGitErrorMessage } from './branch-from-conversation';
 import type {
   GitCommitHunksRequest,
   GitCommitHunksResponse,
@@ -43,7 +44,7 @@ async function applyPatchToIndex(
     await runGit(repoRoot, ['apply', '--cached', '--whitespace=nowarn', file]);
     return { ok: true };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = scrubGitErrorMessage(err instanceof Error ? err.message : String(err));
     return { ok: false, error: message };
   }
 }
@@ -89,7 +90,7 @@ export async function commitHunks(
     const sha = stdout.trim();
     return { ok: true, commitSha: sha, rejectedFiles };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = scrubGitErrorMessage(err instanceof Error ? err.message : String(err));
     logger.warn({ err: message }, 'commitHunks failed');
     return { ok: false, error: message, rejectedFiles };
   } finally {

@@ -7,7 +7,7 @@
 // tree at its install location.
 
 import { build } from 'esbuild';
-import { existsSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, copyFileSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,8 +30,20 @@ async function bundlePlugin(plugin) {
     throw new Error(`entry not found: ${entry}`);
   }
 
-  rmSync(distDir, { recursive: true, force: true });
-  mkdirSync(distDir, { recursive: true });
+  // Only remove our own bundle outputs from a previous esbuild run — do NOT
+  // wipe the whole dist/ directory, because `pnpm -r build` ran tsc just
+  // before this step and emitted .d.ts / .d.ts.map files into the same
+  // directory that downstream consumers (the desktop app, plugin authors
+  // importing types) rely on.
+  if (existsSync(distDir)) {
+    for (const entry of readdirSync(distDir)) {
+      if (entry === 'index.js' || entry === 'index.js.map') {
+        rmSync(join(distDir, entry), { force: true });
+      }
+    }
+  } else {
+    mkdirSync(distDir, { recursive: true });
+  }
 
   await build({
     entryPoints: [entry],

@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LanceVectorStore, type VectorChunk } from './vector-store';
+import { LanceVectorStore, SqliteVectorStore, type VectorChunk } from './vector-store';
 
 function makeChunk(
   content: string,
@@ -53,7 +53,7 @@ describe('LanceVectorStore', () => {
         expect(persistent.count()).toBe(1);
         persistent.close();
 
-        const dbFile = path.join(tmp.root, 'lance.db');
+        const dbFile = path.join(tmp.root, 'vectors.db');
         const stat = await fs.stat(dbFile);
         expect(stat.isFile()).toBe(true);
 
@@ -212,6 +212,25 @@ describe('LanceVectorStore', () => {
 
     it('reports the in-memory path correctly', () => {
       expect(store.path).toBe(':memory:');
+    });
+  });
+
+  describe('class aliases', () => {
+    it('LanceVectorStore is an alias for SqliteVectorStore', () => {
+      expect(LanceVectorStore).toBe(SqliteVectorStore);
+    });
+  });
+
+  describe('magnitude bucket prefilter', () => {
+    it('still returns the highest-cosine match even when many vectors live in distant buckets', () => {
+      // Match-vector parallel to query
+      store.upsert('exact.ts', [makeChunk('hit', 1, 1, [10, 0, 0])]);
+      // Many low-magnitude distractors in a different bucket
+      for (let i = 0; i < 32; i++) {
+        store.upsert(`noise-${i}.ts`, [makeChunk('miss', 1, 1, [0.01, 0.01, 0.01])]);
+      }
+      const hits = store.searchByVector([1, 0, 0], 5);
+      expect(hits[0]?.path).toBe('exact.ts');
     });
   });
 });

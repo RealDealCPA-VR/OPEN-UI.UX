@@ -1,6 +1,7 @@
 import cronParser from 'cron-parser';
 import { logger } from '../logger';
 import type { ScheduledTask } from '../../shared/scheduled-tasks';
+import { track } from '../telemetry/manager';
 import { FileChangeWatcherRegistry } from './file-watcher';
 import { fireScheduledTask } from './runner';
 import { getTask, listTasks as listTasksFromStore, setTaskRunBookkeeping } from './store';
@@ -20,30 +21,37 @@ export interface SchedulerOptions {
 }
 
 const MAX_SETTIMEOUT_MS = 2_147_483_647;
+export const DEFAULT_MAX_CONCURRENT_RUNS_PER_TASK = 1;
+const SLEEP_DRIFT_DETECTION_MS = 90_000;
 
-let running = false;
-let timer: ReturnType<typeof setTimeout> | null = null;
-let listTasksImpl: TaskListProvider = () => listTasksFromStore();
-let fireImpl: typeof fireScheduledTask = fireScheduledTask;
-let notifyImpl: Notifier = () => undefined;
-const runningTasks = new Set<string>();
-const fileWatcherRegistry = new FileChangeWatcherRegistry();
-const skipLogSeen = new Set<string>();
+interface FireLogEntry {
+  taskId: string;
+  firedAt: string;
+  reason: 'tick' | 'catchup' | 'manual';
+}
 
-function logSkipOnce(taskId: string, reason: string, message: string): void {
-  const key = `${taskId}::${reason}`;
-  if (skipLogSeen.has(key)) return;
-  skipLogSeen.add(key);
-  logger.info({ taskId, reason }, message);
+const fireLog: FireLogEntry[] = [];
+const FIRE_LOG_MAX_ENTRIES = 1_000;
+
+function recordFireLog(entry: FireLogEntry): void {
+  fireLog.push(entry);
+  if (fireLog.length > FIRE_LOG_MAX_ENTRIES) {
+    fireLog.splice(0, fireLog.length - FIRE_LOG_MAX_ENTRIES);
+  }
 }
 
 /**
  * Compute the next-fire UTC date for a task's trigger.
  *
  * Returns null for event-driven triggers (manual / file-change / git-hook /
- * webhook) — those have no scheduled tick. Cron uses cron-parser.
+ * webhook) — those have no scheduled tick. Cron uses cron-parser. Honors an
+ * optional `tz` (IANA timezone) on the cron trigger.
  */
-export function computeNextFire(task: ScheduledTask, after: Date = new Date()): Date | null {
+export function computeNextFire(
+  task: ScheduledTask,
+  after: Date = new Date(),
+  tzOverride?: string,
+): Date | null {
   switch (task.trigger.type) {
     case 'manual':
     case 'file-change':
@@ -51,9 +59,10 @@ export function computeNextFire(task: ScheduledTask, after: Date = new Date()): 
     case 'webhook':
       return null;
     case 'cron': {
+      const tz = tzOverride ?? task.trigger.tz ?? 'UTC';
       const it = cronParser.parseExpression(task.trigger.expr, {
         currentDate: after,
-        tz: 'UTC',
+        tz,
       });
       return it.next().toDate();
     }
@@ -69,8 +78,8 @@ export function computeNextFire(task: ScheduledTask, after: Date = new Date()): 
  * Validate a cron expression. Throws with a descriptive message if invalid.
  * Use at task-create/update time so bad expressions don't reach the tick loop.
  */
-export function validateCronExpression(expr: string): void {
-  cronParser.parseExpression(expr);
+export function validateCronExpression(expr: string, tz?: string): void {
+  cronParser.parseExpression(expr, tz ? { tz } : undefined);
 }
 
 interface NextFire {
@@ -78,207 +87,383 @@ interface NextFire {
   whenMs: number;
 }
 
-function pickNextDueTask(now: Date = new Date()): NextFire | null {
-  const tasks = listTasksImpl().filter((t) => t.enabled && t.trigger.type === 'cron');
-  let best: NextFire | null = null;
-  for (const task of tasks) {
-    try {
-      const next = computeNextFire(task, now);
-      if (!next) continue;
-      const whenMs = next.getTime();
-      if (best === null || whenMs < best.whenMs) {
-        best = { task, whenMs };
+class Scheduler {
+  private running = false;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private listTasksImpl: TaskListProvider = () => listTasksFromStore();
+  private fireImpl: typeof fireScheduledTask = fireScheduledTask;
+  private notifyImpl: Notifier = () => undefined;
+  private readonly runningCounts = new Map<string, number>();
+  private readonly fileWatcherRegistry = new FileChangeWatcherRegistry();
+  private readonly skipLogSeen = new Set<string>();
+  private maxConcurrentRunsPerTask = DEFAULT_MAX_CONCURRENT_RUNS_PER_TASK;
+  private lastTickWallClockMs: number | null = null;
+  private lastTickPerfMs: number | null = null;
+
+  isRunning(): boolean {
+    return this.running;
+  }
+
+  hasTimer(): boolean {
+    return this.timer !== null;
+  }
+
+  private logSkipOnce(taskId: string, reason: string, message: string): void {
+    const key = `${taskId}::${reason}`;
+    if (this.skipLogSeen.has(key)) return;
+    this.skipLogSeen.add(key);
+    logger.info({ taskId, reason }, message);
+  }
+
+  private pickNextDueTask(now: Date = new Date()): NextFire | null {
+    const tasks = this.listTasksImpl().filter((t) => t.enabled && t.trigger.type === 'cron');
+    let best: NextFire | null = null;
+    for (const task of tasks) {
+      try {
+        const next = computeNextFire(task, now);
+        if (!next) continue;
+        const whenMs = next.getTime();
+        if (best === null || whenMs < best.whenMs) {
+          best = { task, whenMs };
+        }
+      } catch (err) {
+        logger.warn(
+          { err: err instanceof Error ? err.message : String(err), taskId: task.id },
+          'scheduler: computeNextFire failed; skipping task',
+        );
       }
+    }
+    return best;
+  }
+
+  private clearTimer(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+
+  private armTimer(delayMs: number, onFire: () => void): void {
+    if (delayMs <= MAX_SETTIMEOUT_MS) {
+      this.timer = setTimeout(onFire, delayMs);
+      return;
+    }
+    // setTimeout caps at ~24.85 days. Chain a half-hop and re-arm on landing.
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.armTimer(delayMs - MAX_SETTIMEOUT_MS, onFire);
+    }, MAX_SETTIMEOUT_MS);
+  }
+
+  private scheduleNext(): void {
+    if (!this.running) return;
+    this.clearTimer();
+    const now = new Date();
+    this.detectMissedSlots(now);
+    const due = this.pickNextDueTask(now);
+    if (!due) {
+      this.lastTickWallClockMs = now.getTime();
+      return;
+    }
+    const delay = Math.max(0, due.whenMs - now.getTime());
+    try {
+      withSqliteBusyRetry(() =>
+        setTaskRunBookkeeping(due.task.id, {
+          nextRunAt: new Date(due.whenMs).toISOString().slice(0, 19).replace('T', ' '),
+        }),
+      );
     } catch (err) {
       logger.warn(
-        { err: err instanceof Error ? err.message : String(err), taskId: task.id },
-        'scheduler: computeNextFire failed; skipping task',
+        { err: err instanceof Error ? err.message : String(err), taskId: due.task.id },
+        'scheduler: setTaskRunBookkeeping failed; continuing',
+      );
+    }
+    this.lastTickWallClockMs = now.getTime();
+    this.lastTickPerfMs = performance.now();
+    this.armTimer(delay, () => {
+      this.timer = null;
+      void this.tick(due.task.id);
+    });
+  }
+
+  private detectMissedSlots(now: Date): void {
+    if (this.lastTickWallClockMs === null || this.lastTickPerfMs === null) return;
+    const wallGap = now.getTime() - this.lastTickWallClockMs;
+    const perfGap = performance.now() - this.lastTickPerfMs;
+    // A real sleep/wake gap has BOTH wall-clock and perf elapse together. If
+    // only wall-clock jumped (e.g. fake timers in tests), this is not a sleep.
+    if (wallGap <= SLEEP_DRIFT_DETECTION_MS) return;
+    if (perfGap <= SLEEP_DRIFT_DETECTION_MS) return;
+    let missed = 0;
+    for (const task of this.listTasksImpl()) {
+      if (!task.enabled || task.trigger.type !== 'cron') continue;
+      try {
+        const it = cronParser.parseExpression(task.trigger.expr, {
+          currentDate: new Date(this.lastTickWallClockMs),
+          endDate: now,
+          tz: task.trigger.tz ?? 'UTC',
+        });
+        while (true) {
+          try {
+            it.next();
+            missed += 1;
+          } catch {
+            break;
+          }
+        }
+      } catch {
+        // Bad cron / unable to enumerate — ignore for missed-slot counting.
+      }
+    }
+    if (missed > 0) {
+      try {
+        track('scheduler.missed_slots', { count: missed, gapMs: wallGap });
+      } catch {
+        // telemetry is best-effort
+      }
+      logger.info({ missed, gapMs: wallGap }, 'scheduler: detected missed slots after sleep/wake');
+    }
+  }
+
+  private runningCount(taskId: string): number {
+    return this.runningCounts.get(taskId) ?? 0;
+  }
+
+  private incRunning(taskId: string): void {
+    this.runningCounts.set(taskId, this.runningCount(taskId) + 1);
+  }
+
+  private decRunning(taskId: string): void {
+    const cur = this.runningCount(taskId);
+    if (cur <= 1) this.runningCounts.delete(taskId);
+    else this.runningCounts.set(taskId, cur - 1);
+  }
+
+  private async tick(taskId: string): Promise<void> {
+    if (!this.running) return;
+    const fresh = getTask(taskId);
+    if (!fresh || !fresh.enabled) {
+      this.scheduleNext();
+      return;
+    }
+    if (this.runningCount(taskId) >= this.maxConcurrentRunsPerTask) {
+      this.logSkipOnce(
+        taskId,
+        'concurrent-run',
+        'scheduler: tick fired while task at concurrency cap; skipping and advancing',
+      );
+      this.scheduleNext();
+      return;
+    }
+    this.incRunning(taskId);
+    this.skipLogSeen.delete(`${taskId}::concurrent-run`);
+    recordFireLog({ taskId, firedAt: new Date().toISOString(), reason: 'tick' });
+    try {
+      const res = await this.fireImpl(fresh);
+      this.notifyImpl({ taskId, agentRunId: res.agentRunId, status: res.status });
+    } catch (err) {
+      logger.error(
+        { err: err instanceof Error ? err.message : String(err), taskId },
+        'scheduler: fireScheduledTask threw',
+      );
+    } finally {
+      this.decRunning(taskId);
+      this.scheduleNext();
+    }
+  }
+
+  start(opts: SchedulerOptions = {}): void {
+    if (this.running) return;
+    this.running = true;
+    if (opts.listTasks) this.listTasksImpl = opts.listTasks;
+    if (opts.fire) this.fireImpl = opts.fire;
+    if (opts.onRunCompleted) this.notifyImpl = opts.onRunCompleted;
+    logger.info('scheduler started');
+    void this.runCatchup()
+      .then(() => this.scheduleNext())
+      .then(() => void this.reconcileFileWatchers());
+  }
+
+  stop(): void {
+    this.running = false;
+    this.clearTimer();
+    this.runningCounts.clear();
+    void this.fileWatcherRegistry.stopAll();
+    logger.info('scheduler stopped');
+  }
+
+  rescheduleNow(): void {
+    if (!this.running) return;
+    this.scheduleNext();
+    void this.reconcileFileWatchers();
+  }
+
+  /**
+   * Fire a task by id, regardless of trigger type. Used by event-driven
+   * triggers (file-change, git-hook, webhook). Honors the concurrency cap.
+   */
+  async fireTaskById(taskId: string): Promise<void> {
+    if (!this.running) return;
+    if (this.runningCount(taskId) >= this.maxConcurrentRunsPerTask) {
+      this.logSkipOnce(
+        taskId,
+        'fire-by-id-busy',
+        'scheduler: fireTaskById skipped (at concurrency cap)',
+      );
+      return;
+    }
+    this.skipLogSeen.delete(`${taskId}::fire-by-id-busy`);
+    const fresh = getTask(taskId);
+    if (!fresh || !fresh.enabled) return;
+    this.incRunning(taskId);
+    recordFireLog({ taskId, firedAt: new Date().toISOString(), reason: 'manual' });
+    try {
+      const res = await this.fireImpl(fresh);
+      this.notifyImpl({ taskId, agentRunId: res.agentRunId, status: res.status });
+    } catch (err) {
+      logger.error(
+        { err: err instanceof Error ? err.message : String(err), taskId },
+        'scheduler: fireTaskById threw',
+      );
+    } finally {
+      this.decRunning(taskId);
+    }
+  }
+
+  private async reconcileFileWatchers(): Promise<void> {
+    if (!this.running) return;
+    const desired = this.listTasksImpl()
+      .filter((t) => t.enabled && t.trigger.type === 'file-change')
+      .map((t) => ({
+        taskId: t.id,
+        workspaceRoot: t.workspacePath,
+        glob: t.trigger.type === 'file-change' ? t.trigger.glob : '',
+      }))
+      .filter((d) => d.glob.length > 0 && d.workspaceRoot.length > 0);
+    try {
+      await this.fileWatcherRegistry.reconcile(desired, (id) => this.fireTaskById(id));
+    } catch (err) {
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        'scheduler: file-watcher reconcile failed',
       );
     }
   }
-  return best;
+
+  /**
+   * Catch-up policy: for each enabled cron task whose next_run_at is in the
+   * past, fire ONCE with was_catchup: true. After the fire completes, reset
+   * next_run_at to the next scheduled tick so the UI / next start doesn't
+   * keep showing a stale "due in the past" timestamp.
+   */
+  private async runCatchup(): Promise<void> {
+    const now = new Date();
+    for (const task of this.listTasksImpl()) {
+      if (!task.enabled || task.trigger.type !== 'cron') continue;
+      if (!task.nextRunAt) continue;
+      const next = parseStoredTs(task.nextRunAt);
+      if (!next || next.getTime() > now.getTime()) continue;
+      if (this.runningCount(task.id) >= this.maxConcurrentRunsPerTask) {
+        this.logSkipOnce(
+          task.id,
+          'catchup-busy',
+          'scheduler: catch-up skipped (at concurrency cap)',
+        );
+        continue;
+      }
+      this.incRunning(task.id);
+      void (async (): Promise<void> => {
+        try {
+          const fresh = getTask(task.id);
+          if (!fresh) return;
+          recordFireLog({ taskId: task.id, firedAt: new Date().toISOString(), reason: 'catchup' });
+          const res = await this.fireImpl(fresh, { wasCatchup: true });
+          this.notifyImpl({ taskId: task.id, agentRunId: res.agentRunId, status: res.status });
+          try {
+            const refreshed = getTask(task.id);
+            if (refreshed) {
+              const after = computeNextFire(refreshed, new Date());
+              if (after) {
+                withSqliteBusyRetry(() =>
+                  setTaskRunBookkeeping(task.id, {
+                    nextRunAt: new Date(after.getTime())
+                      .toISOString()
+                      .slice(0, 19)
+                      .replace('T', ' '),
+                  }),
+                );
+              }
+            }
+          } catch (err) {
+            logger.warn(
+              { err: err instanceof Error ? err.message : String(err), taskId: task.id },
+              'scheduler: catch-up post-reset of next_run_at failed',
+            );
+          }
+        } catch (err) {
+          logger.error(
+            { err: err instanceof Error ? err.message : String(err), taskId: task.id },
+            'scheduler: catch-up fire failed',
+          );
+        } finally {
+          this.decRunning(task.id);
+          this.scheduleNext();
+        }
+      })();
+    }
+  }
+
+  setMaxConcurrentRunsPerTask(n: number): void {
+    if (n < 1) throw new Error('maxConcurrentRunsPerTask must be >= 1');
+    this.maxConcurrentRunsPerTask = n;
+  }
+
+  getMaxConcurrentRunsPerTask(): number {
+    return this.maxConcurrentRunsPerTask;
+  }
+
+  resetForTests(): void {
+    this.running = false;
+    this.clearTimer();
+    this.runningCounts.clear();
+    this.skipLogSeen.clear();
+    this.lastTickWallClockMs = null;
+    this.lastTickPerfMs = null;
+    this.maxConcurrentRunsPerTask = DEFAULT_MAX_CONCURRENT_RUNS_PER_TASK;
+    void this.fileWatcherRegistry.stopAll();
+    this.listTasksImpl = () => listTasksFromStore();
+    this.fireImpl = fireScheduledTask;
+    this.notifyImpl = () => undefined;
+  }
 }
 
-function clearTimer(): void {
-  if (timer) {
-    clearTimeout(timer);
-    timer = null;
-  }
-}
-
-function scheduleNext(): void {
-  if (!running) return;
-  clearTimer();
-  const now = new Date();
-  const due = pickNextDueTask(now);
-  if (!due) {
-    // No tasks; nothing to schedule. We'll re-evaluate when tasks change.
-    return;
-  }
-  const delay = Math.max(0, Math.min(due.whenMs - now.getTime(), MAX_SETTIMEOUT_MS));
-  // Persist next_run_at on every reschedule so the UI sees a fresh ETA.
-  try {
-    withSqliteBusyRetry(() =>
-      setTaskRunBookkeeping(due.task.id, {
-        nextRunAt: new Date(due.whenMs).toISOString().slice(0, 19).replace('T', ' '),
-      }),
-    );
-  } catch (err) {
-    logger.warn(
-      { err: err instanceof Error ? err.message : String(err), taskId: due.task.id },
-      'scheduler: setTaskRunBookkeeping failed; continuing',
-    );
-  }
-  timer = setTimeout(() => {
-    timer = null;
-    void tick(due.task.id);
-  }, delay);
-}
-
-async function tick(taskId: string): Promise<void> {
-  if (!running) return;
-  // Re-fetch in case the task changed since we scheduled.
-  const fresh = getTask(taskId);
-  if (!fresh || !fresh.enabled) {
-    scheduleNext();
-    return;
-  }
-  if (runningTasks.has(taskId)) {
-    logSkipOnce(
-      taskId,
-      'concurrent-run',
-      'scheduler: tick fired while task already running; skipping and advancing',
-    );
-    scheduleNext();
-    return;
-  }
-  runningTasks.add(taskId);
-  skipLogSeen.delete(`${taskId}::concurrent-run`);
-  try {
-    const res = await fireImpl(fresh);
-    notifyImpl({ taskId, agentRunId: res.agentRunId, status: res.status });
-  } catch (err) {
-    logger.error(
-      { err: err instanceof Error ? err.message : String(err), taskId },
-      'scheduler: fireScheduledTask threw',
-    );
-  } finally {
-    runningTasks.delete(taskId);
-    scheduleNext();
-  }
-}
+const scheduler = new Scheduler();
 
 export function startScheduler(opts: SchedulerOptions = {}): void {
-  if (running) return;
-  running = true;
-  if (opts.listTasks) listTasksImpl = opts.listTasks;
-  if (opts.fire) fireImpl = opts.fire;
-  if (opts.onRunCompleted) notifyImpl = opts.onRunCompleted;
-  logger.info('scheduler started');
-  void runCatchup()
-    .then(() => scheduleNext())
-    .then(() => void reconcileFileWatchers());
+  scheduler.start(opts);
 }
 
 export function stopScheduler(): void {
-  running = false;
-  clearTimer();
-  runningTasks.clear();
-  void fileWatcherRegistry.stopAll();
-  logger.info('scheduler stopped');
+  scheduler.stop();
 }
 
 export function rescheduleNow(): void {
-  if (!running) return;
-  scheduleNext();
-  void reconcileFileWatchers();
+  scheduler.rescheduleNow();
 }
 
-/**
- * Fire a task by id, regardless of trigger type. Used by event-driven
- * triggers (file-change, git-hook, webhook). Honors the concurrent-run guard.
- */
 export async function fireTaskById(taskId: string): Promise<void> {
-  if (!running) return;
-  if (runningTasks.has(taskId)) {
-    logSkipOnce(taskId, 'fire-by-id-busy', 'scheduler: fireTaskById skipped (already running)');
-    return;
-  }
-  skipLogSeen.delete(`${taskId}::fire-by-id-busy`);
-  const fresh = getTask(taskId);
-  if (!fresh || !fresh.enabled) return;
-  runningTasks.add(taskId);
-  try {
-    const res = await fireImpl(fresh);
-    notifyImpl({ taskId, agentRunId: res.agentRunId, status: res.status });
-  } catch (err) {
-    logger.error(
-      { err: err instanceof Error ? err.message : String(err), taskId },
-      'scheduler: fireTaskById threw',
-    );
-  } finally {
-    runningTasks.delete(taskId);
-  }
+  return scheduler.fireTaskById(taskId);
 }
 
-async function reconcileFileWatchers(): Promise<void> {
-  if (!running) return;
-  const desired = listTasksImpl()
-    .filter((t) => t.enabled && t.trigger.type === 'file-change')
-    .map((t) => ({
-      taskId: t.id,
-      workspaceRoot: t.workspacePath,
-      glob: t.trigger.type === 'file-change' ? t.trigger.glob : '',
-    }))
-    .filter((d) => d.glob.length > 0 && d.workspaceRoot.length > 0);
-  try {
-    await fileWatcherRegistry.reconcile(desired, (id) => fireTaskById(id));
-  } catch (err) {
-    logger.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      'scheduler: file-watcher reconcile failed',
-    );
-  }
+export function setSchedulerMaxConcurrentRunsPerTask(n: number): void {
+  scheduler.setMaxConcurrentRunsPerTask(n);
 }
 
-/**
- * Catch-up policy: for each enabled cron task whose next_run_at is in the
- * past, fire ONCE with was_catchup: true. Do NOT replay every missed run.
- */
-async function runCatchup(): Promise<void> {
-  const now = new Date();
-  for (const task of listTasksImpl()) {
-    if (!task.enabled || task.trigger.type !== 'cron') continue;
-    if (!task.nextRunAt) continue;
-    // task.nextRunAt is stored as ISO-ish without TZ; treat as UTC.
-    const next = parseStoredTs(task.nextRunAt);
-    if (!next || next.getTime() > now.getTime()) continue;
-    if (runningTasks.has(task.id)) {
-      logSkipOnce(task.id, 'catchup-busy', 'scheduler: catch-up skipped (already running)');
-      continue;
-    }
-    runningTasks.add(task.id);
-    void (async () => {
-      try {
-        const fresh = getTask(task.id);
-        if (!fresh) return;
-        const res = await fireImpl(fresh, { wasCatchup: true });
-        notifyImpl({ taskId: task.id, agentRunId: res.agentRunId, status: res.status });
-      } catch (err) {
-        logger.error(
-          { err: err instanceof Error ? err.message : String(err), taskId: task.id },
-          'scheduler: catch-up fire failed',
-        );
-      } finally {
-        runningTasks.delete(task.id);
-        scheduleNext();
-      }
-    })();
-  }
+export function getSchedulerFireLog(): readonly FireLogEntry[] {
+  return fireLog.slice();
 }
 
 function parseStoredTs(raw: string): Date | null {
-  // Accept both "YYYY-MM-DD HH:MM:SS" (SQLite CURRENT_TIMESTAMP) and ISO 8601.
   const cleaned = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
   const d = new Date(cleaned);
   return Number.isNaN(d.getTime()) ? null : d;
@@ -286,20 +471,14 @@ function parseStoredTs(raw: string): Date | null {
 
 // Test-only helpers
 export function __resetForTests(): void {
-  running = false;
-  clearTimer();
-  runningTasks.clear();
-  skipLogSeen.clear();
-  void fileWatcherRegistry.stopAll();
-  listTasksImpl = () => listTasksFromStore();
-  fireImpl = fireScheduledTask;
-  notifyImpl = () => undefined;
+  scheduler.resetForTests();
+  fireLog.splice(0, fireLog.length);
 }
 
 export function __isRunningForTests(): boolean {
-  return running;
+  return scheduler.isRunning();
 }
 
 export function __hasTimerForTests(): boolean {
-  return timer !== null;
+  return scheduler.hasTimer();
 }

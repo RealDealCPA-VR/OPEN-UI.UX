@@ -7,6 +7,7 @@ import type {
   ModelCapabilities,
   ProviderFactory,
 } from '@opencodex/core';
+import { assertValidApiKey, fetchWithRetry, sanitizeErrorDetail } from '@opencodex/core';
 import { openAIConfigSchema, type OpenAIConfig } from './config';
 import { findModel, knownModels } from './models';
 import { sseEvents } from './sse';
@@ -21,7 +22,9 @@ class OpenAIProvider implements LLMProvider {
   readonly id = 'openai';
   readonly displayName = 'OpenAI';
 
-  constructor(private readonly config: OpenAIConfig) {}
+  constructor(private readonly config: OpenAIConfig) {
+    assertValidApiKey(config.apiKey, 'OpenAI');
+  }
 
   async *chat(req: ChatRequest): AsyncIterable<ChatEvent> {
     if (this.config.useResponsesApi) {
@@ -40,7 +43,7 @@ class OpenAIProvider implements LLMProvider {
       yield { type: 'done', stopReason: 'error' };
       return;
     }
-    yield* streamChunksToEvents(this.chunksFromBody(response.body));
+    yield* streamChunksToEvents(this.chunksFromBody(response.body), { model: req.model });
   }
 
   async embed(req: EmbedRequest): Promise<EmbedResult> {
@@ -103,12 +106,12 @@ class OpenAIProvider implements LLMProvider {
       body: JSON.stringify(body),
     };
     if (signal) init.signal = signal;
-    return fetch(url, init);
+    return fetchWithRetry(() => fetch(url, init), signal ? { signal } : {});
   }
 
   private async safeReadText(response: Response): Promise<string> {
     try {
-      return await response.text();
+      return sanitizeErrorDetail(await response.text());
     } catch {
       return '<unreadable body>';
     }

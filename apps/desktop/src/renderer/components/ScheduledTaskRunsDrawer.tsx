@@ -164,6 +164,8 @@ export function ScheduledTaskRunsDrawer({
       {reviewRunId && (
         <MergeReviewModal
           runId={reviewRunId}
+          conversationId={reviewRunId}
+          workspaceRoot={agentRunMap[reviewRunId]?.worktreeRepoRoot ?? task.workspacePath ?? '.'}
           onClose={() => setReviewRunId(null)}
           onResolved={() => void loadFirst()}
         />

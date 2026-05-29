@@ -70,6 +70,31 @@ describe('parseSections', () => {
   it('returns empty array for empty input', () => {
     expect(parseSections('')).toEqual([]);
   });
+
+  it('ignores heading-shaped lines inside fenced code blocks', () => {
+    const raw = [
+      '## Real',
+      'pre',
+      '',
+      '```',
+      '## Fake heading inside code',
+      'more code',
+      '```',
+      '',
+      '## After fence',
+      'tail',
+    ].join('\n');
+    const sections = parseSections(raw);
+    expect(sections.map((s) => s.heading)).toEqual(['Real', 'After fence']);
+    expect(sections[0]?.body).toContain('## Fake heading inside code');
+    expect(sections[0]?.body).toContain('more code');
+  });
+
+  it('handles tilde-fenced code blocks', () => {
+    const raw = ['## A', '~~~', '## not a heading', '~~~', '## B', 'body'].join('\n');
+    const sections = parseSections(raw);
+    expect(sections.map((s) => s.heading)).toEqual(['A', 'B']);
+  });
 });
 
 describe('LocalFsMemory.testConnection', () => {
@@ -180,6 +205,36 @@ describe('LocalFsMemory.append (atomic)', () => {
     const dir = path.dirname(mem.memoryPath);
     const entries = await fs.readdir(dir);
     expect(entries.some((n) => n.endsWith('.tmp'))).toBe(false);
+  });
+
+  it('preserves CRLF line endings when the source file uses them', async () => {
+    const crlfSeed = ['## Alpha', 'first line', '', '## Beta', 'beta body'].join('\r\n');
+    tmp = await makeWorkspace(crlfSeed);
+    const mem = new LocalFsMemory({ workspaceRoot: tmp.root });
+    await mem.append('Alpha', 'added');
+    const after = await fs.readFile(mem.memoryPath, 'utf8');
+    expect(after.includes('\r\n')).toBe(true);
+    expect(/(^|[^\r])\n/.test(after)).toBe(false);
+    expect(after).toMatch(/added/);
+  });
+
+  it('uses LF when the source file uses LF', async () => {
+    const lfSeed = ['## Alpha', 'first', '', '## Beta', 'b'].join('\n');
+    tmp = await makeWorkspace(lfSeed);
+    const mem = new LocalFsMemory({ workspaceRoot: tmp.root });
+    await mem.append('Alpha', 'added');
+    const after = await fs.readFile(mem.memoryPath, 'utf8');
+    expect(after.includes('\r\n')).toBe(false);
+  });
+
+  it('serializes concurrent appends to the same file', async () => {
+    tmp = await makeWorkspace();
+    const mem = new LocalFsMemory({ workspaceRoot: tmp.root });
+    await Promise.all(Array.from({ length: 8 }, (_, i) => mem.append('Bench', `entry ${i}`)));
+    const after = await fs.readFile(mem.memoryPath, 'utf8');
+    for (let i = 0; i < 8; i++) {
+      expect(after).toContain(`entry ${i}`);
+    }
   });
 });
 

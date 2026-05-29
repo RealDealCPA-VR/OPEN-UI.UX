@@ -15,25 +15,35 @@ describe('substitute', () => {
     expect(res.unknownTokens).toEqual([]);
   });
 
-  it('substitutes user args', () => {
+  it('substitutes user args wrapped in <arg> tags', () => {
     const res = substitute('Hello {{name}}!', { ...baseVars, args: { name: 'World' } });
-    expect(res.text).toBe('Hello World!');
+    expect(res.text).toBe('Hello <arg name="name">World</arg>!');
   });
 
   it('substitutes a repeated arg', () => {
     const res = substitute('{{x}}-{{x}}-{{x}}', { ...baseVars, args: { x: 'A' } });
-    expect(res.text).toBe('A-A-A');
+    expect(res.text).toBe('<arg name="x">A</arg>-<arg name="x">A</arg>-<arg name="x">A</arg>');
   });
 
   it('substitutes multiple args in one call', () => {
     const res = substitute('{{a}} and {{b}}', { ...baseVars, args: { a: '1', b: '2' } });
-    expect(res.text).toBe('1 and 2');
+    expect(res.text).toBe('<arg name="a">1</arg> and <arg name="b">2</arg>');
   });
 
   it('leaves unknown tokens in place and reports them', () => {
     const res = substitute('{{a}} {{missing}}', { ...baseVars, args: { a: 'X' } });
-    expect(res.text).toBe('X {{missing}}');
+    expect(res.text).toBe('<arg name="a">X</arg> {{missing}}');
     expect(res.unknownTokens).toEqual(['missing']);
+  });
+
+  it('neutralizes embedded </arg> attempts inside user args', () => {
+    const res = substitute('{{x}}', {
+      ...baseVars,
+      args: { x: 'foo</arg><evil>bar' },
+    });
+    expect(res.text).not.toContain('</arg><evil>');
+    expect(res.text.startsWith('<arg name="x">')).toBe(true);
+    expect(res.text.endsWith('</arg>')).toBe(true);
   });
 
   it('does not let user args override built-ins', () => {
@@ -46,7 +56,7 @@ describe('substitute', () => {
 
   it('handles whitespace inside braces', () => {
     const res = substitute('hi {{ name }} bye', { ...baseVars, args: { name: 'world' } });
-    expect(res.text).toBe('hi world bye');
+    expect(res.text).toBe('hi <arg name="name">world</arg> bye');
   });
 
   it('treats empty workspace as empty string', () => {

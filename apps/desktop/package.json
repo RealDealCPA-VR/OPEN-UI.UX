@@ -7,7 +7,9 @@
   "type": "module",
   "main": "out/main/index.cjs",
   "scripts": {
+    "predev": "node scripts/ensure-native-abi.mjs electron",
     "dev": "node scripts/build-runner-plugins.mjs && node scripts/dev.cjs",
+    "prebuild": "node scripts/ensure-native-abi.mjs electron",
     "build": "node scripts/build-runner-plugins.mjs && electron-vite build",
     "build:plugins": "node scripts/build-runner-plugins.mjs",
     "preview": "electron-vite preview",
@@ -15,11 +17,14 @@
     "dist": "node scripts/build-runner-plugins.mjs && electron-vite build && electron-builder",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
+    "pretest": "node scripts/ensure-native-abi.mjs node",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "e2e": "playwright test",
+    "bench": "node scripts/bench.mjs",
     "clean": "rimraf out release .vite",
     "rebuild-native": "electron-rebuild -f -w better-sqlite3",
+    "rebuild-native-node": "pnpm rebuild better-sqlite3",
     "postinstall": "electron-rebuild -f -w better-sqlite3 || echo 'rebuild-native skipped — run pnpm rebuild-native manually'"
   },
   "dependencies": {
@@ -38,6 +43,7 @@
     "@opencodex/provider-openai": "workspace:*",
     "@opencodex/provider-openrouter": "workspace:*",
     "@opencodex/provider-xai": "workspace:*",
+    "@opencodex/rag-chunker": "workspace:*",
     "@opencodex/telemetry": "workspace:*",
     "@opencodex/tools": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",

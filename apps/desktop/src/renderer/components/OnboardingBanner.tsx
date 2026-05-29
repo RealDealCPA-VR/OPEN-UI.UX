@@ -35,15 +35,12 @@ export function OnboardingBanner(): JSX.Element | null {
   }, [navigate]);
 
   const resumeSetup = useCallback(async () => {
-    // Mark onboarding incomplete (it already is from "Skip for now") and hard
-    // reload to remount the wizard. The wizard reads onboarding.getState on
-    // mount and only opens when complete is false.
     try {
       await window.opencodex.onboarding.setComplete(false);
     } catch {
       // best-effort
     }
-    window.location.reload();
+    window.dispatchEvent(new CustomEvent('opencodex:onboarding:resume'));
   }, []);
 
   if (loading || error) return null;

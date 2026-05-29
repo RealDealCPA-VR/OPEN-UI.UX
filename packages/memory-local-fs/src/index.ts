@@ -2,10 +2,30 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { defineTool, type Tool } from '@opencodex/core';
+import { withFileLock } from '@opencodex/memory-utils';
 import { atomicWrite } from './atomic-write';
 import { bm25Search, tokenize } from './bm25';
 import { parseSections, sectionId, type MemorySection } from './sections';
 import { bestSnippet } from './snippet';
+
+type Eol = '\n' | '\r\n';
+
+function detectEol(raw: string): Eol {
+  let crlf = 0;
+  let lf = 0;
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === '\n') {
+      if (i > 0 && raw[i - 1] === '\r') crlf++;
+      else lf++;
+    }
+  }
+  return crlf > lf ? '\r\n' : '\n';
+}
+
+function applyEol(s: string, eol: Eol): string {
+  const normalized = s.replace(/\r\n/g, '\n');
+  return eol === '\n' ? normalized : normalized.replace(/\n/g, '\r\n');
+}
 
 export { atomicWrite, bm25Search, tokenize, parseSections, sectionId, bestSnippet };
 export type { MemorySection };
@@ -166,21 +186,27 @@ export class LocalFsMemory {
     if (cleanHeading.length === 0) {
       throw new Error('heading must not be empty');
     }
-    const raw = await this.readRaw();
-    const sections = parseSections(raw);
-    const target = findSectionByHeading(sections, cleanHeading);
-    let next: string;
-    if (target) {
-      next = appendInSection(raw, sections, target, content);
-    } else {
-      next = appendNewSection(raw, cleanHeading, content);
-    }
-    await atomicWrite(this.memoryPath, next);
-    return {
-      path: this.memoryPath,
-      bytesWritten: Buffer.byteLength(next, 'utf8'),
-      appendedSection: cleanHeading,
-    };
+    return withFileLock(this.memoryPath, async () => {
+      const raw = await this.readRaw();
+      const eol = raw.length > 0 ? detectEol(raw) : '\n';
+      const sections = parseSections(raw);
+      const target = findSectionByHeading(sections, cleanHeading);
+      let next: string;
+      if (target) {
+        next = appendInSection(raw, sections, target, content);
+      } else {
+        next = appendNewSection(raw, cleanHeading, content);
+      }
+      if (eol === '\r\n') {
+        next = applyEol(next, eol);
+      }
+      await atomicWrite(this.memoryPath, next);
+      return {
+        path: this.memoryPath,
+        bytesWritten: Buffer.byteLength(next, 'utf8'),
+        appendedSection: cleanHeading,
+      };
+    });
   }
 
   private async readRaw(): Promise<string> {

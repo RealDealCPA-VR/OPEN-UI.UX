@@ -3,7 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#161618" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <title>OpenCodex</title>
+    <script>
+      (function () {
+        try {
+          var saved = null;
+          try {
+            saved = localStorage.getItem('opencodex.theme');
+          } catch (_) {}
+          var theme = saved;
+          if (theme !== 'light' && theme !== 'dark') {
+            theme =
+              window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+                ? 'light'
+                : 'dark';
+          }
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (_) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

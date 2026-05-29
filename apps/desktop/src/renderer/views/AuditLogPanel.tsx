@@ -204,8 +204,19 @@ export function AuditLogPanel(): JSX.Element {
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
       filePath: filePathFilter || undefined,
+      runnerIds: runnerFilter ? [runnerFilter] : undefined,
+      triggerSource: triggerFilter || undefined,
     }),
-    [toolFilter, decisionFilter, errorFilter, timeRange, page, filePathFilter],
+    [
+      toolFilter,
+      decisionFilter,
+      errorFilter,
+      timeRange,
+      page,
+      filePathFilter,
+      runnerFilter,
+      triggerFilter,
+    ],
   );
 
   useEffect(() => {
@@ -253,8 +264,7 @@ export function AuditLogPanel(): JSX.Element {
         errorState: errorFilter,
         from: timeRangeToSince(timeRange) ?? undefined,
         filePath: filePathFilter || undefined,
-        runnerIds:
-          runnerFilter && runnerFilter !== OPENCODEX_RUNNER_KEY ? [runnerFilter] : undefined,
+        runnerIds: runnerFilter ? [runnerFilter] : undefined,
         triggerSource: triggerFilter || undefined,
       });
       const json = JSON.stringify(envelope, null, 2);
@@ -449,7 +459,11 @@ export function AuditLogPanel(): JSX.Element {
         >
           {exporting ? 'Exporting…' : 'Export bundle'}
         </button>
-        <label className="audit-filter" style={{ marginLeft: 8 }}>
+        <label
+          className="audit-filter"
+          style={{ marginLeft: 8 }}
+          title="Best-effort append-only mirror of every tool call. On Windows this relies on filesystem ACLs (no append-only flag is available from the sandbox). On macOS/Linux the file is chmod 0o400, but a user with the same uid can still clear that bit — true append-only requires chattr +a / chflags uappnd."
+        >
           <input
             type="checkbox"
             checked={wormEnabled === true}
@@ -606,96 +620,99 @@ export function AuditLogPanel(): JSX.Element {
 
       {!data && !loadError && <p className="approvals-loading">Loading…</p>}
 
-      {data &&
-        data.rows
-          .filter((r) => !triggerFilter || r.triggerSource === triggerFilter)
-          .filter((r) => {
-            if (!runnerFilter) return true;
-            const rid = r.runnerId;
-            if (runnerFilter === OPENCODEX_RUNNER_KEY) {
-              return rid === null || rid === '' || rid === 'internal';
-            }
-            return rid === runnerFilter;
-          }).length === 0 &&
-        !loadError && (
-          <p className="audit-empty">
-            No tool calls match these filters
-            {total === 0 && page === 0 ? '. The audit log is empty so far.' : '.'}
-          </p>
-        )}
+      {data && data.rows.length === 0 && !loadError && (
+        <p className="audit-empty">
+          No tool calls match these filters
+          {total === 0 && page === 0 ? '. The audit log is empty so far.' : '.'}
+        </p>
+      )}
 
       {data && data.rows.length > 0 && (
         <>
           <ul className="audit-list">
-            {data.rows
-              .filter((r) => !triggerFilter || r.triggerSource === triggerFilter)
-              .filter((r) => {
-                if (!runnerFilter) return true;
-                const rid = r.runnerId;
-                if (runnerFilter === OPENCODEX_RUNNER_KEY) {
-                  return rid === null || rid === '' || rid === 'internal';
-                }
-                return rid === runnerFilter;
-              })
-              .map((row) => {
-                const tier = tierByTool[row.toolName] ?? null;
-                const isExpanded = expandedId === row.id;
-                return (
-                  <li key={row.id} className="audit-row">
-                    <div className="audit-row-head">
-                      <button
-                        type="button"
-                        className="audit-row-toggle"
-                        aria-expanded={isExpanded}
-                        aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${row.toolName} details`}
-                        onClick={() => setExpandedId(isExpanded ? null : row.id)}
-                      >
-                        <span className="audit-row-time">{formatTimestamp(row.createdAt)}</span>
-                        <span className="audit-row-tool">
-                          {tier && (
-                            <span className={`pill tool-tier tool-tier-${tier}`}>{tier}</span>
-                          )}
-                          <code className="approvals-tool-name">{row.toolName}</code>
-                        </span>
-                        <span
-                          className={`pill audit-decision audit-decision-${decisionClass(row.decision)}`}
-                        >
-                          {DECISION_LABELS[row.decision] ?? row.decision}
-                        </span>
-                        {row.isError && <span className="pill audit-error-pill">Error</span>}
-                        <span className="pill" title={`Runner: ${runnerDisplayName(row.runnerId)}`}>
-                          {runnerDisplayName(row.runnerId)}
-                        </span>
-                        {row.triggerSource === 'scheduled' && (
-                          <span className="pill" title="Triggered by a scheduled task">
-                            scheduled
-                          </span>
-                        )}
-                        <span className="audit-row-duration">{formatDuration(row.durationMs)}</span>
-                      </button>
-                      <Link
-                        className="audit-row-convo"
-                        to={buildConversationLink(row.conversationId, row.messageId)}
-                        title={`Open conversation: ${row.conversationTitle}`}
-                      >
-                        {row.conversationTitle}
-                      </Link>
-                      <span className="audit-row-caret" aria-hidden>
-                        {isExpanded ? '▾' : '▸'}
+            {data.rows.map((row) => {
+              const tier = tierByTool[row.toolName] ?? null;
+              const isExpanded = expandedId === row.id;
+              return (
+                <li key={row.id} className="audit-row">
+                  <div className="audit-row-head">
+                    <button
+                      type="button"
+                      className="audit-row-toggle"
+                      aria-expanded={isExpanded}
+                      aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${row.toolName} details`}
+                      onClick={() => setExpandedId(isExpanded ? null : row.id)}
+                    >
+                      <span className="audit-row-time">{formatTimestamp(row.createdAt)}</span>
+                      <span className="audit-row-tool">
+                        {tier && <span className={`pill tool-tier tool-tier-${tier}`}>{tier}</span>}
+                        <code className="approvals-tool-name">{row.toolName}</code>
                       </span>
-                    </div>
-                    {isExpanded && (
-                      <div className="audit-row-body">
-                        <div className="audit-row-section">
-                          <div className="audit-row-section-head">
-                            <h4>Input</h4>
-                            {row.inputTruncated && (
-                              <span className="audit-truncated">truncated</span>
-                            )}
+                      <span
+                        className={`pill audit-decision audit-decision-${decisionClass(row.decision)}`}
+                      >
+                        {DECISION_LABELS[row.decision] ?? row.decision}
+                      </span>
+                      {row.isError && <span className="pill audit-error-pill">Error</span>}
+                      <span className="pill" title={`Runner: ${runnerDisplayName(row.runnerId)}`}>
+                        {runnerDisplayName(row.runnerId)}
+                      </span>
+                      {row.triggerSource === 'scheduled' && (
+                        <span className="pill" title="Triggered by a scheduled task">
+                          scheduled
+                        </span>
+                      )}
+                      <span className="audit-row-duration">{formatDuration(row.durationMs)}</span>
+                    </button>
+                    <Link
+                      className="audit-row-convo"
+                      to={buildConversationLink(row.conversationId, row.messageId)}
+                      title={`Open conversation: ${row.conversationTitle}`}
+                    >
+                      {row.conversationTitle}
+                    </Link>
+                    <span className="audit-row-caret" aria-hidden>
+                      {isExpanded ? '▾' : '▸'}
+                    </span>
+                  </div>
+                  {isExpanded && (
+                    <div className="audit-row-body">
+                      <div className="audit-row-section">
+                        <div className="audit-row-section-head">
+                          <h4>Input</h4>
+                          {row.inputTruncated && <span className="audit-truncated">truncated</span>}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void copyToClipboard(`in:${row.id}`, safePretty(row.input))
+                            }
+                            style={{
+                              marginLeft: 'auto',
+                              fontSize: 11,
+                              background: 'transparent',
+                              border: '1px solid var(--border, #2a2a32)',
+                              borderRadius: 4,
+                              padding: '2px 8px',
+                              cursor: 'pointer',
+                              color: 'var(--text-muted, #98a0aa)',
+                            }}
+                          >
+                            {copiedKey === `in:${row.id}` ? 'Copied' : 'Copy'}
+                          </button>
+                        </div>
+                        <pre className="audit-row-pre">{safePretty(row.input)}</pre>
+                      </div>
+                      <div className="audit-row-section">
+                        <div className="audit-row-section-head">
+                          <h4>Output</h4>
+                          {row.outputTruncated && (
+                            <span className="audit-truncated">truncated</span>
+                          )}
+                          {row.output !== null && (
                             <button
                               type="button"
                               onClick={() =>
-                                void copyToClipboard(`in:${row.id}`, safePretty(row.input))
+                                void copyToClipboard(`out:${row.id}`, safePretty(row.output))
                               }
                               style={{
                                 marginLeft: 'auto',
@@ -708,49 +725,21 @@ export function AuditLogPanel(): JSX.Element {
                                 color: 'var(--text-muted, #98a0aa)',
                               }}
                             >
-                              {copiedKey === `in:${row.id}` ? 'Copied' : 'Copy'}
+                              {copiedKey === `out:${row.id}` ? 'Copied' : 'Copy'}
                             </button>
-                          </div>
-                          <pre className="audit-row-pre">{safePretty(row.input)}</pre>
+                          )}
                         </div>
-                        <div className="audit-row-section">
-                          <div className="audit-row-section-head">
-                            <h4>Output</h4>
-                            {row.outputTruncated && (
-                              <span className="audit-truncated">truncated</span>
-                            )}
-                            {row.output !== null && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void copyToClipboard(`out:${row.id}`, safePretty(row.output))
-                                }
-                                style={{
-                                  marginLeft: 'auto',
-                                  fontSize: 11,
-                                  background: 'transparent',
-                                  border: '1px solid var(--border, #2a2a32)',
-                                  borderRadius: 4,
-                                  padding: '2px 8px',
-                                  cursor: 'pointer',
-                                  color: 'var(--text-muted, #98a0aa)',
-                                }}
-                              >
-                                {copiedKey === `out:${row.id}` ? 'Copied' : 'Copy'}
-                              </button>
-                            )}
-                          </div>
-                          <pre
-                            className={`audit-row-pre${row.isError ? ' audit-row-pre-error' : ''}`}
-                          >
-                            {row.output === null ? '(no output)' : safePretty(row.output)}
-                          </pre>
-                        </div>
+                        <pre
+                          className={`audit-row-pre${row.isError ? ' audit-row-pre-error' : ''}`}
+                        >
+                          {row.output === null ? '(no output)' : safePretty(row.output)}
+                        </pre>
                       </div>
-                    )}
-                  </li>
-                );
-              })}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
 
           <div className="audit-pagination">

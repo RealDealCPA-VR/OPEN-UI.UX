@@ -144,8 +144,14 @@ describe('worker-protocol', () => {
       if (parsed.success) expect(parsed.data.stopReason).toBe('runner_not_installed');
     });
 
-    it("rejects an unknown stop reason like 'cancelled'", () => {
+    it("accepts 'cancelled'", () => {
       const parsed = parseStop('cancelled');
+      expect(parsed.success).toBe(true);
+      if (parsed.success) expect(parsed.data.stopReason).toBe('cancelled');
+    });
+
+    it("rejects an unknown stop reason like 'totally_made_up'", () => {
+      const parsed = parseStop('totally_made_up');
       expect(parsed.success).toBe(false);
     });
   });

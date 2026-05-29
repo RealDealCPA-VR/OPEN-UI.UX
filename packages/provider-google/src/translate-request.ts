@@ -45,6 +45,15 @@ export interface GoogleGenerationConfig {
   maxOutputTokens?: number;
   topP?: number;
   stopSequences?: string[];
+  responseMimeType?: string;
+  responseSchema?: Record<string, unknown>;
+}
+
+export interface GoogleToolConfig {
+  functionCallingConfig: {
+    mode: 'AUTO' | 'ANY' | 'NONE';
+    allowedFunctionNames?: string[];
+  };
 }
 
 export interface GoogleChatRequestBody {
@@ -52,6 +61,7 @@ export interface GoogleChatRequestBody {
   systemInstruction?: GoogleSystemInstruction;
   tools?: GoogleTool[];
   generationConfig?: GoogleGenerationConfig;
+  toolConfig?: GoogleToolConfig;
 }
 
 export function extractSystem(messages: Message[]): {
@@ -117,8 +127,10 @@ function toolResultPart(
 function wrapToolOutput(output: unknown, isError: boolean | undefined): Record<string, unknown> {
   const key = isError ? 'error' : 'result';
   if (output !== null && typeof output === 'object' && !Array.isArray(output)) {
+    if (isError) return { ...(output as Record<string, unknown>), isError: true };
     return output as Record<string, unknown>;
   }
+  if (output === null) return { [key]: null };
   return { [key]: output ?? '' };
 }
 
@@ -126,20 +138,28 @@ function parseToolArgs(args: unknown): Record<string, unknown> {
   if (args === null || args === undefined) return {};
   if (typeof args === 'string') {
     if (args.length === 0) return {};
+    let parsed: unknown;
     try {
-      const parsed: unknown = JSON.parse(args);
-      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-      return { value: parsed };
-    } catch {
-      return { value: args };
+      parsed = JSON.parse(args);
+    } catch (cause) {
+      throw new Error(
+        `Google requires tool arguments to be a JSON object; received unparseable string`,
+        { cause },
+      );
     }
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    throw new Error(
+      `Google requires tool arguments to be a JSON object; received ${Array.isArray(parsed) ? 'array' : typeof parsed}`,
+    );
   }
   if (typeof args === 'object' && !Array.isArray(args)) {
     return args as Record<string, unknown>;
   }
-  return { value: args };
+  throw new Error(
+    `Google requires tool arguments to be a JSON object; received ${Array.isArray(args) ? 'array' : typeof args}`,
+  );
 }
 
 export function translateMessages(messages: Message[]): GoogleContent[] {
@@ -219,6 +239,32 @@ export function buildChatRequestBody(req: ChatRequest): GoogleChatRequestBody {
   if (req.maxTokens !== undefined) generationConfig.maxOutputTokens = req.maxTokens;
   if (req.topP !== undefined) generationConfig.topP = req.topP;
   if (req.stop && req.stop.length > 0) generationConfig.stopSequences = req.stop;
+  if (req.responseFormat !== undefined) {
+    if (req.responseFormat.type === 'json_object') {
+      generationConfig.responseMimeType = 'application/json';
+    } else if (req.responseFormat.type === 'json_schema') {
+      generationConfig.responseMimeType = 'application/json';
+      generationConfig.responseSchema = req.responseFormat.schema as Record<string, unknown>;
+    }
+  }
   if (Object.keys(generationConfig).length > 0) body.generationConfig = generationConfig;
+  if (req.toolChoice !== undefined) {
+    const tc = translateToolChoice(req.toolChoice);
+    if (tc) body.toolConfig = tc;
+  }
   return body;
+}
+
+function translateToolChoice(
+  choice: NonNullable<ChatRequest['toolChoice']>,
+): GoogleToolConfig | undefined {
+  if (choice === 'auto') return { functionCallingConfig: { mode: 'AUTO' } };
+  if (choice === 'required') return { functionCallingConfig: { mode: 'ANY' } };
+  if (choice === 'none') return { functionCallingConfig: { mode: 'NONE' } };
+  if (typeof choice === 'object' && typeof choice.name === 'string') {
+    return {
+      functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [choice.name] },
+    };
+  }
+  return undefined;
 }

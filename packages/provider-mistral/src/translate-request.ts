@@ -27,6 +27,14 @@ export interface MistralTool {
   };
 }
 
+export type MistralToolChoice =
+  | 'auto'
+  | 'any'
+  | 'none'
+  | { type: 'function'; function: { name: string } };
+
+export type MistralResponseFormat = { type: 'text' } | { type: 'json_object' };
+
 export interface MistralChatRequestBody {
   model: string;
   messages: MistralMessage[];
@@ -36,10 +44,19 @@ export interface MistralChatRequestBody {
   stop?: string[];
   tools?: MistralTool[];
   stream: boolean;
+  tool_choice?: MistralToolChoice;
+  response_format?: MistralResponseFormat;
 }
 
 export function translateMessages(messages: Message[]): MistralMessage[] {
   return messages.flatMap(translateMessage);
+}
+
+function stringifyToolOutput(output: unknown): string {
+  if (typeof output === 'string') return output;
+  if (output === null) return 'null';
+  if (output === undefined) return '';
+  return JSON.stringify(output);
 }
 
 function translateMessage(msg: Message): MistralMessage[] {
@@ -92,8 +109,7 @@ function translateMessage(msg: Message): MistralMessage[] {
         out.push({
           role: 'tool',
           tool_call_id: block.toolUseId,
-          content:
-            typeof block.output === 'string' ? block.output : JSON.stringify(block.output ?? ''),
+          content: stringifyToolOutput(block.output),
         });
         break;
     }
@@ -129,5 +145,31 @@ export function buildChatRequestBody(
   if (req.stop && req.stop.length > 0) body.stop = req.stop;
   const tools = translateTools(req.tools);
   if (tools) body.tools = tools;
+  if (req.toolChoice !== undefined) {
+    const tc = translateToolChoice(req.toolChoice);
+    if (tc !== undefined) body.tool_choice = tc;
+  }
+  if (req.responseFormat !== undefined) {
+    if (req.responseFormat.type === 'text') {
+      body.response_format = { type: 'text' };
+    } else if (
+      req.responseFormat.type === 'json_object' ||
+      req.responseFormat.type === 'json_schema'
+    ) {
+      body.response_format = { type: 'json_object' };
+    }
+  }
   return body;
+}
+
+function translateToolChoice(
+  choice: NonNullable<ChatRequest['toolChoice']>,
+): MistralToolChoice | undefined {
+  if (choice === 'auto') return 'auto';
+  if (choice === 'required') return 'any';
+  if (choice === 'none') return 'none';
+  if (typeof choice === 'object' && typeof choice.name === 'string') {
+    return { type: 'function', function: { name: choice.name } };
+  }
+  return undefined;
 }

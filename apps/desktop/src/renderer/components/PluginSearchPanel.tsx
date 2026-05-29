@@ -29,6 +29,11 @@ export function PluginSearchPanel(): JSX.Element {
   const [permFilter, setPermFilter] = useState('');
   const [installingName, setInstallingName] = useState<string | null>(null);
   const [registryUrl, setRegistryUrl] = useState<string | null>(null);
+  const [unsignedPrompt, setUnsignedPrompt] = useState<{
+    entry: RegistryEntry;
+    pluginName: string;
+  } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,18 +85,35 @@ export function PluginSearchPanel(): JSX.Element {
     });
   }, [entries, query, contribFilter, permFilter]);
 
-  const onInstall = async (entry: RegistryEntry): Promise<void> => {
+  const runInstall = async (entry: RegistryEntry, acceptUnsigned: boolean): Promise<void> => {
     setInstallingName(entry.name);
     setError(null);
+    setStatusMessage(null);
     try {
-      // The install URL is honored by the existing plugins:install-from-path flow once the
-      // download/extract path lands; for now the panel surfaces the install intent.
-      await window.opencodex.plugins.installFromPath({ path: entry.installUrl });
+      const req: { installUrl: string; acceptUnsigned?: boolean } = {
+        installUrl: entry.installUrl,
+      };
+      if (acceptUnsigned) req.acceptUnsigned = true;
+      const result = await window.opencodex.plugins.installFromRegistry(req);
+      if (result.ok) {
+        setStatusMessage(`Installed "${entry.displayName}".`);
+        setUnsignedPrompt(null);
+        return;
+      }
+      if (result.reason === 'unsigned') {
+        setUnsignedPrompt({ entry, pluginName: result.pluginName });
+        return;
+      }
+      setError(result.error);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setInstallingName(null);
     }
+  };
+
+  const onInstall = async (entry: RegistryEntry): Promise<void> => {
+    await runInstall(entry, false);
   };
 
   if (!entries) {
@@ -133,9 +155,40 @@ export function PluginSearchPanel(): JSX.Element {
       <p className="plugins-registry">
         Registry: <code>{registryUrl ?? 'none configured'}</code>
       </p>
+      {!registryUrl && (
+        <div className="settings-section-desc" role="status">
+          Registry not configured. Install plugins from disk via the &quot;Install from path&quot;
+          flow until a registry is wired.
+        </div>
+      )}
       {error && (
         <div className="mcp-panel-error" role="alert">
           {error}
+        </div>
+      )}
+      {statusMessage && (
+        <div className="settings-section-desc" role="status">
+          {statusMessage}
+        </div>
+      )}
+      {unsignedPrompt && (
+        <div className="mcp-panel-error" role="alertdialog" data-testid="plugin-unsigned-consent">
+          <p>
+            <strong>{unsignedPrompt.pluginName}</strong> is unsigned. Installing it will run
+            arbitrary code in the main process with full privileges.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void runInstall(unsignedPrompt.entry, true)}
+            >
+              Install anyway
+            </button>
+            <button type="button" className="btn" onClick={() => setUnsignedPrompt(null)}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
       {filtered.length === 0 ? (

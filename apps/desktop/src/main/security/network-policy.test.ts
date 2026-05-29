@@ -49,6 +49,14 @@ describe('isLoopbackHost', () => {
     expect(isLoopbackHost('8.8.8.8')).toBe(false);
     expect(isLoopbackHost('example.com')).toBe(false);
   });
+
+  it('detects IPv4-mapped IPv6 loopback', () => {
+    expect(isLoopbackHost('::ffff:127.0.0.1')).toBe(true);
+    expect(isLoopbackHost('::FFFF:127.0.0.1')).toBe(true);
+    expect(isLoopbackHost('::ffff:127.1.2.3')).toBe(true);
+    expect(isLoopbackHost('[::ffff:127.0.0.1]')).toBe(true);
+    expect(isLoopbackHost('::ffff:8.8.8.8')).toBe(false);
+  });
 });
 
 describe('checkOutbound (Local Only mode)', () => {

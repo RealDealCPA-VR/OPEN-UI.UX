@@ -72,6 +72,12 @@ export const reviewFindingSchema = z.object({
   suggestedFix: z.string().nullable(),
   retrievedContext: z.array(z.string()).default([]),
   prompt: z.string().nullable(),
+  // Captured per finding so the reviewer can audit the AI's reasoning even
+  // after the run is closed. `auditPrompt` is the exact system+user input the
+  // LLM saw; `auditRetrievedContext` is any extra material we fed in
+  // (currently the user-supplied reviewer notes).
+  auditPrompt: z.string().nullable().default(null),
+  auditRetrievedContext: z.array(z.string()).default([]),
 });
 
 export type ReviewFinding = z.infer<typeof reviewFindingSchema>;

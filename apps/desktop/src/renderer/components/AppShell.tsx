@@ -118,6 +118,20 @@ export function AppShell(): JSX.Element {
 
   return (
     <div className={shellClass}>
+      <a
+        href="#main-content"
+        className="skip-to-main"
+        onClick={(e) => {
+          e.preventDefault();
+          const main = document.getElementById('main-content');
+          if (main) {
+            main.focus({ preventScroll: false });
+            main.scrollIntoView({ block: 'start' });
+          }
+        }}
+      >
+        Skip to main content
+      </a>
       <aside className="left-column" data-route={activeRoute}>
         <nav className="sidebar nav-rail" aria-label="Primary">
           <div className="sidebar-head">
@@ -184,7 +198,7 @@ export function AppShell(): JSX.Element {
         >
           <LocalOnlyPill />
         </div>
-        <main className="content">
+        <main id="main-content" className="content" tabIndex={-1}>
           <Outlet />
         </main>
         <StatusBar />

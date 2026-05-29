@@ -7,8 +7,40 @@ import {
   runSubagentInWorker,
 } from '../agent/worker-host';
 import { createWorktree, isGitRepo } from '../agent/worktrees';
+import { getSelectedModel } from '../storage/settings';
 import type { ScheduledTask } from '../../shared/scheduled-tasks';
 import { recordRunCompletion, recordRunStart, setTaskRunBookkeeping } from './store';
+
+/**
+ * Sentinel value stored in `scheduled_tasks.provider_id` / `model` to mean
+ * "re-resolve to the currently selected model at fire time". Used by
+ * skill-linked tasks so they follow user model selection instead of pinning
+ * to the model that was active when the skill was first synced.
+ */
+export const CURRENT_SELECTED_MODEL_MARKER = '__current__';
+
+function resolveCurrentMarker(task: ScheduledTask): { providerId: string; model: string } {
+  const wantsCurrent =
+    task.providerId === CURRENT_SELECTED_MODEL_MARKER ||
+    task.model === CURRENT_SELECTED_MODEL_MARKER;
+  if (!wantsCurrent) return { providerId: task.providerId, model: task.model };
+  let selected: { providerId: string; modelId: string } | null = null;
+  try {
+    selected = getSelectedModel();
+  } catch {
+    selected = null;
+  }
+  if (!selected) {
+    throw new Error(
+      'scheduled task is configured to use the current selected model, but no model is selected',
+    );
+  }
+  return {
+    providerId:
+      task.providerId === CURRENT_SELECTED_MODEL_MARKER ? selected.providerId : task.providerId,
+    model: task.model === CURRENT_SELECTED_MODEL_MARKER ? selected.modelId : task.model,
+  };
+}
 
 export interface FireTaskOptions {
   wasCatchup?: boolean;
@@ -78,10 +110,23 @@ export async function fireScheduledTask(
 
   const runnerId = task.runnerId ?? 'internal';
 
+  let resolved: { providerId: string; model: string };
+  try {
+    resolved = resolveCurrentMarker(task);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    recordRunCompletion({ runId, status: 'failed', errorMessage: message });
+    setTaskRunBookkeeping(task.id, {
+      lastStatus: 'failed',
+      lastRunAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    });
+    return { runId, agentRunId: '', status: 'failed', error: message };
+  }
+
   const agentRunId = recordStart({
     task: task.prompt,
-    providerId: task.providerId,
-    modelId: task.model,
+    providerId: resolved.providerId,
+    modelId: resolved.model,
     runnerId,
     ...(worktreeCtx.worktreePath ? { worktreePath: worktreeCtx.worktreePath } : {}),
     ...(worktreeCtx.worktreeBranch ? { worktreeBranch: worktreeCtx.worktreeBranch } : {}),
@@ -94,8 +139,8 @@ export async function fireScheduledTask(
   try {
     const runArgs: RunSubagentArgs = {
       task: task.prompt,
-      providerId: task.providerId,
-      modelId: task.model,
+      providerId: resolved.providerId,
+      modelId: resolved.model,
       workspaceRoot: workRoot,
       ...(task.allowedTools.length > 0 ? { allowedToolNames: task.allowedTools } : {}),
       signal: controller.signal,

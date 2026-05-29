@@ -30,6 +30,7 @@ export type SubagentStopReason =
   | 'tool_use'
   | 'max_tokens'
   | 'budget_exceeded'
+  | 'cancelled'
   | 'error'
   | 'unauthorized_tool'
   | 'runner_error'
@@ -64,6 +65,12 @@ export interface SubagentRunner {
    *   determine the final stop reason.
    * - SHOULD emit a `usage` event before `done` so token accounting is
    *   accurate; runners without token visibility may omit it.
+   * - Runners are responsible for honoring `opts.budget` and SHOULD emit a
+   *   terminal `done` with `stopReason: 'budget_exceeded'` (mapped from the
+   *   chat-event vocabulary by the runner) when any limit
+   *   (`maxTokens`, `maxToolIterations`, `maxWallTimeMs`) is hit. Cooperative
+   *   AbortSignal cancellation is the caller's responsibility — runners SHOULD
+   *   pass `opts.signal` to their transport and exit promptly.
    *
    * The legacy `SubagentResult` shape (text, toolEvents, tokens, stopReason,
    * iterations) is reconstructed from this stream by `collectSubagentResult`,
@@ -94,71 +101,104 @@ export async function collectSubagentResult(
   let error: string | undefined;
   let aborted = false;
 
-  for await (const evt of iter) {
-    if (signal?.aborted) {
-      aborted = true;
-      break;
+  const flushPending = (): void => {
+    for (const [id, call] of pending) {
+      toolEvents.push({
+        name: call.name,
+        input: call.input,
+        output: undefined,
+        isError: true,
+        durationMs: Date.now() - call.startedAt,
+      });
+      pending.delete(id);
     }
-    switch (evt.type) {
-      case 'text_delta':
-        text += evt.delta;
-        break;
-      case 'tool_call': {
-        iterations += 1;
-        pending.set(evt.id, {
-          name: evt.name,
-          input: evt.arguments,
-          startedAt: Date.now(),
-        });
+  };
+
+  try {
+    for await (const evt of iter) {
+      if (signal?.aborted) {
+        aborted = true;
         break;
       }
-      case 'tool_result': {
-        const call = pending.get(evt.id);
-        if (call) {
-          pending.delete(evt.id);
-          toolEvents.push({
-            name: call.name,
-            input: call.input,
-            output: evt.output,
-            isError: evt.isError ?? false,
-            durationMs: Date.now() - call.startedAt,
+      switch (evt.type) {
+        case 'text_delta':
+          text += evt.delta;
+          break;
+        case 'tool_call': {
+          iterations += 1;
+          pending.set(evt.id, {
+            name: evt.name,
+            input: evt.arguments,
+            startedAt: Date.now(),
           });
-        } else {
-          toolEvents.push({
-            name: '',
-            input: undefined,
-            output: evt.output,
-            isError: evt.isError ?? false,
-            durationMs: 0,
-          });
+          break;
         }
-        break;
+        case 'tool_result': {
+          const call = pending.get(evt.id);
+          if (call) {
+            pending.delete(evt.id);
+            toolEvents.push({
+              name: call.name,
+              input: call.input,
+              output: evt.output,
+              isError: evt.isError ?? false,
+              durationMs: Date.now() - call.startedAt,
+            });
+          } else {
+            toolEvents.push({
+              name: `<orphan:${evt.id}>`,
+              input: undefined,
+              output: evt.output,
+              isError: true,
+              durationMs: 0,
+            });
+          }
+          break;
+        }
+        case 'usage':
+          inputTokens += evt.inputTokens;
+          outputTokens += evt.outputTokens;
+          break;
+        case 'done': {
+          if (error === undefined && stopReason !== 'error') {
+            const r = evt.stopReason;
+            if (r === 'tool_use') stopReason = 'tool_use';
+            else if (r === 'max_tokens') stopReason = 'max_tokens';
+            else if (r === 'error') stopReason = 'error';
+            else if (r === 'cancelled') stopReason = 'cancelled';
+            else stopReason = 'end_turn';
+          }
+          break;
+        }
+        case 'error':
+          stopReason = 'error';
+          error = evt.message;
+          break;
+        default:
+          break;
       }
-      case 'usage':
-        inputTokens += evt.inputTokens;
-        outputTokens += evt.outputTokens;
-        break;
-      case 'done': {
-        // ChatEvent's StopReason includes 'stop_sequence', which collapses to 'end_turn'
-        // for the subagent's coarser SubagentStopReason vocabulary.
-        const r = evt.stopReason;
-        if (r === 'tool_use') stopReason = 'tool_use';
-        else if (r === 'max_tokens') stopReason = 'max_tokens';
-        else if (r === 'error') stopReason = 'error';
-        else stopReason = 'end_turn';
-        break;
-      }
-      case 'error':
-        stopReason = 'error';
-        error = evt.message;
-        break;
-      default:
-        break;
     }
+  } catch (cause) {
+    stopReason = 'runner_error';
+    error = String(cause);
+    flushPending();
+    return {
+      text,
+      toolEvents,
+      inputTokens,
+      outputTokens,
+      stopReason,
+      ...(error !== undefined ? { error } : {}),
+      iterations,
+    };
   }
 
   if (aborted) {
-    stopReason = 'budget_exceeded';
+    if (stopReason !== 'error' && error === undefined) {
+      stopReason = 'cancelled';
+      const reason = signal?.reason;
+      error = reason !== undefined ? String(reason) : 'aborted';
+    }
   }
 
   return {

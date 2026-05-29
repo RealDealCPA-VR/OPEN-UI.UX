@@ -264,6 +264,12 @@ const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_applied_diffs_file ON applied_diffs(file_path);
     `,
   },
+  {
+    version: 16,
+    sql: `
+      ALTER TABLE tool_calls ADD COLUMN routing_decision_json TEXT;
+    `,
+  },
 ];
 
 let db: Database.Database | null = null;
@@ -298,6 +304,23 @@ export function applyMigrations(database: Database.Database): void {
   runMigrations(database);
 }
 
+const MAX_SUPPORTED_SCHEMA_VERSION = MIGRATIONS.reduce(
+  (max, m) => (m.version > max ? m.version : max),
+  0,
+);
+
+export class UnsupportedSchemaVersionError extends Error {
+  override readonly name = 'UnsupportedSchemaVersionError';
+  constructor(
+    readonly currentVersion: number,
+    readonly maxSupported: number,
+  ) {
+    super(
+      `Database schema version ${currentVersion} was written by a newer build of OpenCodex (this build supports up to ${maxSupported}). Downgrading is not supported — please reopen with the newer build or remove the database file to start fresh.`,
+    );
+  }
+}
+
 function runMigrations(database: Database.Database): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -310,6 +333,10 @@ function runMigrations(database: Database.Database): void {
     .prepare('SELECT MAX(version) AS version FROM schema_migrations')
     .get() as { version: number | null };
   const current = currentRow.version ?? 0;
+
+  if (current > MAX_SUPPORTED_SCHEMA_VERSION) {
+    throw new UnsupportedSchemaVersionError(current, MAX_SUPPORTED_SCHEMA_VERSION);
+  }
 
   const pending = MIGRATIONS.filter((m) => m.version > current).sort(
     (a, b) => a.version - b.version,

@@ -47,12 +47,22 @@
       "@opencodex/memory-notion/*": ["./packages/memory-notion/src/*"],
       "@opencodex/memory-local-fs": ["./packages/memory-local-fs/src/index.ts"],
       "@opencodex/memory-local-fs/*": ["./packages/memory-local-fs/src/*"],
+      "@opencodex/memory-utils": ["./packages/memory-utils/src/index.ts"],
+      "@opencodex/memory-utils/*": ["./packages/memory-utils/src/*"],
       "@opencodex/telemetry": ["./packages/telemetry/src/index.ts"],
       "@opencodex/telemetry/*": ["./packages/telemetry/src/*"],
       "@opencodex/crash-reporting": ["./packages/crash-reporting/src/index.ts"],
       "@opencodex/crash-reporting/*": ["./packages/crash-reporting/src/*"],
       "@opencodex/audit-verify": ["./packages/audit-verify/src/index.ts"],
-      "@opencodex/audit-verify/*": ["./packages/audit-verify/src/*"]
+      "@opencodex/audit-verify/*": ["./packages/audit-verify/src/*"],
+      "@opencodex/provider-voyage": ["./packages/provider-voyage/src/index.ts"],
+      "@opencodex/provider-voyage/*": ["./packages/provider-voyage/src/*"],
+      "@opencodex/runner-aider": ["./packages/runner-aider/src/index.ts"],
+      "@opencodex/runner-aider/*": ["./packages/runner-aider/src/*"],
+      "@opencodex/runner-claude-code": ["./packages/runner-claude-code/src/index.ts"],
+      "@opencodex/runner-claude-code/*": ["./packages/runner-claude-code/src/*"],
+      "@opencodex/runner-opencode": ["./packages/runner-opencode/src/index.ts"],
+      "@opencodex/runner-opencode/*": ["./packages/runner-opencode/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "build", "out"]

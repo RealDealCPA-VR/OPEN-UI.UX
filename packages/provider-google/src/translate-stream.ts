@@ -1,5 +1,15 @@
 import type { ChatEvent, StopReason } from '@opencodex/core';
+import { computeCostUsd } from '@opencodex/core';
 import type { GoogleUsageMetadata, StreamChunk } from './response-schemas';
+import { findModel } from './models';
+
+const CONTENT_FILTER_REASONS: ReadonlySet<string> = new Set([
+  'SAFETY',
+  'RECITATION',
+  'BLOCKLIST',
+  'PROHIBITED_CONTENT',
+  'SPII',
+]);
 
 function mapStopReason(finish: string | undefined): StopReason {
   switch (finish) {
@@ -12,6 +22,7 @@ function mapStopReason(finish: string | undefined): StopReason {
     case 'BLOCKLIST':
     case 'PROHIBITED_CONTENT':
     case 'SPII':
+      return 'content_filter';
     case 'MALFORMED_FUNCTION_CALL':
       return 'stop_sequence';
     default:
@@ -19,8 +30,13 @@ function mapStopReason(finish: string | undefined): StopReason {
   }
 }
 
+export interface StreamChunksOptions {
+  model?: string;
+}
+
 export async function* streamChunksToEvents(
   chunks: AsyncIterable<StreamChunk>,
+  opts: StreamChunksOptions = {},
 ): AsyncGenerator<ChatEvent, void, void> {
   let inputTokens = 0;
   let outputTokens = 0;
@@ -65,12 +81,31 @@ export async function* streamChunksToEvents(
   }
 
   if (usageSeen) {
+    const pricing = opts.model ? findModel(opts.model)?.pricing : undefined;
+    const cost = computeCostUsd({
+      inputTokens,
+      outputTokens,
+      ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+      ...(pricing ? { pricing } : {}),
+    });
     yield {
       type: 'usage',
       inputTokens,
       outputTokens,
       ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+      ...(cost !== undefined ? { costUsd: cost } : {}),
     };
+  }
+
+  if (finishReason !== undefined && CONTENT_FILTER_REASONS.has(finishReason)) {
+    yield {
+      type: 'error',
+      message: `Google blocked the response: ${finishReason}`,
+      retryable: false,
+      code: 'content_filter',
+    };
+    yield { type: 'done', stopReason: 'content_filter' };
+    return;
   }
 
   const stop: StopReason = sawFunctionCall ? 'tool_use' : mapStopReason(finishReason);

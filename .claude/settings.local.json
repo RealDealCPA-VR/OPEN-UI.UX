@@ -122,7 +122,13 @@
       "Bash(node scripts/build-runner-plugins.mjs)",
       "Bash(node -e \"import\\('./index.js'\\).then\\(m => console.log\\('keys:', Object.keys\\(m\\), 'default:', typeof m.default, 'activate:', typeof m.default?.activate\\)\\)\")",
       "PowerShell(Get-ChildItem \"c:/Users/VR/Projects/OPEN UI.UX/packages/\" -Directory | ForEach-Object { $hasDist = Test-Path \"$\\($_.FullName\\)/dist\"; \"$\\($_.Name\\): dist=$hasDist\" })",
-      "Bash(git -C \"c:/Users/VR/Projects/OPEN UI.UX\" log -p --follow -- apps/desktop/src/main/index.ts)"
+      "Bash(git -C \"c:/Users/VR/Projects/OPEN UI.UX\" log -p --follow -- apps/desktop/src/main/index.ts)",
+      "Bash(git --no-pager diff --cached --name-only)",
+      "Bash(cat .husky/pre-commit)",
+      "Bash(cat .lintstagedrc*)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p['lint-staged']||'none',null,2\\)\\)\")",
+      "Bash(xargs -n 40 npx eslint --max-warnings 0 --no-warn-ignored)",
+      "Bash(grep -vE '^\\\\s*$')"
     ],
     "additionalDirectories": ["c:\\c\\Users\\VR\\Projects\\OPEN UI.UX\\apps\\desktop"]
   }

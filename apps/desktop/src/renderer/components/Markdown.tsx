@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { memo, useMemo, useState, type ReactNode } from 'react';
 import { tokenizeCitations } from './citations';
 import { pushTransfer } from '../state/transfer';
 import { parseMarkdown, type Block } from './markdown-parse';
@@ -7,8 +7,8 @@ interface MarkdownProps {
   text: string;
 }
 
-export function Markdown({ text }: MarkdownProps): JSX.Element {
-  const blocks = parseMarkdown(text);
+function MarkdownInner({ text }: MarkdownProps): JSX.Element {
+  const blocks = useMemo(() => parseMarkdown(text), [text]);
   return (
     <div className="md">
       {blocks.map((block, i) => (
@@ -17,6 +17,8 @@ export function Markdown({ text }: MarkdownProps): JSX.Element {
     </div>
   );
 }
+
+export const Markdown = memo(MarkdownInner, (prev, next) => prev.text === next.text);
 
 function BlockView({ block }: { block: Block }): JSX.Element {
   switch (block.kind) {

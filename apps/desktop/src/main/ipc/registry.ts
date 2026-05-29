@@ -17,7 +17,15 @@ export function registerInvoke<C extends IpcInvokeChannel>(
   requestSchema: ZodType<IpcInvokeChannels[C]['request'], ZodTypeDef, unknown>,
   handler: InvokeHandler<C>,
 ): void {
-  ipcMain.handle(channel, async (_event, raw: unknown) => {
+  ipcMain.handle(channel, async (event, raw: unknown) => {
+    const senderFrame = (event as { senderFrame?: Electron.WebFrameMain | null }).senderFrame;
+    if (senderFrame && senderFrame.parent !== null) {
+      logger.warn(
+        { channel, url: senderFrame.url },
+        'rejected IPC invoke from non-main frame (likely iframe/webview)',
+      );
+      throw new Error(`IPC channel "${channel}" is only callable from the main frame`);
+    }
     const parsed = requestSchema.safeParse(raw);
     if (!parsed.success) {
       logger.warn({ channel, issues: parsed.error.issues }, 'invalid IPC request');
@@ -32,5 +40,6 @@ export function emit<C extends IpcEventChannel>(
   channel: C,
   payload: IpcEventChannels[C],
 ): void {
+  if (webContents.isDestroyed()) return;
   webContents.send(channel, payload);
 }

@@ -33,6 +33,8 @@ export function registerRoutingHandlers(): void {
 
   onRoutingChanged((state) => {
     for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
+      if (win.webContents.isDestroyed()) continue;
       win.webContents.send('routing:changed', { state });
     }
   });

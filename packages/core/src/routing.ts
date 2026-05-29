@@ -33,12 +33,17 @@ export const routingPolicySchema = z.object({
 
 export type RoutingPolicy = z.infer<typeof routingPolicySchema>;
 
+export const routingDegradedReasonSchema = z.enum(['provider_missing']);
+
+export type RoutingDegradedReason = z.infer<typeof routingDegradedReasonSchema>;
+
 export interface RoutingDecision {
   matched: RoutingRuleWhen | null;
   ruleId: string | null;
   providerId: string;
   modelId: string;
   usedFallback: boolean;
+  degradedReason?: RoutingDegradedReason;
 }
 
 export const routingDecisionSchema = z.object({
@@ -47,6 +52,7 @@ export const routingDecisionSchema = z.object({
   providerId: z.string(),
   modelId: z.string(),
   usedFallback: z.boolean(),
+  degradedReason: routingDegradedReasonSchema.optional(),
 });
 
 export function findRuleFor(

@@ -135,6 +135,33 @@ describe('FileSuggestionsEngine', () => {
     expect(result).toHaveLength(1);
   });
 
+  it('rejects citations with ".." segments', () => {
+    const engine = new FileSuggestionsEngine({
+      getActiveConversationId: () => 'conv-1',
+      getMessagesForConversation: () => [makeMsg('see ../etc/passwd.ts:1')],
+    });
+    const result = engine.ingestBatch(emptyBatch({ changed: ['../etc/passwd.ts'] }));
+    expect(result).toHaveLength(0);
+  });
+
+  it('rejects bare paths with ".." segments', () => {
+    const engine = new FileSuggestionsEngine({
+      getActiveConversationId: () => 'conv-1',
+      getMessagesForConversation: () => [makeMsg('look at ../../secret.ts and other notes')],
+    });
+    const result = engine.ingestBatch(emptyBatch({ changed: ['../../secret.ts'] }));
+    expect(result).toHaveLength(0);
+  });
+
+  it('rejects paths with embedded ".." segments after backslash normalization', () => {
+    const engine = new FileSuggestionsEngine({
+      getActiveConversationId: () => 'conv-1',
+      getMessagesForConversation: () => [makeMsg('hidden src\\..\\..\\etc\\passwd.ts:9')],
+    });
+    const result = engine.ingestBatch(emptyBatch({ changed: ['src/../../etc/passwd.ts'] }));
+    expect(result).toHaveLength(0);
+  });
+
   it('reset() drops all buckets', () => {
     const engine = new FileSuggestionsEngine({
       getActiveConversationId: () => 'conv-1',
