@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { HoverHint } from '../components/HoverHint';
+import { VoiceSettingsSection } from '../components/VoiceSettingsSection';
 
 function detectReducedMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -139,6 +140,7 @@ export function AccessibilityPanel(): JSX.Element {
           </button>
         </HoverHint>
       </div>
+      <VoiceSettingsSection />
     </div>
   );
 }

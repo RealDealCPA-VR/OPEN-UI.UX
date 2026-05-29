@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { AddToMemoryButton } from '../components/AddToMemoryButton';
+import { CloudProviderTip } from '../components/CloudProviderTip';
 import { ModelPicker } from '../components/ModelPicker';
+import { ProviderSwitchButton } from '../components/ProviderSwitchButton';
+import { ReplayConversationModal } from '../components/ReplayConversationModal';
+import { VoiceInputButton } from '../components/VoiceInputButton';
 import type { ContentBlock } from '@opencodex/core';
 import {
   extractFilePathsFromMessages,
@@ -184,6 +189,8 @@ function ChatPane({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [preparingAttachments, setPreparingAttachments] = useState(false);
+  // Lane 6 — replay-this-conversation modal
+  const [replayModalOpen, setReplayModalOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const consumedScrollRef = useRef<Set<string>>(new Set());
@@ -250,6 +257,21 @@ function ChatPane({
       off();
     };
   }, []);
+
+  // Lane 3 — react to inline scroll-to-message events from CommandPalette etc.
+  useEffect(() => {
+    const off = window.opencodex.conversations.onScrollToMessage((payload) => {
+      if (payload.conversationId !== chatActiveId) return;
+      const el = document.getElementById(`chat-message-${payload.messageId}`);
+      if (!el) return;
+      consumedScrollRef.current.add(payload.messageId);
+      skipBottomScrollRef.current = true;
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el.classList.add('chat-bubble-highlight');
+      window.setTimeout(() => el.classList.remove('chat-bubble-highlight'), 2000);
+    });
+    return () => off();
+  }, [chatActiveId]);
 
   useLayoutEffect(() => {
     if (!scrollToMessageId) return;
@@ -647,6 +669,21 @@ function ChatPane({
       <header className="chat-header">
         <div className="chat-header-title">{modelName}</div>
         <UsageSummary usage={chat.usage} />
+        <ProviderSwitchButton
+          conversationId={chat.activeId}
+          disabled={chat.streaming}
+          onSwitched={({ providerId, modelId, resendStrategy, summary }) => {
+            if (resendStrategy === 'summary-only' && summary && chat.activeId) {
+              void window.opencodex.conversations.appendMessage({
+                conversationId: chat.activeId,
+                role: 'system',
+                content: summary,
+                providerId,
+                modelId,
+              });
+            }
+          }}
+        />
         <div className="chat-header-transfer">
           <button
             type="button"
@@ -666,6 +703,25 @@ function ChatPane({
           >
             Send to Codebase
           </button>
+          {/* Lane 9 — Branch from this conversation */}
+          <button
+            type="button"
+            className="btn"
+            disabled={!chat.activeId}
+            onClick={() => {
+              if (!chat.activeId) return;
+              void window.opencodex.git
+                .branchFromConversation({ conversationId: chat.activeId })
+                .then((res) => {
+                  if (!res.ok) {
+                    console.warn('branchFromConversation failed', res.error);
+                  }
+                });
+            }}
+            title="Create an oc/<slug> branch in the active workspace from this conversation"
+          >
+            Branch from this conversation
+          </button>
         </div>
         <ExportMenu
           disabled={!chat.activeId || chat.streaming}
@@ -673,6 +729,16 @@ function ChatPane({
             void chat.exportActive(fmt);
           }}
         />
+        {/* Lane 6 — replay this conversation against a different provider/model */}
+        <button
+          type="button"
+          className="btn"
+          disabled={!chat.activeId || chat.streaming}
+          onClick={() => setReplayModalOpen(true)}
+          title="Replay this conversation against a different provider/model and diff the outputs"
+        >
+          Replay
+        </button>
         {chat.error ? <div className="chat-error">{chat.error}</div> : null}
       </header>
       <div className="chat-scroll" ref={scrollRef}>
@@ -738,6 +804,8 @@ function ChatPane({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
       >
+        {/* Lane 8 — Cloud provider trust tip; self-suppresses for ollama / once dismissed */}
+        <CloudProviderTip providerId={providerId} providerDisplayName={modelName} />
         {attachments.length > 0 || preparingAttachments || attachmentError ? (
           <div className="chat-attachments">
             {attachments.map((att, i) => (
@@ -811,9 +879,18 @@ function ChatPane({
               toolsEnabled={toolsEnabled}
               onToolsEnabledChange={setToolsEnabled}
             />
+            <VoiceInputButton
+              disabled={chat.streaming}
+              onTranscript={(text) => {
+                setInput((prev) =>
+                  prev.length > 0 && !prev.endsWith(' ') ? `${prev} ${text}` : `${prev}${text}`,
+                );
+                inputRef.current?.focus();
+              }}
+            />
           </div>
           <div className="chat-composer-actions-right">
-            <ModelPicker />
+            <ModelPicker conversationId={chat.activeId} />
             {chat.streaming ? (
               <HoverHint hint="Stop streaming (Esc)">
                 <button
@@ -846,6 +923,12 @@ function ChatPane({
           </div>
         </div>
       </form>
+      {replayModalOpen && chat.activeId ? (
+        <ReplayConversationModal
+          conversationId={chat.activeId}
+          onClose={() => setReplayModalOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1058,6 +1141,10 @@ function MessageBubble({
   onRerun: (prompt: string) => void;
 }): JSX.Element {
   const hasBlocks = message.contentBlocks !== null && message.contentBlocks.length > 0;
+  const memoryHeading = useMemo(
+    () => `Chat ${new Date(message.createdAt).toISOString().slice(0, 10)}`,
+    [message.createdAt],
+  );
   return (
     <article
       id={`chat-message-${message.id}`}
@@ -1077,6 +1164,11 @@ function MessageBubble({
             : ''}
           {message.costUsd !== null ? ` · $${message.costUsd.toFixed(4)}` : ''}
         </footer>
+      ) : null}
+      {message.role === 'assistant' ? (
+        <div className="chat-bubble-actions" style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <AddToMemoryButton content={message.content} defaultHeading={memoryHeading} />
+        </div>
       ) : null}
     </article>
   );

@@ -13,6 +13,7 @@ import { ChatView } from './views/ChatView';
 import { AgentView } from './views/AgentView';
 import { AutomationsView } from './views/AutomationsView';
 import { CodebaseView } from './views/CodebaseView';
+import { ReviewView } from './views/ReviewView';
 import { RunnersView } from './views/RunnersView';
 import { SettingsView } from './views/SettingsView';
 
@@ -56,6 +57,7 @@ export function App(): JSX.Element {
                   <Route path="/agent" element={<AgentView />} />
                   <Route path="/agent/:runId" element={<AgentView />} />
                   <Route path="/codebase" element={<CodebaseView />} />
+                  <Route path="/review" element={<ReviewView />} />
                   <Route path="/automations" element={<AutomationsView />} />
                   <Route path="/runners" element={<RunnersView />} />
                   <Route path="/settings/runners" element={<RunnersRedirect />} />

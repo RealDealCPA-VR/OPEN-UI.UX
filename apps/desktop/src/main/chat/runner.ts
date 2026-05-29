@@ -8,18 +8,23 @@ import type {
   StopReason,
   ToolCallEvent,
 } from '@opencodex/core';
-import { ToolRegistry } from '@opencodex/core';
+import { RoutingProvider, ToolRegistry } from '@opencodex/core';
 import type { ChatStartResponse, ChatStreamEvent } from '../../shared/chat';
 import type { ChatAttachment } from '../../shared/attachments';
 import type { StoredMessage } from '../../shared/conversation';
 import type { ShellOutputEvent } from '../../shared/shell-output';
 import { buildShellTranscript } from '../../shared/shell-output';
+import { isDiffProducingTool } from '../../shared/replay';
 import { logger } from '../logger';
+import { getActiveRoutingPolicy } from '../routing/routing-store';
 import { getToolRegistry } from '../tools/registry';
 import { detectSkillInvocation, resolveSkillInvocation } from '../skills/invoke';
 import { appendMessage, listMessages, updateAssistantMessage } from '../storage/conversations';
+import { recordAppliedDiff } from '../storage/applied-diffs';
 import { recordToolCall, type ToolCallAuditDecision } from '../storage/tool-audit';
 import { type ApprovalManager, type ApprovalOutcome, getApprovalManager } from './approvals';
+import { BudgetExceededError, getBudgetManager } from './budget-manager';
+import { buildChatSystemPrompt } from './system-prompt-builder';
 
 const MAX_TOOL_ITERATIONS = 10;
 const MAX_RETRY_ATTEMPTS = 3;
@@ -108,7 +113,35 @@ const active = new Map<string, ActiveStream>();
 
 export async function startChatStream(opts: StartChatStreamOptions): Promise<ChatStartResponse> {
   const builder = opts.buildProvider ?? defaultBuildProvider;
-  const provider = await builder(opts.providerId);
+  const basePrimary = await builder(opts.providerId);
+  // Lane 5 — if a routing policy is active, wrap the resolved provider in a
+  // RoutingProvider so each turn can dispatch to the policy-matched provider.
+  let provider: LLMProvider = basePrimary;
+  try {
+    const activePolicy = getActiveRoutingPolicy();
+    if (activePolicy && activePolicy.rules.length > 0) {
+      const referencedIds = new Set<string>([opts.providerId]);
+      for (const rule of activePolicy.rules) {
+        referencedIds.add(rule.use.providerId);
+        if (rule.fallback) referencedIds.add(rule.fallback.providerId);
+      }
+      const providers = new Map<string, LLMProvider>();
+      for (const pid of referencedIds) {
+        try {
+          providers.set(pid, pid === opts.providerId ? basePrimary : await builder(pid));
+        } catch (err) {
+          logger.warn({ err, providerId: pid }, 'routing: skipping unavailable provider');
+        }
+      }
+      provider = new RoutingProvider({
+        defaultRef: { providerId: opts.providerId, modelId: opts.modelId },
+        policy: activePolicy,
+        providers,
+      });
+    }
+  } catch (err) {
+    logger.warn({ err }, 'routing: failed to apply active policy — falling back to primary');
+  }
 
   const attachments = opts.attachments ?? [];
   const userBlocks = buildUserContentBlocks(opts.userMessage, attachments);
@@ -140,6 +173,16 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
 
   const workspaceRoot = opts.workspaceRoot ?? process.cwd();
 
+  // Lane 7 — compose base system prompt (memory.md prepend + anti-sycophancy).
+  try {
+    const baseSystemPrompt = await buildChatSystemPrompt({ workspaceRoot });
+    if (baseSystemPrompt !== null) {
+      messages.unshift({ role: 'system', content: baseSystemPrompt });
+    }
+  } catch (err) {
+    logger.warn({ err }, 'failed to build chat system prompt — continuing without prefix');
+  }
+
   let registry = opts.toolRegistry === undefined ? getToolRegistry() : opts.toolRegistry;
   const approvals =
     opts.approvalManager === undefined ? safeGetApprovalManager() : opts.approvalManager;
@@ -163,6 +206,9 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
     streamId,
     provider,
     modelId: opts.modelId,
+    providerId: opts.providerId,
+    conversationId: opts.conversationId,
+    userPromptSnapshot: userDisplayText,
     messages,
     assistantMessageId: assistantRow.id,
     sink: opts.sink,
@@ -197,6 +243,9 @@ interface RunStreamArgs {
   streamId: string;
   provider: LLMProvider;
   modelId: string;
+  providerId: string;
+  conversationId: string;
+  userPromptSnapshot: string;
   messages: Message[];
   assistantMessageId: string;
   sink: ChatStreamSink;
@@ -244,6 +293,16 @@ async function runStream(args: RunStreamArgs): Promise<void> {
         iterText = '';
         iterStop = 'end_turn';
         retryError = null;
+        // Lane: phase14-tier1-cost-ceiling — enforce budgets before each turn.
+        try {
+          getBudgetManager().check({
+            conversationId: args.conversationId,
+            providerId: args.providerId,
+          });
+        } catch (err) {
+          if (err instanceof BudgetExceededError) throw err;
+          logger.warn({ err }, 'budget check failed; allowing turn to proceed');
+        }
         const iter = args.provider.chat({
           model: args.modelId,
           messages,
@@ -264,6 +323,18 @@ async function runStream(args: RunStreamArgs): Promise<void> {
             inputTokens = (inputTokens ?? 0) + event.inputTokens;
             outputTokens = (outputTokens ?? 0) + event.outputTokens;
             if (event.costUsd !== undefined) costUsd = (costUsd ?? 0) + event.costUsd;
+            // Lane: phase14-tier1-cost-ceiling — accrue actual spend.
+            if (event.costUsd !== undefined && event.costUsd > 0) {
+              try {
+                getBudgetManager().accrue({
+                  conversationId: args.conversationId,
+                  providerId: args.providerId,
+                  costUsd: event.costUsd,
+                });
+              } catch (err) {
+                logger.warn({ err }, 'budget accrue failed');
+              }
+            }
             emit(event);
           } else if (event.type === 'done') {
             iterStop = event.stopReason;
@@ -363,7 +434,9 @@ async function runStream(args: RunStreamArgs): Promise<void> {
       retryable: false,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const isBudget = err instanceof BudgetExceededError;
+    const rawMessage = err instanceof Error ? err.message : String(err);
+    const message = isBudget ? `Budget exceeded — ${rawMessage}` : rawMessage;
     logger.error({ err, streamId: args.streamId }, 'chat stream errored');
     if (!emittedDoneOrError) {
       emit({ type: 'error', message, retryable: false });
@@ -519,6 +592,29 @@ async function executeToolCall(
         error: (msg, meta) => logger.error({ tool: tc.name, meta }, msg),
       },
     });
+    // Lane 6 — record diff-producing tool calls for replay / provenance.
+    if (isDiffProducingTool(tc.name) && !args.signal.aborted) {
+      try {
+        const argsRecord = (tc.arguments ?? {}) as Record<string, unknown>;
+        const filePath = typeof argsRecord.path === 'string' ? argsRecord.path : '<unknown>';
+        const diffText = buildDiffSummaryFromToolCall(tc.name, argsRecord, output);
+        recordAppliedDiff({
+          conversationId: args.conversationId,
+          messageId: args.assistantMessageId,
+          toolCallId: tc.id,
+          filePath,
+          diff: diffText,
+          promptSnapshot: args.userPromptSnapshot,
+          providerId: args.providerId,
+          modelId: args.modelId,
+        });
+      } catch (err) {
+        logger.error(
+          { err, tool: tc.name, streamId: args.streamId },
+          'failed to record applied diff',
+        );
+      }
+    }
     auditToolCall(args, tc, {
       output,
       isError: false,
@@ -686,4 +782,23 @@ function auditToolCall(args: RunStreamArgs, tc: ToolCallEvent, patch: AuditPatch
       'failed to record tool call audit row',
     );
   }
+}
+
+function buildDiffSummaryFromToolCall(
+  toolName: string,
+  argsRecord: Record<string, unknown>,
+  output: unknown,
+): string {
+  if (toolName === 'edit_file') {
+    const oldStr = typeof argsRecord.oldString === 'string' ? argsRecord.oldString : '';
+    const newStr = typeof argsRecord.newString === 'string' ? argsRecord.newString : '';
+    const path = typeof argsRecord.path === 'string' ? argsRecord.path : '<unknown>';
+    return `--- a/${path}\n+++ b/${path}\n@@ edit @@\n-${oldStr}\n+${newStr}\n`;
+  }
+  if (toolName === 'write_file') {
+    const path = typeof argsRecord.path === 'string' ? argsRecord.path : '<unknown>';
+    const content = typeof argsRecord.content === 'string' ? argsRecord.content : '';
+    return `--- a/${path}\n+++ b/${path}\n@@ write @@\n+${content}\n`;
+  }
+  return typeof output === 'string' ? output : JSON.stringify(output ?? '');
 }

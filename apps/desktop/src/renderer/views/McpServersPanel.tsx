@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { McpHealthDashboard } from '../components/McpHealthDashboard';
+import { McpMarketplacePanel } from '../components/McpMarketplacePanel';
+import { McpPermissionSurface } from '../components/McpPermissionSurface';
 import type {
   McpPromptEntry,
   McpResourceEntry,
@@ -7,10 +10,19 @@ import type {
   McpState,
 } from '../../shared/mcp';
 
+type McpTab = 'servers' | 'marketplace' | 'permissions' | 'health';
+const MCP_TABS: ReadonlyArray<{ id: McpTab; label: string }> = [
+  { id: 'servers', label: 'Servers' },
+  { id: 'marketplace', label: 'Marketplace' },
+  { id: 'permissions', label: 'Permissions' },
+  { id: 'health', label: 'Health' },
+];
+
 type PresetView = McpServerPreset;
 type ExpandKind = 'tools' | 'resources' | 'prompts';
 
 export function McpServersPanel(): JSX.Element {
+  const [tab, setTab] = useState<McpTab>('servers');
   const [state, setState] = useState<McpState | null>(null);
   const [presets, setPresets] = useState<PresetView[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -45,6 +57,48 @@ export function McpServersPanel(): JSX.Element {
       setResources([]);
     }
   }, [resources]);
+
+  const tabsHeader = (
+    <div className="mcp-tabs" role="tablist" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      {MCP_TABS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          role="tab"
+          aria-selected={tab === t.id}
+          className={tab === t.id ? 'btn btn-primary' : 'btn'}
+          onClick={() => setTab(t.id)}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (tab === 'marketplace') {
+    return (
+      <div className="mcp-panel">
+        {tabsHeader}
+        <McpMarketplacePanel />
+      </div>
+    );
+  }
+  if (tab === 'permissions') {
+    return (
+      <div className="mcp-panel">
+        {tabsHeader}
+        <McpPermissionSurface />
+      </div>
+    );
+  }
+  if (tab === 'health') {
+    return (
+      <div className="mcp-panel">
+        {tabsHeader}
+        <McpHealthDashboard />
+      </div>
+    );
+  }
 
   if (!state) return <p className="settings-section-desc">Loading…</p>;
 
@@ -101,6 +155,7 @@ export function McpServersPanel(): JSX.Element {
 
   return (
     <div className="mcp-panel">
+      {tabsHeader}
       {error && (
         <div className="mcp-panel-error" role="alert">
           {error}

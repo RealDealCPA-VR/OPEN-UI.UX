@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
 import {
-  treeKill,
   type ChatEvent,
   type SubagentRunOptions,
   type SubagentRunner,
   type SubagentRunnerInstallCheck,
 } from '@opencodex/core';
+import { treeKill } from '@opencodex/core/process/tree-kill';
 import type { PluginHost } from '@opencodex/plugin-sdk';
 import { NdjsonBuffer, createTranslatorState, translateClaudeJson } from './event-translator';
 import { CLAUDE_INSTALL_HINT, autoDetect, checkInstalled } from './check-installed';

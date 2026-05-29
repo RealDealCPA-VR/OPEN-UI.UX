@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { treeKill } from '@opencodex/core';
+import { treeKill } from '@opencodex/core/process/tree-kill';
 import { logger } from '../logger';
 import type {
   PackageManager,

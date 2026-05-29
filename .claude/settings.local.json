@@ -120,7 +120,9 @@
       "Bash(git stash *)",
       "Bash(grep -rn \"openExternal\\\\|shell\\\\\\\\.open\" \"c:/Users/VR/Projects/OPEN UI.UX/apps/desktop/src/main/\")",
       "Bash(node scripts/build-runner-plugins.mjs)",
-      "Bash(node -e \"import\\('./index.js'\\).then\\(m => console.log\\('keys:', Object.keys\\(m\\), 'default:', typeof m.default, 'activate:', typeof m.default?.activate\\)\\)\")"
+      "Bash(node -e \"import\\('./index.js'\\).then\\(m => console.log\\('keys:', Object.keys\\(m\\), 'default:', typeof m.default, 'activate:', typeof m.default?.activate\\)\\)\")",
+      "PowerShell(Get-ChildItem \"c:/Users/VR/Projects/OPEN UI.UX/packages/\" -Directory | ForEach-Object { $hasDist = Test-Path \"$\\($_.FullName\\)/dist\"; \"$\\($_.Name\\): dist=$hasDist\" })",
+      "Bash(git -C \"c:/Users/VR/Projects/OPEN UI.UX\" log -p --follow -- apps/desktop/src/main/index.ts)"
     ],
     "additionalDirectories": ["c:\\c\\Users\\VR\\Projects\\OPEN UI.UX\\apps\\desktop"]
   }

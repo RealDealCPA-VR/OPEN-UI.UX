@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { ModelCapabilities } from '@opencodex/core';
+import { CostComparisonTooltip } from './CostComparisonTooltip';
 import { useSelectedModel } from '../state/selected-model-context';
 
 const TOP_N = 4;
@@ -55,9 +56,14 @@ function pushRecent(prev: RecentEntry[], entry: RecentEntry): RecentEntry[] {
   return [entry, ...filtered].slice(0, RECENTS_MAX);
 }
 
-export function ModelPicker(): JSX.Element {
+export interface ModelPickerProps {
+  conversationId?: string | null;
+}
+
+export function ModelPicker({ conversationId = null }: ModelPickerProps = {}): JSX.Element {
   const { configuredProviders, selected, selectedCapabilities, loading, error, select } =
     useSelectedModel();
+  const [hovered, setHovered] = useState(false);
   const [open, setOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -172,7 +178,13 @@ export function ModelPicker(): JSX.Element {
   };
 
   return (
-    <div className="model-picker" ref={rootRef}>
+    <div
+      className="model-picker"
+      ref={rootRef}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{ position: 'relative' }}
+    >
       <button
         type="button"
         className={buttonClass}
@@ -186,6 +198,7 @@ export function ModelPicker(): JSX.Element {
           ▾
         </span>
       </button>
+      <CostComparisonTooltip open={hovered && !open} conversationId={conversationId} />
 
       {open && (
         <div className="model-picker-pop" role="listbox">

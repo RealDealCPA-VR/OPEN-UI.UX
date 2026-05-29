@@ -27,6 +27,7 @@ type ChangeListener = (status: MemoryStatus) => void;
 const runtime: Record<MemoryBackendId, BackendRuntime> = {
   obsidian: { registeredTools: [], toolCount: 0, configured: false },
   notion: { registeredTools: [], toolCount: 0, configured: false },
+  'local-fs': { registeredTools: [], toolCount: 0, configured: false },
 };
 
 const listeners = new Set<ChangeListener>();

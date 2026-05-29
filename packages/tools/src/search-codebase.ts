@@ -7,6 +7,12 @@ const inputSchema = z.object({
   literal: z.boolean().optional().default(false).describe('Treat query as a literal string'),
   glob: z.string().optional().describe('Glob filter, e.g. "**/*.ts"'),
   maxResults: z.number().int().min(1).max(500).optional().default(100),
+  workspaceIds: z
+    .array(z.string().min(1))
+    .optional()
+    .describe(
+      'Optional list of workspace ids to search across. When omitted, the active (primary) workspace is searched.',
+    ),
 });
 
 export type SearchHitSource = 'workspace' | 'mcp';
@@ -17,6 +23,7 @@ export type SearchHit = {
   preview: string;
   score: number;
   source: SearchHitSource;
+  workspaceId?: string;
 };
 
 export const MCP_INDEX_PREFIX = 'mcp:';
@@ -43,7 +50,7 @@ export const searchCodebaseTool = defineTool({
       maxMatches: input.maxResults,
     };
     const result = (await grepTool.execute(grepInput as never, ctx)) as GrepMatch[];
-    const ranked = rank(result, input.query);
+    const ranked = rank(result, input.query, undefined);
     return {
       query: input.query,
       hitCount: ranked.length,
@@ -52,26 +59,30 @@ export const searchCodebaseTool = defineTool({
   },
 });
 
-function rank(hits: readonly GrepMatch[], query: string): SearchHit[] {
+function rank(hits: readonly GrepMatch[], query: string, workspaceId?: string): SearchHit[] {
   const lower = query.toLowerCase();
   return hits
-    .map((h) => {
+    .map((h): SearchHit => {
       const matchLower = h.text.toLowerCase();
       let score = 0;
       if (matchLower.includes(lower)) score += 10;
       if (h.file.toLowerCase().includes(lower)) score += 5;
       if (h.file.endsWith('.md') || h.file.endsWith('.txt')) score -= 1;
       if (h.file.includes('test') || h.file.includes('__fixtures__')) score -= 2;
-      return {
+      const hit: SearchHit = {
         file: h.file,
         line: h.line,
         preview: h.text,
         score,
         source: sourceOfPath(h.file),
       };
+      if (workspaceId !== undefined) hit.workspaceId = workspaceId;
+      return hit;
     })
     .sort((a, b) => b.score - a.score);
 }
+
+export { rank as rankSearchHits };
 
 export function reciprocalRankFusion<T>(
   rankings: ReadonlyArray<ReadonlyArray<T>>,

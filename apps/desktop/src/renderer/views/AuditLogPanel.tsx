@@ -114,6 +114,15 @@ export function AuditLogPanel(): JSX.Element {
   const [clearing, setClearing] = useState(false);
   const [clearConfirming, setClearConfirming] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+  const [filePathFilter, setFilePathFilter] = useState<string>('');
+  const [filePathDraft, setFilePathDraft] = useState<string>('');
+  const [exporting, setExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [wormEnabled, setWormEnabled] = useState<boolean | null>(null);
+  const [wormPath, setWormPath] = useState<string | null>(null);
+  const [wormWarning, setWormWarning] = useState<string | null>(null);
+  const [wormPending, setWormPending] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,9 +203,89 @@ export function AuditLogPanel(): JSX.Element {
       since: timeRangeToSince(timeRange),
       limit: PAGE_SIZE,
       offset: page * PAGE_SIZE,
+      filePath: filePathFilter || undefined,
     }),
-    [toolFilter, decisionFilter, errorFilter, timeRange, page],
+    [toolFilter, decisionFilter, errorFilter, timeRange, page, filePathFilter],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await window.opencodex.toolAudit.getWormStatus();
+        if (!cancelled) {
+          setWormEnabled(s.enabled);
+          setWormPath(s.path);
+          setWormWarning(s.platformWarning);
+        }
+      } catch {
+        if (!cancelled) setWormEnabled(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onToggleWorm = useCallback(async (next: boolean): Promise<void> => {
+    setWormPending(true);
+    setExportError(null);
+    try {
+      const s = await window.opencodex.toolAudit.setWormEnabled({ enabled: next });
+      setWormEnabled(s.enabled);
+      setWormPath(s.path);
+      setWormWarning(s.platformWarning);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setWormPending(false);
+    }
+  }, []);
+
+  const onExportBundle = useCallback(async (): Promise<void> => {
+    setExporting(true);
+    setExportError(null);
+    setExportStatus(null);
+    try {
+      const envelope = await window.opencodex.toolAudit.exportBundle({
+        toolNames: toolFilter ? [toolFilter] : undefined,
+        decisions: decisionFilter ? [decisionFilter as ToolCallAuditDecision] : undefined,
+        errorState: errorFilter,
+        from: timeRangeToSince(timeRange) ?? undefined,
+        filePath: filePathFilter || undefined,
+        runnerIds:
+          runnerFilter && runnerFilter !== OPENCODEX_RUNNER_KEY ? [runnerFilter] : undefined,
+        triggerSource: triggerFilter || undefined,
+      });
+      const json = JSON.stringify(envelope, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      link.href = url;
+      link.download = `opencodex-audit-${stamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      const entryCount = envelope.bundle.entries.length;
+      setExportStatus(
+        `Exported ${entryCount} entr${entryCount === 1 ? 'y' : 'ies'} · run \`npx @opencodex/audit-verify\` to verify.`,
+      );
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExporting(false);
+    }
+  }, [
+    toolFilter,
+    decisionFilter,
+    errorFilter,
+    timeRange,
+    filePathFilter,
+    runnerFilter,
+    triggerFilter,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -349,6 +438,46 @@ export function AuditLogPanel(): JSX.Element {
         {retentionError && (
           <span className="audit-retention-error">Retention error: {retentionError}</span>
         )}
+        <button
+          type="button"
+          className="audit-clear-button"
+          disabled={exporting}
+          onClick={() => {
+            void onExportBundle();
+          }}
+          title="Export a signed audit bundle (Ed25519). Verify with `npx @opencodex/audit-verify`."
+        >
+          {exporting ? 'Exporting…' : 'Export bundle'}
+        </button>
+        <label className="audit-filter" style={{ marginLeft: 8 }}>
+          <input
+            type="checkbox"
+            checked={wormEnabled === true}
+            disabled={wormPending || wormEnabled === null}
+            onChange={(e) => {
+              void onToggleWorm(e.target.checked);
+            }}
+          />
+          <span className="audit-filter-label" style={{ marginLeft: 4 }}>
+            WORM
+          </span>
+        </label>
+        {wormEnabled && wormPath && (
+          <span
+            className="audit-retention-status"
+            title={`Append-only mirror at ${wormPath}`}
+            style={{ fontSize: 11 }}
+          >
+            WORM: {wormPath}
+          </span>
+        )}
+        {wormWarning && wormEnabled && (
+          <span className="audit-retention-error" style={{ fontSize: 11 }}>
+            {wormWarning}
+          </span>
+        )}
+        {exportStatus && <span className="audit-retention-status">{exportStatus}</span>}
+        {exportError && <span className="audit-retention-error">Export error: {exportError}</span>}
       </div>
 
       <div className="audit-filters">
@@ -448,6 +577,28 @@ export function AuditLogPanel(): JSX.Element {
             <option value="user">User</option>
             <option value="scheduled">Scheduled</option>
           </select>
+        </label>
+
+        <label className="audit-filter">
+          <span className="audit-filter-label">File path</span>
+          <input
+            type="text"
+            className="approvals-select"
+            placeholder="e.g. src/main"
+            value={filePathDraft}
+            onChange={(e) => setFilePathDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                resetPageAnd(() => setFilePathFilter(filePathDraft.trim()));
+              }
+            }}
+            onBlur={() => {
+              if (filePathDraft.trim() !== filePathFilter) {
+                resetPageAnd(() => setFilePathFilter(filePathDraft.trim()));
+              }
+            }}
+            style={{ minWidth: 180 }}
+          />
         </label>
       </div>
 

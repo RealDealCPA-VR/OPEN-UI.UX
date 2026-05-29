@@ -55,6 +55,9 @@ const SettingsSchema = z.object({
     toolOverrides: {},
   }),
   auditRetentionDays: z.number().int().min(1).max(36500).nullable().default(null),
+  auditPublicKeyPem: z.string().default(''),
+  auditDeviceId: z.string().default(''),
+  auditWormEnabled: z.boolean().default(false),
   mcpServers: z.array(mcpServerEntrySchema).default([]),
   onboardingComplete: z.boolean().default(false),
   plugins: z
@@ -68,6 +71,26 @@ const SettingsSchema = z.object({
     )
     .default([]),
   pluginRegistryUrl: z.string().url().nullable().default(null),
+  trustedPublisherKeys: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        publicKey: z.string().min(1),
+      }),
+    )
+    .default([]),
+  pluginConsentLog: z
+    .array(
+      z.object({
+        pluginName: z.string(),
+        pluginVersion: z.string(),
+        signed: z.boolean(),
+        signer: z.string().nullable(),
+        installedAt: z.string(),
+        userAcceptedUnsigned: z.boolean().default(false),
+      }),
+    )
+    .default([]),
   readOnlyChatMode: z.boolean().default(false),
   memory: memoryConfigSchema.default(DEFAULT_MEMORY_CONFIG),
   telemetryEnabled: z.boolean().default(false),
@@ -88,6 +111,23 @@ const SettingsSchema = z.object({
       }),
     )
     .default({}),
+  // Lane 7 — anti-sycophancy clause appended to every system prompt by default.
+  antiSycophancyEnabled: z.boolean().default(true),
+  // Lane 8 — once the user dismisses the cloud-provider tip, don't show again.
+  cloudProviderTipShown: z.boolean().default(false),
+  // Lane 11 — privacy / network policy persisted alongside everything else.
+  localOnlyMode: z.boolean().default(false),
+  networkAllowlist: z
+    .array(
+      z
+        .string()
+        .min(1)
+        .max(253)
+        .regex(/^[a-z0-9.*-]+$/i),
+    )
+    .default(['127.0.0.1', 'localhost', '*.local']),
+  // Lane 14 — MCP marketplace registry URL.
+  mcpRegistryUrl: z.string().url().nullable().default(null),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -169,6 +209,15 @@ export function setAuditRetentionDays(days: number | null): number | null {
   return next.auditRetentionDays;
 }
 
+export function getAuditWormEnabled(): boolean {
+  return getSettings().auditWormEnabled;
+}
+
+export function setAuditWormEnabledSetting(enabled: boolean): boolean {
+  const next = updateSettings({ auditWormEnabled: enabled });
+  return next.auditWormEnabled;
+}
+
 export function getWorkspaceState(): WorkspaceState {
   const s = getSettings();
   return { active: s.activeWorkspace, history: s.workspaceHistory };
@@ -233,6 +282,31 @@ export function getPluginRegistryUrl(): string | null {
 export function setPluginRegistryUrl(url: string | null): string | null {
   const next = updateSettings({ pluginRegistryUrl: url });
   return next.pluginRegistryUrl;
+}
+
+export type StoredTrustedPublisherKey = Settings['trustedPublisherKeys'][number];
+
+export function getTrustedPublisherKeys(): StoredTrustedPublisherKey[] {
+  return getSettings().trustedPublisherKeys;
+}
+
+export function setTrustedPublisherKeys(
+  keys: StoredTrustedPublisherKey[],
+): StoredTrustedPublisherKey[] {
+  const next = updateSettings({ trustedPublisherKeys: keys });
+  return next.trustedPublisherKeys;
+}
+
+export type StoredPluginConsentEntry = Settings['pluginConsentLog'][number];
+
+export function getPluginConsentLog(): StoredPluginConsentEntry[] {
+  return getSettings().pluginConsentLog;
+}
+
+export function appendPluginConsent(entry: StoredPluginConsentEntry): StoredPluginConsentEntry[] {
+  const current = getSettings().pluginConsentLog;
+  const next = updateSettings({ pluginConsentLog: [...current, entry] });
+  return next.pluginConsentLog;
 }
 
 export function getReadOnlyChatMode(): boolean {
@@ -372,4 +446,43 @@ export function setRunnerCliPath(runnerId: string, cliPath: string | null): void
     next[runnerId] = { cliPath };
   }
   updateSettings({ runners: next });
+}
+
+// Lane 8 — cloud provider tip dismissal
+export function getCloudProviderTipShown(): boolean {
+  return getSettings().cloudProviderTipShown;
+}
+
+export function setCloudProviderTipShown(value: boolean): boolean {
+  const next = updateSettings({ cloudProviderTipShown: value });
+  return next.cloudProviderTipShown;
+}
+
+// Lane 11 — privacy / local-only mode + allowlist
+export interface NetworkPolicySnapshot {
+  localOnlyMode: boolean;
+  allowlist: string[];
+}
+
+export function getNetworkPolicy(): NetworkPolicySnapshot {
+  const s = getSettings();
+  return { localOnlyMode: s.localOnlyMode, allowlist: [...s.networkAllowlist] };
+}
+
+export function setNetworkPolicy(policy: NetworkPolicySnapshot): NetworkPolicySnapshot {
+  const next = updateSettings({
+    localOnlyMode: policy.localOnlyMode,
+    networkAllowlist: [...policy.allowlist],
+  });
+  return { localOnlyMode: next.localOnlyMode, allowlist: [...next.networkAllowlist] };
+}
+
+// Lane 14 — MCP registry URL
+export function getMcpRegistryUrl(): string | null {
+  return getSettings().mcpRegistryUrl;
+}
+
+export function setMcpRegistryUrl(url: string | null): string | null {
+  const next = updateSettings({ mcpRegistryUrl: url });
+  return next.mcpRegistryUrl;
 }

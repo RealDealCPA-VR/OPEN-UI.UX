@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useChat } from '../state/chat-context';
 import { useSelectedModel } from '../state/selected-model-context';
+import { BudgetSpendIndicator } from './BudgetSpendIndicator';
 import {
   computeTokenMeterSegments,
   findRunningToolName,
@@ -138,6 +139,7 @@ export function StatusBar(): JSX.Element {
             {costText ? <span className="statusbar-mono"> · {costText}</span> : null}
           </span>
         ) : null}
+        <BudgetSpendIndicator />
         {activeWorkspace ? (
           <button
             type="button"

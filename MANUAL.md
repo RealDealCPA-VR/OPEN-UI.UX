@@ -8,6 +8,7 @@ A guided tour of every screen, concept, and shortcut. Read top-to-bottom for a c
 
 ## Contents
 
+0. [Mission Control](#mission-control)
 1. [What OpenCodex is](#what-opencodex-is)
 2. [First-time setup](#first-time-setup)
 3. [The interface at a glance](#the-interface-at-a-glance)
@@ -22,6 +23,20 @@ A guided tour of every screen, concept, and shortcut. Read top-to-bottom for a c
 12. [Troubleshooting](#troubleshooting)
 13. [Privacy and data](#privacy-and-data)
 14. [Getting help](#getting-help)
+
+---
+
+## Mission Control
+
+OpenCodex is **Mission Control for AI coding agents**: one standalone desktop that drives every major coding-agent CLI (Claude Code, Aider, OpenCode) plus a built-in agent, all over any LLM you configure.
+
+You sit at the top of the stack. The three pillars beneath you are:
+
+- **Runners** — the built-in agent, Claude Code, Aider, OpenCode, and any runner contributed via the plugin SDK. You pick the right tool per task; OpenCodex handles approvals, diff review, audit log, and merge review in a unified UI no matter which runner is doing the work.
+- **Multi-agent orchestration** — fan subtasks out to parallel workers, each in its own git worktree so changes never collide. Watch the subagent tree, intervene, accept or reject merges per worker.
+- **MCP + plugins** — every MCP server you connect becomes a tool/resource/prompt source automatically. Third-party packages can contribute tools, providers, runners, and entire UI panels.
+
+Everything is local-first. API keys live in the OS keychain. No backend service.
 
 ---
 

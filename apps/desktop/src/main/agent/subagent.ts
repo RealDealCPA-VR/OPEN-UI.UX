@@ -9,6 +9,7 @@ import type {
   ToolRegistry,
 } from '@opencodex/core';
 import { logger } from '../logger';
+import { waitWhilePaused } from './pause-resume';
 
 export interface SubagentBudget {
   maxTokens?: number;
@@ -26,6 +27,7 @@ export interface SubagentRunOptions {
   budget?: SubagentBudget;
   signal?: AbortSignal;
   systemPrompt?: string;
+  runId?: string;
 }
 
 export interface SubagentToolEvent {
@@ -87,6 +89,9 @@ export async function runSubagent(opts: SubagentRunOptions): Promise<SubagentRes
   let iter = 0;
 
   for (iter = 0; iter < maxIterations; iter++) {
+    if (opts.runId) {
+      await waitWhilePaused(opts.runId, opts.signal);
+    }
     if (opts.signal?.aborted) {
       return finalize('error', 'aborted');
     }

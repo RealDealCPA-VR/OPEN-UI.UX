@@ -4,6 +4,8 @@ import { ActiveRunCard } from '../components/ActiveRunCard';
 import { AgentRunDrawer } from '../components/AgentRunDrawer';
 import { AgentRunRow } from '../components/AgentRunRow';
 import { AgentSpawnModal } from '../components/AgentSpawnModal';
+import { AgentTreeView } from '../components/AgentTreeView';
+import { FanoutConsentModal, useFanoutConsent } from '../components/FanoutConsentModal';
 import { HoverHint } from '../components/HoverHint';
 import { MergeReviewModal } from '../components/MergeReviewModal';
 import { RunnerDiscoveryCards } from '../components/RunnerDiscoveryCards';
@@ -32,6 +34,9 @@ export function AgentView(): JSX.Element {
   const [installStatuses, setInstallStatuses] = useState<Map<string, RunnerInstallCheck>>(
     () => new Map(),
   );
+  // Lane 17 — list/tree mode toggle + fanout consent host
+  const [viewMode, setViewMode] = useState<'list' | 'tree'>('list');
+  const fanout = useFanoutConsent();
 
   const refreshRunners = useCallback(async () => {
     try {
@@ -204,6 +209,30 @@ export function AgentView(): JSX.Element {
             <code>spawn_subagent</code> tool from chat.
           </p>
         </div>
+        <div
+          role="tablist"
+          aria-label="View mode"
+          style={{ display: 'inline-flex', gap: 4, marginRight: 8 }}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'list'}
+            className={viewMode === 'list' ? 'btn btn-primary' : 'btn'}
+            onClick={() => setViewMode('list')}
+          >
+            List
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'tree'}
+            className={viewMode === 'tree' ? 'btn btn-primary' : 'btn'}
+            onClick={() => setViewMode('tree')}
+          >
+            Tree
+          </button>
+        </div>
         <HoverHint hint="Spawn new task">
           <button
             type="button"
@@ -219,6 +248,13 @@ export function AgentView(): JSX.Element {
           </button>
         </HoverHint>
       </header>
+
+      {viewMode === 'tree' && runs && (
+        <section className="agent-view-tree">
+          <h2 className="agent-view-section-head">Run tree</h2>
+          <AgentTreeView runs={runs} now={now} onSelectRun={openRun} />
+        </section>
+      )}
 
       {loadError && <p className="approvals-save-error">Failed to load runs: {loadError}</p>}
 
@@ -320,6 +356,10 @@ export function AgentView(): JSX.Element {
           }}
           onSpawned={onSpawned}
         />
+      )}
+
+      {fanout.current && (
+        <FanoutConsentModal request={fanout.current} onResolved={() => fanout.clear()} />
       )}
     </section>
   );

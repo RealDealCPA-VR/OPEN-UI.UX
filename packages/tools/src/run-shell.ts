@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { z } from 'zod';
-import { defineTool, treeKill } from '@opencodex/core';
+import { defineTool } from '@opencodex/core';
+import { treeKill } from '@opencodex/core/process/tree-kill';
 import { resolveWithinWorkspace } from './path-guard';
 
 const input = z.object({

@@ -50,6 +50,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@opencodex/audit-verify':
+        specifier: workspace:*
+        version: link:../../packages/audit-verify
       '@opencodex/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -59,6 +62,9 @@ importers:
       '@opencodex/mcp-client':
         specifier: workspace:*
         version: link:../../packages/mcp-client
+      '@opencodex/memory-local-fs':
+        specifier: workspace:*
+        version: link:../../packages/memory-local-fs
       '@opencodex/memory-notion':
         specifier: workspace:*
         version: link:../../packages/memory-notion
@@ -251,6 +257,19 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
+  packages/audit-verify:
+    dependencies:
+      zod:
+        specifier: ^3.22.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.1(@types/node@20.19.41)(jsdom@25.0.1)
+
   packages/core:
     dependencies:
       zod:
@@ -281,6 +300,22 @@ importers:
         version: 1.6.1(@types/node@20.19.41)(jsdom@25.0.1)
 
   packages/mcp-client:
+    dependencies:
+      '@opencodex/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^3.22.0
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      vitest:
+        specifier: ^1.4.0
+        version: 1.6.1(@types/node@20.19.41)(jsdom@25.0.1)
+
+  packages/memory-local-fs:
     dependencies:
       '@opencodex/core':
         specifier: workspace:*

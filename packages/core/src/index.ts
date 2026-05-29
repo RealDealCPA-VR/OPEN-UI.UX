@@ -8,4 +8,10 @@ export * from './message';
 export * from './capabilities';
 export * from './runner';
 export * from './runner-registry';
-export * from './process/tree-kill';
+export * from './routing';
+export * from './routing-provider';
+// Note: process/tree-kill is intentionally NOT re-exported here because it
+// imports node:child_process at module scope. Re-exporting it would pull
+// node-only code into the Electron renderer bundle even though renderer code
+// only uses pure types from this package. Consumers in main/runner processes
+// must import it directly: `import { treeKill } from '@opencodex/core/process/tree-kill'`.

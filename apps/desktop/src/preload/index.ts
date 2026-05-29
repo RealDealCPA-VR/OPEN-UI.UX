@@ -2,6 +2,11 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import type { AgentRun, AgentRunsChangedEvent } from '../shared/agent-runs';
 import type {
+  AgentRespondResumeResponse,
+  AgentResumeDecision,
+  AgentResumePromptEvent,
+} from '../shared/agent-resume';
+import type {
   AgentAbortRunResponse,
   AgentSpawnFromUiRequest,
   AgentSpawnFromUiResponse,
@@ -9,6 +14,143 @@ import type {
   ShellOpenPathResponse,
   ShellShowItemResponse,
 } from '../shared/agent-spawn';
+import type {
+  FanoutConsentDecision,
+  FanoutConsentRequestedEvent,
+  FanoutPlanTask,
+  PauseRunResponse,
+  ResumeRunResponse,
+  RunPausedChangedEvent,
+  WorktreePreviewResponse,
+} from '../shared/agent-tree';
+import { fanoutConsentRequestedChannel, runPausedChangedChannel } from '../shared/agent-tree';
+import type {
+  Budget,
+  BudgetExceededEvent,
+  BudgetWarningEvent,
+  CreateBudgetRequest,
+  DeleteBudgetRequest,
+  GetCurrentSpendRequest,
+  GetCurrentSpendResponse,
+  UpdateBudgetRequest,
+} from '../shared/budgets';
+import type {
+  ConversationSearchRequest,
+  ConversationSearchResponse,
+  ScrollToMessageEvent,
+} from '../shared/conversation-search';
+import type {
+  GitBranchFromConversationRequest,
+  GitBranchFromConversationResponse,
+  GitCommitHunksRequest,
+  GitCommitHunksResponse,
+  GitDraftPrRequest,
+  GitDraftPrResponse,
+  GitOpenPrInBrowserRequest,
+  GitOpenPrInBrowserResponse,
+  ListConflictsRequest,
+  ListConflictsResponse,
+  RegenerateHunkRequest,
+  RegenerateHunkResponse,
+  ResolveConflictRequest,
+  ResolveConflictResponse,
+} from '../shared/git-workflow';
+import type {
+  McpFetchRegistryResponse,
+  McpHealthStatsResponse,
+  McpListServerToolsRequest,
+  McpListServerToolsResponse,
+  McpPermissionsResponse,
+  McpRegistryUrlResponse,
+  McpRevokePermissionRequest,
+  McpRevokePermissionResponse,
+  McpRunToolRequest,
+  McpRunToolResponse,
+} from '../shared/mcp-registry';
+import type {
+  AddAllowlistEntryRequest,
+  NetworkPolicy,
+  NetworkPolicyChangedEvent,
+  RemoveAllowlistEntryRequest,
+  SetLocalOnlyModeRequest,
+} from '../shared/network-policy';
+import type {
+  OllamaInstallProgress,
+  OllamaInstallRequest,
+  OllamaInstallResult,
+  OllamaListInstallersResponse,
+  OllamaProbeResult,
+} from '../shared/ollama';
+import type {
+  PairApplyAsContextRequest,
+  PairApplyAsContextResponse,
+  PairDismissSuggestionRequest,
+  PairDismissSuggestionResponse,
+  PairGetActiveSuggestionsRequest,
+  PairGetActiveSuggestionsResponse,
+  PairSetActiveConversationRequest,
+  PairSuggestionEvent,
+} from '../shared/pair';
+import type {
+  EstimateCostsAcrossProvidersRequest,
+  EstimateCostsAcrossProvidersResponse,
+  ProviderSwitchChangedEvent,
+  SwitchProviderRequest,
+  SwitchProviderResponse,
+} from '../shared/provider-switch';
+import type {
+  AppliedDiff,
+  ExportProvenanceBundleRequest,
+  ExportProvenanceBundleResponse,
+  GetAppliedDiffRequest,
+  ListAppliedDiffsRequest,
+  ListAppliedDiffsResponse,
+  ProvenanceBundle,
+  ReplayConversationRequest,
+  ReplayDiffRequest,
+  ReplayDiffResult,
+  ReplayProgressEvent,
+  ReplayResult,
+} from '../shared/replay';
+import type {
+  FetchDiffRequest,
+  FetchDiffResponse,
+  GenerateFindingsRequest,
+  GenerateFindingsResponse,
+  PostCommentsRequest,
+  PostCommentsResponse,
+} from '../shared/review';
+import type {
+  CreateRoutingPolicyRequest,
+  DeleteRoutingPolicyRequest,
+  RoutingChangedEvent,
+  RoutingState,
+  SetActiveRoutingPolicyRequest,
+  UpdateRoutingPolicyRequest,
+} from '../shared/routing';
+import type {
+  CheckBinaryResponse,
+  DownloadModelResponse,
+  DownloadProgressEvent,
+  GetVoiceConfigResponse,
+  SetPttShortcutResponse,
+  StartRecordingResponse,
+  StopRecordingResponse,
+  VoicePttEvent,
+  WhisperModel,
+} from '../shared/voice';
+import type {
+  CreateWorkspaceRequest,
+  DeleteWorkspaceRequest,
+  LinkWorkspaceRequest,
+  ListConversationWorkspacesRequest,
+  ListWorkspacesResponse,
+  SetPrimaryWorkspaceRequest,
+  SetWorkspaceRagEnabledRequest,
+  UnlinkWorkspaceRequest,
+  WorkspaceEntry,
+  WorkspacesChangedEvent,
+} from '../shared/workspaces';
 import type {
   CodebasePendingEditsResponse,
   CodebaseReadFileRequest,
@@ -57,6 +199,10 @@ import {
   type ThemePreference,
 } from '../shared/theme';
 import type {
+  AuditWormStatus,
+  SetAuditWormEnabledRequest,
+  ToolCallAuditExportRequest,
+  ToolCallAuditExportResult,
   ToolCallAuditPurgeResult,
   ToolCallAuditQuery,
   ToolCallAuditQueryResult,
@@ -210,6 +356,17 @@ const conversations = {
     ipcRenderer.invoke('conversations:usage', req),
   export: (req: ExportConversationRequest): Promise<ExportConversationResult> =>
     ipcRenderer.invoke('conversations:export', req),
+  // Lane 3 — FTS search across conversations
+  search: (req: ConversationSearchRequest): Promise<ConversationSearchResponse> =>
+    ipcRenderer.invoke('conversations:search', req),
+  onScrollToMessage: (listener: (payload: ScrollToMessageEvent) => void): (() => void) => {
+    const wrapped = (event: Event): void => {
+      const ce = event as CustomEvent<ScrollToMessageEvent>;
+      if (ce.detail) listener(ce.detail);
+    };
+    window.addEventListener('conversation:scroll-to-message', wrapped);
+    return () => window.removeEventListener('conversation:scroll-to-message', wrapped);
+  },
 };
 
 type ReadOnlyChangedListener = (payload: { readOnly: boolean }) => void;
@@ -238,6 +395,22 @@ const chat = {
       listener(payload);
     ipcRenderer.on('shell:output', wrapped);
     return () => ipcRenderer.off('shell:output', wrapped);
+  },
+  // Lane 9 — regenerate a hunk via chat
+  regenerateHunk: (req: RegenerateHunkRequest): Promise<RegenerateHunkResponse> =>
+    ipcRenderer.invoke('chat:regenerate-hunk', req),
+  // Lane 18 — switch provider mid-conversation + cross-provider cost estimate
+  switchProvider: (req: SwitchProviderRequest): Promise<SwitchProviderResponse> =>
+    ipcRenderer.invoke('chat:switch-provider', req),
+  estimateCostsAcrossProviders: (
+    req: EstimateCostsAcrossProvidersRequest,
+  ): Promise<EstimateCostsAcrossProvidersResponse> =>
+    ipcRenderer.invoke('chat:estimate-costs-across-providers', req),
+  onProviderSwitched: (listener: (payload: ProviderSwitchChangedEvent) => void): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: ProviderSwitchChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('chat:provider-switched', wrapped);
+    return () => ipcRenderer.off('chat:provider-switched', wrapped);
   },
 };
 
@@ -274,6 +447,12 @@ const toolAudit = {
   ): Promise<ToolCallAuditRetention & ToolCallAuditPurgeResult> =>
     ipcRenderer.invoke('tool-audit:set-retention', req),
   clear: (): Promise<ToolCallAuditPurgeResult> => ipcRenderer.invoke('tool-audit:clear'),
+  // Lane 12 — export-bundle / WORM
+  exportBundle: (req: ToolCallAuditExportRequest): Promise<ToolCallAuditExportResult> =>
+    ipcRenderer.invoke('tool-audit:export-bundle', req),
+  getWormStatus: (): Promise<AuditWormStatus> => ipcRenderer.invoke('tool-audit:get-worm'),
+  setWormEnabled: (req: SetAuditWormEnabledRequest): Promise<AuditWormStatus> =>
+    ipcRenderer.invoke('tool-audit:set-worm', req),
 };
 
 const theme = {
@@ -305,6 +484,11 @@ const settings = {
     ipcRenderer.invoke('settings:get-runner-cli-path', { runnerId }),
   setRunnerCliPath: (runnerId: string, cliPath: string | null): Promise<void> =>
     ipcRenderer.invoke('settings:set-runner-cli-path', { runnerId, cliPath }),
+  // Lane 8 — cloud provider tip dismissal
+  getCloudProviderTipShown: (): Promise<boolean> =>
+    ipcRenderer.invoke('settings:get-cloud-provider-tip-shown'),
+  setCloudProviderTipShown: (value: boolean): Promise<{ value: boolean }> =>
+    ipcRenderer.invoke('settings:set-cloud-provider-tip-shown', { value }),
 };
 
 const workspace = {
@@ -340,6 +524,19 @@ const mcp = {
     ipcRenderer.on('mcp:changed', wrapped);
     return () => ipcRenderer.off('mcp:changed', wrapped);
   },
+  // Lane 14 — marketplace / health / permissions
+  getRegistryUrl: (): Promise<McpRegistryUrlResponse> => ipcRenderer.invoke('mcp:get-registry-url'),
+  setRegistryUrl: (url: string | null): Promise<McpRegistryUrlResponse> =>
+    ipcRenderer.invoke('mcp:set-registry-url', { url }),
+  fetchRegistry: (): Promise<McpFetchRegistryResponse> => ipcRenderer.invoke('mcp:fetch-registry'),
+  getHealthStats: (): Promise<McpHealthStatsResponse> => ipcRenderer.invoke('mcp:get-health-stats'),
+  getPermissions: (): Promise<McpPermissionsResponse> => ipcRenderer.invoke('mcp:get-permissions'),
+  revokePermission: (req: McpRevokePermissionRequest): Promise<McpRevokePermissionResponse> =>
+    ipcRenderer.invoke('mcp:revoke-permission', req),
+  runTool: (req: McpRunToolRequest): Promise<McpRunToolResponse> =>
+    ipcRenderer.invoke('mcp:run-tool', req),
+  listServerTools: (req: McpListServerToolsRequest): Promise<McpListServerToolsResponse> =>
+    ipcRenderer.invoke('mcp:list-server-tools', req),
 };
 
 const onboarding = {
@@ -412,6 +609,44 @@ const agent = {
     ipcRenderer.on('agent:runners-changed', wrapped);
     return () => ipcRenderer.off('agent:runners-changed', wrapped);
   },
+  // Lane 2 — resume prompt
+  onResumePrompt: (listener: (payload: AgentResumePromptEvent) => void): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: AgentResumePromptEvent): void =>
+      listener(payload);
+    ipcRenderer.on('agent:resume-prompt', wrapped);
+    return () => ipcRenderer.off('agent:resume-prompt', wrapped);
+  },
+  respondResume: (
+    runId: string,
+    decision: AgentResumeDecision,
+  ): Promise<AgentRespondResumeResponse> =>
+    ipcRenderer.invoke('agent:respond-resume', { runId, decision }),
+  // Lane 17 — pause/resume + worktree preview + fanout consent
+  pauseRun: (runId: string): Promise<PauseRunResponse> =>
+    ipcRenderer.invoke('agent:pause-run', { runId }),
+  resumeRun: (runId: string): Promise<ResumeRunResponse> =>
+    ipcRenderer.invoke('agent:resume-run', { runId }),
+  getWorktreePreview: (runId: string): Promise<WorktreePreviewResponse> =>
+    ipcRenderer.invoke('agent:get-worktree-preview', { runId }),
+  fanoutConsent: (req: {
+    runId: string;
+    decision: FanoutConsentDecision;
+    editedPlan?: FanoutPlanTask[];
+  }): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke('agent:fanout-consent', req),
+  onPausedChanged: (listener: (payload: RunPausedChangedEvent) => void): (() => void) => {
+    const wrapped = (_e: IpcRendererEvent, payload: RunPausedChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on(runPausedChangedChannel, wrapped);
+    return () => ipcRenderer.off(runPausedChangedChannel, wrapped);
+  },
+  onFanoutConsentRequested: (
+    listener: (payload: FanoutConsentRequestedEvent) => void,
+  ): (() => void) => {
+    const wrapped = (_e: IpcRendererEvent, payload: FanoutConsentRequestedEvent): void =>
+      listener(payload);
+    ipcRenderer.on(fanoutConsentRequestedChannel, wrapped);
+    return () => ipcRenderer.off(fanoutConsentRequestedChannel, wrapped);
+  },
 };
 
 const codebase = {
@@ -427,6 +662,21 @@ const git = {
   isRepo: (path: string): Promise<GitIsRepoResponse> => ipcRenderer.invoke('git:is-repo', { path }),
   initRepo: (req: GitInitRequest): Promise<GitInitResult> =>
     ipcRenderer.invoke('git:init-repo', req),
+  // Lane 9 — git workflow
+  branchFromConversation: (
+    req: GitBranchFromConversationRequest,
+  ): Promise<GitBranchFromConversationResponse> =>
+    ipcRenderer.invoke('git:branch-from-conversation', req),
+  commitHunks: (req: GitCommitHunksRequest): Promise<GitCommitHunksResponse> =>
+    ipcRenderer.invoke('git:commit-hunks', req),
+  draftPr: (req: GitDraftPrRequest): Promise<GitDraftPrResponse> =>
+    ipcRenderer.invoke('git:draft-pr', req),
+  openPrInBrowser: (req: GitOpenPrInBrowserRequest): Promise<GitOpenPrInBrowserResponse> =>
+    ipcRenderer.invoke('git:open-pr-in-browser', req),
+  listConflicts: (req: ListConflictsRequest): Promise<ListConflictsResponse> =>
+    ipcRenderer.invoke('git:list-conflicts', req),
+  resolveConflict: (req: ResolveConflictRequest): Promise<ResolveConflictResponse> =>
+    ipcRenderer.invoke('git:resolve-conflict', req),
 };
 
 type RunnerInstallProgressListener = (payload: RunnerInstallProgress) => void;
@@ -587,6 +837,22 @@ const memory = {
     ipcRenderer.invoke('memory:set-notion-token', { token }),
   clearNotionToken: (): Promise<MemoryStatus> => ipcRenderer.invoke('memory:clear-notion-token'),
   reload: (): Promise<MemoryStatus> => ipcRenderer.invoke('memory:reload'),
+  // Lane 7 — local FS backend helpers
+  readLocal: (): Promise<{ path: string; content: string; bytes: number } | null> =>
+    ipcRenderer.invoke('memory-local-fs:read'),
+  searchLocal: (
+    query: string,
+    limit?: number,
+  ): Promise<Array<{ id: string; heading: string; score: number; snippet: string }>> =>
+    ipcRenderer.invoke(
+      'memory-local-fs:search',
+      limit === undefined ? { query } : { query, limit },
+    ),
+  appendLocal: (
+    heading: string,
+    content: string,
+  ): Promise<{ path: string; bytesWritten: number; appendedSection: string }> =>
+    ipcRenderer.invoke('memory-local-fs:append', { heading, content }),
   onChanged: (listener: MemoryChangedListener): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: MemoryConfigChangedEvent): void =>
       listener(payload);
@@ -602,6 +868,225 @@ const ui = {
     const wrapped = (_event: IpcRendererEvent, payload: UiErrorEvent): void => listener(payload);
     ipcRenderer.on('ui:error', wrapped);
     return () => ipcRenderer.off('ui:error', wrapped);
+  },
+};
+
+// Lane: phase14-tier1-cost-ceiling — Budgets
+type BudgetWarningListener = (payload: BudgetWarningEvent) => void;
+type BudgetExceededListener = (payload: BudgetExceededEvent) => void;
+
+const budgets = {
+  list: (): Promise<Budget[]> => ipcRenderer.invoke('budgets:list'),
+  create: (req: CreateBudgetRequest): Promise<Budget> => ipcRenderer.invoke('budgets:create', req),
+  update: (req: UpdateBudgetRequest): Promise<Budget> => ipcRenderer.invoke('budgets:update', req),
+  delete: (id: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('budgets:delete', { id } satisfies DeleteBudgetRequest),
+  getCurrentSpend: (req: GetCurrentSpendRequest): Promise<GetCurrentSpendResponse> =>
+    ipcRenderer.invoke('budgets:get-current-spend', req),
+  onWarning: (listener: BudgetWarningListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: BudgetWarningEvent): void =>
+      listener(payload);
+    ipcRenderer.on('budget:warning', wrapped);
+    return () => ipcRenderer.off('budget:warning', wrapped);
+  },
+  onExceeded: (listener: BudgetExceededListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: BudgetExceededEvent): void =>
+      listener(payload);
+    ipcRenderer.on('budget:exceeded', wrapped);
+    return () => ipcRenderer.off('budget:exceeded', wrapped);
+  },
+};
+
+// Lane 4 — multi-workspace
+type WorkspacesChangedListener = (payload: WorkspacesChangedEvent) => void;
+
+const workspaces = {
+  list: (): Promise<ListWorkspacesResponse> => ipcRenderer.invoke('workspaces:list'),
+  create: (req: CreateWorkspaceRequest): Promise<ListWorkspacesResponse> =>
+    ipcRenderer.invoke('workspaces:create', req),
+  delete: (req: DeleteWorkspaceRequest): Promise<ListWorkspacesResponse> =>
+    ipcRenderer.invoke('workspaces:delete', req),
+  setPrimary: (req: SetPrimaryWorkspaceRequest): Promise<ListWorkspacesResponse> =>
+    ipcRenderer.invoke('workspaces:set-primary', req),
+  setRagEnabled: (req: SetWorkspaceRagEnabledRequest): Promise<ListWorkspacesResponse> =>
+    ipcRenderer.invoke('workspaces:set-rag-enabled', req),
+  linkToConversation: (req: LinkWorkspaceRequest): Promise<{ workspaces: WorkspaceEntry[] }> =>
+    ipcRenderer.invoke('workspaces:link-to-conversation', req),
+  unlinkFromConversation: (
+    req: UnlinkWorkspaceRequest,
+  ): Promise<{ workspaces: WorkspaceEntry[] }> =>
+    ipcRenderer.invoke('workspaces:unlink-from-conversation', req),
+  listForConversation: (conversationId: string): Promise<{ workspaces: WorkspaceEntry[] }> =>
+    ipcRenderer.invoke('workspaces:list-for-conversation', {
+      conversationId,
+    } satisfies ListConversationWorkspacesRequest),
+  onChanged: (listener: WorkspacesChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: WorkspacesChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('workspaces:changed', wrapped);
+    return () => ipcRenderer.off('workspaces:changed', wrapped);
+  },
+};
+
+// Lane 5 — routing
+type RoutingChangedListener = (payload: RoutingChangedEvent) => void;
+
+const routing = {
+  getState: (): Promise<RoutingState> => ipcRenderer.invoke('routing:get-state'),
+  createPolicy: (req: CreateRoutingPolicyRequest): Promise<RoutingState> =>
+    ipcRenderer.invoke('routing:create-policy', req),
+  updatePolicy: (req: UpdateRoutingPolicyRequest): Promise<RoutingState> =>
+    ipcRenderer.invoke('routing:update-policy', req),
+  deletePolicy: (req: DeleteRoutingPolicyRequest): Promise<RoutingState> =>
+    ipcRenderer.invoke('routing:delete-policy', req),
+  setActive: (req: SetActiveRoutingPolicyRequest): Promise<RoutingState> =>
+    ipcRenderer.invoke('routing:set-active', req),
+  onChanged: (listener: RoutingChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: RoutingChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('routing:changed', wrapped);
+    return () => ipcRenderer.off('routing:changed', wrapped);
+  },
+};
+
+// Lane 6 — replay & provenance
+type ReplayProgressListener = (payload: ReplayProgressEvent) => void;
+
+const replay = {
+  listAppliedDiffs: (req: ListAppliedDiffsRequest): Promise<ListAppliedDiffsResponse> =>
+    ipcRenderer.invoke('replay:list-applied-diffs', req),
+  getAppliedDiff: (req: GetAppliedDiffRequest): Promise<AppliedDiff | null> =>
+    ipcRenderer.invoke('replay:get-applied-diff', req),
+  exportProvenanceBundle: (
+    req: ExportProvenanceBundleRequest,
+  ): Promise<ExportProvenanceBundleResponse> =>
+    ipcRenderer.invoke('replay:export-provenance-bundle', req),
+  getConversationBundle: (id: string): Promise<{ bundle: ProvenanceBundle | null }> =>
+    ipcRenderer.invoke('replay:get-conversation-bundle', { id }),
+  replayConversation: (req: ReplayConversationRequest): Promise<ReplayResult> =>
+    ipcRenderer.invoke('replay:replay-conversation', req),
+  replayDiff: (req: ReplayDiffRequest): Promise<ReplayDiffResult> =>
+    ipcRenderer.invoke('replay:replay-diff', req),
+  onProgress: (listener: ReplayProgressListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: ReplayProgressEvent): void =>
+      listener(payload);
+    ipcRenderer.on('replay:progress', wrapped);
+    return () => ipcRenderer.off('replay:progress', wrapped);
+  },
+};
+
+// Lane 7 — anti-sycophancy toggle
+const antiSycophancy = {
+  get: (): Promise<boolean> => ipcRenderer.invoke('anti-sycophancy:get'),
+  set: (enabled: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('anti-sycophancy:set', { enabled }),
+};
+
+// Lane 8 — Ollama probe/install
+type OllamaInstallProgressListener = (payload: OllamaInstallProgress) => void;
+
+const ollama = {
+  probe: (): Promise<OllamaProbeResult> => ipcRenderer.invoke('ollama:probe'),
+  install: (req: OllamaInstallRequest): Promise<OllamaInstallResult> =>
+    ipcRenderer.invoke('ollama:install', req),
+  listInstallableManagers: (): Promise<OllamaListInstallersResponse> =>
+    ipcRenderer.invoke('ollama:list-installable-managers'),
+  onInstallProgress: (listener: OllamaInstallProgressListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: OllamaInstallProgress): void =>
+      listener(payload);
+    ipcRenderer.on('ollama:install-progress', wrapped);
+    return () => ipcRenderer.off('ollama:install-progress', wrapped);
+  },
+};
+
+// Lane 10 — Reviewer
+const review = {
+  fetchDiff: (req: FetchDiffRequest): Promise<FetchDiffResponse> =>
+    ipcRenderer.invoke('review:fetch-diff', req),
+  generateFindings: (req: GenerateFindingsRequest): Promise<GenerateFindingsResponse> =>
+    ipcRenderer.invoke('review:generate-findings', req),
+  postComments: (req: PostCommentsRequest): Promise<PostCommentsResponse> =>
+    ipcRenderer.invoke('review:post-comments', req),
+};
+
+// Lane 11 — Privacy / network policy
+type NetworkPolicyChangedListener = (payload: NetworkPolicyChangedEvent) => void;
+
+const network = {
+  getPolicy: (): Promise<NetworkPolicy> => ipcRenderer.invoke('network:get-policy'),
+  setLocalOnly: (enabled: boolean): Promise<NetworkPolicy> =>
+    ipcRenderer.invoke('network:set-local-only', {
+      enabled,
+    } satisfies SetLocalOnlyModeRequest),
+  addAllowlistEntry: (hostname: string): Promise<NetworkPolicy> =>
+    ipcRenderer.invoke('network:add-allowlist-entry', {
+      hostname,
+    } satisfies AddAllowlistEntryRequest),
+  removeAllowlistEntry: (hostname: string): Promise<NetworkPolicy> =>
+    ipcRenderer.invoke('network:remove-allowlist-entry', {
+      hostname,
+    } satisfies RemoveAllowlistEntryRequest),
+  onChanged: (listener: NetworkPolicyChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: NetworkPolicyChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('network:policy-changed', wrapped);
+    return () => ipcRenderer.off('network:policy-changed', wrapped);
+  },
+};
+
+// Lane 13 — Voice
+type VoiceDownloadProgressListener = (payload: DownloadProgressEvent) => void;
+type VoicePttListener = (payload: VoicePttEvent) => void;
+
+const voice = {
+  checkBinary: (): Promise<CheckBinaryResponse> => ipcRenderer.invoke('voice:check-binary'),
+  downloadModel: (model: WhisperModel): Promise<DownloadModelResponse> =>
+    ipcRenderer.invoke('voice:download-model', { model }),
+  startRecording: (model?: WhisperModel): Promise<StartRecordingResponse> =>
+    ipcRenderer.invoke('voice:start-recording', model ? { model } : {}),
+  stopRecording: (req: {
+    sessionId: string;
+    pcm16Base64: string;
+  }): Promise<StopRecordingResponse> => ipcRenderer.invoke('voice:stop-recording', req),
+  setPttShortcut: (accelerator: string): Promise<SetPttShortcutResponse> =>
+    ipcRenderer.invoke('voice:set-ptt-shortcut', { accelerator }),
+  getConfig: (): Promise<GetVoiceConfigResponse> => ipcRenderer.invoke('voice:get-config'),
+  setSelectedModel: (model: WhisperModel): Promise<GetVoiceConfigResponse> =>
+    ipcRenderer.invoke('voice:set-selected-model', { model }),
+  setBinaryPath: (path: string | null): Promise<GetVoiceConfigResponse> =>
+    ipcRenderer.invoke('voice:set-binary-path', { path }),
+  onDownloadProgress: (listener: VoiceDownloadProgressListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: DownloadProgressEvent): void =>
+      listener(payload);
+    ipcRenderer.on('voice:download-progress', wrapped);
+    return () => ipcRenderer.off('voice:download-progress', wrapped);
+  },
+  onPttEvent: (listener: VoicePttListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: VoicePttEvent): void => listener(payload);
+    ipcRenderer.on('voice:ptt-event', wrapped);
+    return () => ipcRenderer.off('voice:ptt-event', wrapped);
+  },
+};
+
+// Lane 15 — pair suggestions
+type PairSuggestionListener = (evt: PairSuggestionEvent) => void;
+
+const pair = {
+  getActiveSuggestions: (
+    req: PairGetActiveSuggestionsRequest,
+  ): Promise<PairGetActiveSuggestionsResponse> =>
+    ipcRenderer.invoke('pair:get-active-suggestions', req),
+  dismissSuggestion: (req: PairDismissSuggestionRequest): Promise<PairDismissSuggestionResponse> =>
+    ipcRenderer.invoke('pair:dismiss-suggestion', req),
+  applyAsContext: (req: PairApplyAsContextRequest): Promise<PairApplyAsContextResponse> =>
+    ipcRenderer.invoke('pair:apply-as-context', req),
+  setActiveConversation: (req: PairSetActiveConversationRequest): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke('pair:set-active-conversation', req),
+  onSuggestion: (listener: PairSuggestionListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: PairSuggestionEvent): void =>
+      listener(payload);
+    ipcRenderer.on('pair:suggestion', wrapped);
+    return () => ipcRenderer.off('pair:suggestion', wrapped);
   },
 };
 
@@ -624,10 +1109,19 @@ const api = {
   theme,
   settings,
   workspace,
+  workspaces,
   mcp,
   onboarding,
   plugins,
   agent,
+  antiSycophancy,
+  budgets,
+  network,
+  ollama,
+  pair,
+  replay,
+  review,
+  routing,
   runner,
   codebase,
   git,
@@ -638,6 +1132,7 @@ const api = {
   memory,
   scheduler,
   skills,
+  voice,
   fileTree: {
     list: (
       path?: string,

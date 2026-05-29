@@ -4,15 +4,20 @@ import { OnboardingBanner } from '../components/OnboardingBanner';
 import { SettingsRail } from '../components/SettingsRail';
 import { SettingsSectionCard } from '../components/SettingsSectionCard';
 import { AccessibilityPanel } from './AccessibilityPanel';
+import { AntiSycophancyToggle } from './AntiSycophancyToggle';
 import { ApprovalsPanel } from './ApprovalsPanel';
 import { AuditLogPanel } from './AuditLogPanel';
+import { BudgetsPanel } from './BudgetsPanel';
 import { CrashReportingPanel } from './CrashReportingPanel';
 import { HelpPanel } from './HelpPanel';
 import { IndexingPanel } from './IndexingPanel';
+import { LocalFsMemoryPanel } from './LocalFsMemoryPanel';
 import { McpServersPanel } from './McpServersPanel';
 import { MemoryPanel } from './MemoryPanel';
 import { PluginsPanel } from './PluginsPanel';
+import { PrivacyPanel } from './PrivacyPanel';
 import { ProvidersPanel } from './ProvidersPanel';
+import { RoutingPanel } from './RoutingPanel';
 import { ScheduledTasksPanel } from './ScheduledTasksPanel';
 import { SkillsPanel } from './SkillsPanel';
 import {
@@ -142,6 +147,19 @@ function SettingsSectionBody({ section }: { section: SettingsSection }): JSX.Ele
       return (
         <SettingsSectionCard title={section.title} description={section.description}>
           <ApprovalsPanel />
+          <AntiSycophancyToggle />
+        </SettingsSectionCard>
+      );
+    case 'routing':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <RoutingPanel />
+        </SettingsSectionCard>
+      );
+    case 'privacy':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <PrivacyPanel />
         </SettingsSectionCard>
       );
     case 'plugins':
@@ -170,6 +188,12 @@ function SettingsSectionBody({ section }: { section: SettingsSection }): JSX.Ele
       return (
         <SettingsSectionCard title={section.title} description={section.description}>
           <CrashReportingPanel />
+        </SettingsSectionCard>
+      );
+    case 'budgets':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <BudgetsPanel />
         </SettingsSectionCard>
       );
     case 'audit-log':
@@ -245,6 +269,7 @@ function MemorySection({ section }: { section: SettingsSection }): JSX.Element {
       }
     >
       <MemoryPanel />
+      <LocalFsMemoryPanel />
     </SettingsSectionCard>
   );
 }

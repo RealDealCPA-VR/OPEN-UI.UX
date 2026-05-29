@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const memoryBackendIdSchema = z.enum(['obsidian', 'notion']);
+export const memoryBackendIdSchema = z.enum(['obsidian', 'notion', 'local-fs']);
 export type MemoryBackendId = z.infer<typeof memoryBackendIdSchema>;
 
 export const obsidianBackendConfigSchema = z.object({
@@ -13,15 +13,30 @@ export const notionBackendConfigSchema = z.object({
   workspaceName: z.string().optional(),
 });
 
+// Lane 7 — local-fs backend (per-workspace memory.md)
+export const localFsBackendConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  prependToSystemPrompt: z.boolean().default(false),
+  maxPrependBytes: z.number().int().min(256).max(65536).default(4096),
+});
+
+export type LocalFsBackendConfig = z.infer<typeof localFsBackendConfigSchema>;
+
 export const memoryConfigSchema = z.object({
   backends: z
     .object({
       obsidian: obsidianBackendConfigSchema.default({ enabled: false, vaultPath: '' }),
       notion: notionBackendConfigSchema.default({ enabled: false }),
+      localFs: localFsBackendConfigSchema.default({
+        enabled: false,
+        prependToSystemPrompt: false,
+        maxPrependBytes: 4096,
+      }),
     })
     .default({
       obsidian: { enabled: false, vaultPath: '' },
       notion: { enabled: false },
+      localFs: { enabled: false, prependToSystemPrompt: false, maxPrependBytes: 4096 },
     }),
 });
 
@@ -72,10 +87,17 @@ const strictNotionConfigSchema = z.object({
   workspaceName: z.string().optional(),
 });
 
+const strictLocalFsConfigSchema = z.object({
+  enabled: z.boolean(),
+  prependToSystemPrompt: z.boolean(),
+  maxPrependBytes: z.number().int(),
+});
+
 const strictMemoryConfigSchema = z.object({
   backends: z.object({
     obsidian: strictObsidianConfigSchema,
     notion: strictNotionConfigSchema,
+    localFs: strictLocalFsConfigSchema,
   }),
 });
 

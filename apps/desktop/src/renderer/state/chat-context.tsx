@@ -132,6 +132,11 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
     };
   }, [activeId]);
 
+  // Lane 15 — pair suggestions engine wants to scope by active conversation.
+  useEffect(() => {
+    void window.opencodex.pair?.setActiveConversation({ conversationId: activeId }).catch(() => {});
+  }, [activeId]);
+
   const finalizeStream = useCallback(async (errorMessage: string | null): Promise<void> => {
     const stream = activeStreamRef.current;
     activeStreamRef.current = null;

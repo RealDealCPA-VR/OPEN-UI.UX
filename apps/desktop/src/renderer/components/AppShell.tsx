@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { AgentResumePrompt } from './AgentResumePrompt';
+import { CommandPalette } from './CommandPalette';
 import { HoverHint } from './HoverHint';
 import {
   LeftColumnContextPane,
   routeFromPathname,
   type LeftColumnRoute,
 } from './LeftColumnContextPane';
+import { LocalOnlyPill } from './LocalOnlyPill';
+import { McpToolRunner } from './McpToolRunner';
 import { StatusBar } from './StatusBar';
 import { useCollapseState } from '../state/use-collapse-state';
 import brandLogoUrl from '../assets/brand.png';
@@ -36,10 +40,17 @@ const NAV_ITEMS: readonly NavItem[] = [
     routeKey: 'codebase',
   },
   {
+    to: '/review',
+    label: 'Reviewer',
+    hint: 'Diff-based code reviews',
+    shortcut: '⌘5',
+    routeKey: 'review',
+  },
+  {
     to: '/automations',
     label: 'Automations',
     hint: 'Scheduled automations',
-    shortcut: '⌘5',
+    shortcut: '⌘6',
     routeKey: 'automations',
   },
   {
@@ -54,6 +65,7 @@ const NAV_ITEMS: readonly NavItem[] = [
 export function AppShell(): JSX.Element {
   const [version, setVersion] = useState<string>('?');
   const [collapsed, toggleCollapsed] = useCollapseState('left-column', false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const activeRoute = useMemo(() => routeFromPathname(location.pathname), [location.pathname]);
@@ -66,6 +78,12 @@ export function AppShell(): JSX.Element {
     const onKey = (e: KeyboardEvent): void => {
       const mod = e.ctrlKey || e.metaKey;
       if (!mod || e.shiftKey || e.altKey) return;
+      // Lane 3 — global command palette
+      if (e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+        return;
+      }
       if (e.key === '\\') {
         e.preventDefault();
         toggleCollapsed();
@@ -151,11 +169,29 @@ export function AppShell(): JSX.Element {
         </div>
       </aside>
       <div className="main-column">
+        <div
+          className="main-column-header"
+          role="presentation"
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            padding: '6px 12px',
+            gap: 8,
+            borderBottom: '1px solid var(--border, transparent)',
+            background: 'var(--bg-base, transparent)',
+          }}
+        >
+          <LocalOnlyPill />
+        </div>
         <main className="content">
           <Outlet />
         </main>
         <StatusBar />
       </div>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <AgentResumePrompt />
+      <McpToolRunner />
     </div>
   );
 }

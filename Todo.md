@@ -926,3 +926,167 @@ Goal: make the "use OpenCode / Claude Code / Aider / your own harness" path calm
 - **No new design tokens needed.** All UI reuses Phase 11's token set.
 - **Cross-lane requests** land here as `- [x] (cross-lane) <description>`.
 - **`pnpm typecheck` then `pnpm build` runs only after all three lanes report.**
+
+---
+
+## Phase 14 — Go-to-product polish (table stakes + differentiators + moats)
+
+Goal: take OpenCodex from "feature-complete OSS Electron coding agent" to "the desktop Mission Control for AI coding agents." Three tiers — table stakes (price of admission), differentiators (what makes it the default choice for a real segment), moats (what local-first + MIT + plugin SDK lets us hold structurally that closed competitors structurally can't).
+
+### Tier 1 — Table stakes
+
+#### Zero-friction first run
+
+- [ ] Add a "Try with local Ollama" path to `apps/desktop/src/renderer/components/OnboardingWizard.tsx` — detect a running Ollama via `127.0.0.1:11434/api/tags`; otherwise offer one-click install through the Phase 13 runner-install pipeline
+- [ ] If Ollama is present, default to the smallest installed chat-capable model and pre-create a workspace pointing at the user's home directory so the first run lands in a working chat without a key
+- [ ] "Skip provider setup" action that activates Ollama-only mode and writes `onboardingComplete=true`
+- [ ] One-time inline tip in the chat composer the first time a non-Ollama provider is configured ("Cloud provider — your prompts leave the machine")
+
+#### Speed
+
+- [ ] Renderer perf budget enforced in CI: cold-start under 1500ms (from `app.ready` to first paint of `ChatView`), keystroke-to-token under 50ms p95 in `apps/desktop/src/renderer/views/ChatView.tsx`
+- [ ] `pnpm bench` script that boots the packaged app headlessly and records both metrics as a JSON artifact; CI fails on >10% regression vs main
+- [ ] Audit main process for synchronous fs work on the event loop (`apps/desktop/src/main/index.ts`, `apps/desktop/src/main/storage/`); move bounded work to `worker_threads`
+- [ ] Profile streaming under high token rate; ensure no React re-renders larger than the appended delta in `ChatView.tsx`
+
+#### Real diff review surface
+
+- [ ] Promote `MonacoDiffViewer.tsx` from approval-modal opt-in to the default review surface in `apps/desktop/src/renderer/components/MergeReviewModal.tsx`; toolbar toggle for side-by-side vs unified
+- [ ] Per-hunk keyboard accept/reject in the diff viewer: `a` accept, `r` reject, `j`/`k` next/prev hunk; reuse `monaco-diff-helpers.ts` `getLineChanges()`
+- [ ] Per-hunk "Regenerate with different instruction" button — inline composer scoped to that hunk; submits to the same provider with the surrounding context and replaces only that hunk on accept
+- [ ] "Why?" disclosure per hunk revealing: the user prompt, the tool call that produced the change, the retrieved RAG context (file:line citations), the model + cost — sourced from the existing `tool_calls` audit row + run-registry timeline
+
+#### Cost ceiling
+
+- [ ] `budgets` SQLite table (migration v11): per-conversation, per-day, per-month caps with `warnThresholdPct` and `hardStop` columns
+- [ ] `apps/desktop/src/main/chat/budget-manager.ts` — checked before every provider call; throws `BudgetExceededError` mapped to `stopReason: 'budget_exceeded'` (union already supports it from Phase 5)
+- [ ] Budget settings panel as a 16th Settings section: defaults, per-provider overrides, "stop at $X" vs "warn at $X"
+- [ ] Always-visible spend indicator in `StatusBar.tsx` — current conversation spend + day spend; amber at 90% of cap, blocks send at 100% with a friendly "Raise budget" link
+- [ ] Per-conversation budget override button in chat header
+
+#### Background jobs that persist across restarts
+
+- [ ] Jobs panel in the unified left column when on `/agent`: every active subagent run with live token meter, current tool, cost, Cancel button — survives app restarts
+- [ ] Persistent `agent_runs` table mirrored from in-memory `run-registry.ts` so resumability works across restarts (migration v12)
+- [ ] Resume contract on `app.ready`: runs with `status='running'` and a worktree get a "Resume" or "Discard" prompt; runs without a worktree are marked `crashed`
+
+#### Anti-sycophancy default prompts
+
+- [ ] Explicit anti-sycophancy clause appended to `apps/desktop/src/main/agent/orchestrator-prompt.ts` and the default chat system prompt: "If the user's premise is wrong, say so before doing the task. Disagree when you have grounds. Do not optimize for the user feeling validated."
+- [ ] Settings toggle in Approvals or Skills to disable the clause for users who want it off; default on
+
+#### First-class git workflow
+
+- [ ] "Branch from this conversation" action in chat header — creates `oc/<conversation-slug>` and switches the active workspace
+- [ ] "Commit selected hunks" in `MergeReviewModal.tsx` — pipes through `git add -p` semantics using the diff viewer's hunk model
+- [ ] "Draft PR description" action — feeds the diff bundle plus the last N user messages to the active provider; "Open in browser" launches `gh pr create --web --body-file …`
+- [ ] Merge-conflict resolution view — when a `git merge` from `MergeReviewModal.tsx` conflicts, render conflict hunks in the same Monaco diff viewer with accept-left / accept-right / accept-both per hunk
+
+#### Conversation + global search
+
+- [ ] FTS5 virtual table over conversation messages (migration v13) populated incrementally on insert in `apps/desktop/src/main/storage/conversations.ts`
+- [ ] Global Cmd/Ctrl+P palette searching across conversations, files, and skills with code-fence-aware highlighting in snippets
+- [ ] "Open in conversation" jumps to the matching message and scrolls it into view
+
+### Tier 2 — Differentiators
+
+#### Cross-repo / multi-project context
+
+- [ ] `workspaces` table (migration v14) — many workspaces per app instance, each with its own RAG index, settings overlay, and approval policies
+- [ ] `apps/desktop/src/main/rag/multi-workspace-indexer.ts` — extends `WorkspaceWatcher` to keep an index per workspace under `<userData>/rag/<workspaceId>/`
+- [ ] Workspace picker in `ChatContextPane.tsx` becomes multi-select — conversation targets one primary workspace and pulls RAG from any subset of secondaries
+- [ ] `search_codebase` tool gains a `workspace` filter; retrieved chunks render with a workspace badge so the user sees which repo each hit came from
+- [ ] Cross-workspace dependency follow-up — when a retrieved chunk in workspace A references a symbol defined in workspace B, surface that as a follow-up retrieval
+
+#### Task-aware model routing
+
+- [ ] `RoutingPolicy` type in `packages/core/src/routing.ts`: rules `{when: 'tool_call' | 'reasoning' | 'embedding' | 'sensitive_path', use: providerId+modelId, fallback}`
+- [ ] `RoutingProvider` wrapper in `packages/core/src/routing-provider.ts` — implements `LLMProvider` by dispatching to underlying providers per rule; transparent to the agent loop
+- [ ] Routing UI in Settings — per-rule picker with cost preview; presets ("cheap-and-fast", "frontier-only", "local-only", "hybrid")
+- [ ] Every routed call carries the routing decision into the audit log so users see which model handled what
+
+#### MCP-first integration layer
+
+- [ ] MCP marketplace panel — fetches a curated list (start with `apps/desktop/src/main/mcp/presets.ts`, extend with a remote JSON registry) and renders each server as a card with one-click install
+- [ ] Per-server permission surface — visible grants ("can read your filesystem", "can call GitHub on your behalf") with a revoke button
+- [ ] MCP server health dashboard — last-seen, reconnect count, recent errors per server
+- [ ] "Run MCP tool" command-palette entry — execute any MCP tool directly without a chat round-trip
+
+#### Replay + provenance
+
+- [ ] Every applied diff records: full prompt, retrieved RAG citations, routing decision, model, token count, cost, optional seed where the provider exposes one — extends `tool_calls` plus a new `applied_diffs` table (migration v15)
+- [ ] "Replay this conversation" on conversation header — clones the conversation, lets the user swap provider/model, replays every user message, diffs the final output against the original
+- [ ] "Replay this diff" on every diff card — same with finer granularity
+- [ ] Export provenance bundle as JSON for a single conversation — for code review and compliance attachments
+
+#### Pair-programming mode
+
+- [ ] Filesystem watcher tied to the active workspace — when the user edits a file in their external editor, surface a dismissible suggestion in OpenCodex if the change touches an open conversation's context
+- [ ] LSP-style bridge follow-up — `apps/desktop/src/main/pair/lsp-bridge.ts` listens for save events + outline changes for richer suggestions without polling
+- [ ] All suggestions are passive: shown in a "Suggestions" pane in the chat sidebar, dismissed individually, never auto-applied, never push-notified
+
+#### Voice / dictation in
+
+- [ ] `apps/desktop/src/main/voice/whisper-local.ts` — bundles `whisper.cpp` via `node-whisper` or equivalent; downloads the chosen model on first use
+- [ ] Push-to-talk global shortcut configurable in Settings → Accessibility; default `Alt+Space`
+- [ ] Voice transcript appears in the composer as it's recognized; user can edit before sending; never auto-sends
+- [ ] No cloud STT in v1; document the local-only stance in the Privacy section of the docs
+
+#### Reviewer mode
+
+- [ ] New top-level nav item: **Review** between Codebase and Automations
+- [ ] Point at a local branch (`git diff main...HEAD`) or a GitHub PR URL — fetches via `gh pr diff <number>`
+- [ ] Structured review output: per-file findings with severity (bug / smell / style / nit), each citing exact line + suggested fix; rendered in a panel matching `MergeReviewModal.tsx` style
+- [ ] Optional `gh` integration — "Post selected findings as PR comments" with explicit per-finding confirmation; no silent posting
+- [ ] Every finding shows the prompt + retrieved context that produced it so the reviewer can audit the AI's reasoning
+
+#### Plugin SDK ecosystem
+
+- [ ] Plugin registry as a JSON manifest in a separate `opencodex-plugins` GitHub repo; OpenCodex fetches it from the `pluginRegistryUrl` setting (already wired)
+- [ ] `pnpm create opencodex-plugin` scaffold — emits a working plugin with manifest, one tool, one runner, one UI panel, and a vitest suite
+- [ ] Reference plugins shipped alongside the registry covering: tool contribution (`hello-world` exists), provider contribution, runner contribution, UI panel contribution — each demonstrating one distinct contribution point
+- [ ] Plugin signing + verification — manifest carries an Ed25519 signature; the registry has a publisher key list; warn on unsigned install
+- [ ] In-app plugin search — searches the registry by name, contribution type, permissions; one-click install through the existing consent flow
+
+#### Local memory the user owns
+
+- [ ] New `local-fs` memory backend (third option alongside Obsidian + Notion) — reads/writes `<workspace>/.opencodex/memory.md` as the canonical project memory file
+- [ ] Memory tools route to whichever backend(s) are enabled; users can enable multiple
+- [ ] `memory.md` is plain markdown the user can edit directly in their editor — OpenCodex picks up changes via the existing file watcher
+- [ ] On workspace switch, the active `memory.md` content is prepended to the system prompt (size-capped, configurable) so every conversation starts grounded
+- [ ] "Add to project memory" action on any assistant response — appends a heading + content to `memory.md`
+
+#### Mission Control — subagent visibility
+
+- [ ] New AgentView mode: "Tree" — visualizes parent + child runs as a tree with live token meter, current tool, cost per node; clicking a node opens its run drawer
+- [ ] Per-node Abort and Pause (Pause stops the next tool turn without killing the worktree)
+- [ ] Orchestrator surfaces fan-out decisions inline ("About to fan out 3 subagents for: A, B, C — proceed?") with Allow / Edit / Deny; defaults to Allow after a configurable delay so existing flows don't slow down
+- [ ] Per-subagent worktree preview in the tree view — Monaco diff snippet for the largest in-progress change
+
+### Tier 3 — Moats earned by the architecture
+
+#### Truly local mode
+
+- [ ] "Local Only" toggle pinned to the title bar — disables every non-local provider in the picker, suppresses any network tool, hides plugins flagged cloud-dependent
+- [ ] Network kill switch — main process refuses outbound connections from non-allowlisted processes via `apps/desktop/src/main/security/network-policy.ts`; allowlist exposed in Settings → Privacy for transparency
+- [ ] Visual indicator: high-contrast title bar pill ("Local Only: ON"); persists across restarts
+- [ ] Document the threat model — what "local only" guarantees and does not (e.g., MCP subprocesses may still call out unless enforced at that boundary)
+
+#### Provider-switch as a marketed first-class feature
+
+- [ ] "Switch provider" as a prominent action in the chat header — single click, retains conversation history, re-sends only what the new provider needs
+- [ ] "Cost comparison" hover on the provider picker — estimated cost of the current conversation if rerun against each configured provider
+- [ ] Reframe README, MANUAL, and website landing around provider-agnostic posture as a first-class feature
+
+#### Audit log as a signed exportable artifact
+
+- [ ] Export the audit log as JSON + an Ed25519 signature using a per-installation key (generated on first run, stored in keychain alongside provider keys)
+- [ ] `packages/audit-verify` CLI — third party can `npx @opencodex/audit-verify <bundle>.json` and confirm the signature
+- [ ] Audit filters for "all tool calls touching `<file>`" or "all tool calls by runner X between dates" for compliance + post-incident review
+- [ ] Optional WORM (write-once) mode mirroring the audit log to a second file with append-only fs permissions
+
+### Positioning rework — Mission Control framing
+
+- [ ] Rewrite the README, MANUAL, and website landing around "Mission Control for AI coding agents" — the architecture already lives there (Phase 9 runners, multi-agent orchestration, MCP-native, plugin SDK); the marketing surface doesn't reflect it yet
+- [ ] Landing hero screenshot is the subagent tree view from the Mission Control item above, not a single chat screenshot
+- [ ] Positioning copy: standalone desktop that lives next to your editor and drives Claude Code / Aider / OpenCode as runners alongside the built-in agent

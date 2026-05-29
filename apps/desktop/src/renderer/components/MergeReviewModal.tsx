@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MonacoDiffViewer } from './MonacoDiffViewer';
+import type { HunkProvenance, MonacoDiffHunk } from './monaco-diff-helpers';
+import { DraftPrModal } from './DraftPrModal';
+import { MergeConflictResolver } from './MergeConflictResolver';
 
 interface MergeReviewModalProps {
   runId: string;
@@ -98,6 +101,25 @@ function parseUnifiedDiff(diff: string): ParsedFile[] {
   return out;
 }
 
+interface RegenerateState {
+  filePath: string;
+  hunk: MonacoDiffHunk;
+  originalSnippet: string;
+  modifiedSnippet: string;
+  instruction: string;
+  busy: boolean;
+  suggestion: string | null;
+  error: string | null;
+}
+
+function snippetFromText(text: string, startLine: number, endLine: number): string {
+  if (endLine < startLine) return '';
+  const lines = text.split('\n');
+  const start = Math.max(0, startLine - 1);
+  const end = Math.min(lines.length, endLine);
+  return lines.slice(start, end).join('\n');
+}
+
 export function MergeReviewModal({
   runId,
   onClose,
@@ -109,6 +131,12 @@ export function MergeReviewModal({
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<'accept' | 'reject' | null>(null);
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
+  const [whyOpenFor, setWhyOpenFor] = useState<number | null>(null);
+  const [provenance] = useState<Record<string, HunkProvenance[]>>({});
+  const [regenerate, setRegenerate] = useState<RegenerateState | null>(null);
+  const [showDraftPr, setShowDraftPr] = useState(false);
+  const [showConflicts, setShowConflicts] = useState(false);
+  const [conflictError, setConflictError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,10 +177,15 @@ export function MergeReviewModal({
   const onAccept = async (): Promise<void> => {
     setBusy('accept');
     setActionError(null);
+    setConflictError(null);
     try {
       const res = await window.opencodex.agent.acceptMerge(runId);
       if (!res.ok) {
-        setActionError(res.error ?? 'merge failed');
+        const msg = res.error ?? 'merge failed';
+        setActionError(msg);
+        if (/conflict|automatic merge failed|CONFLICT/i.test(msg)) {
+          setConflictError(msg);
+        }
         return;
       }
       onResolved();
@@ -189,6 +222,62 @@ export function MergeReviewModal({
     window.location.hash = `#/codebase?path=${encodeURIComponent(path)}`;
   };
 
+  const openRegenerate = (hunk: MonacoDiffHunk): void => {
+    if (!focusedFile) return;
+    setRegenerate({
+      filePath: focusedFile.path,
+      hunk,
+      originalSnippet: snippetFromText(
+        focusedFile.original,
+        hunk.originalStartLine,
+        hunk.originalEndLine,
+      ),
+      modifiedSnippet: snippetFromText(
+        focusedFile.modified,
+        hunk.modifiedStartLine,
+        hunk.modifiedEndLine,
+      ),
+      instruction: '',
+      busy: false,
+      suggestion: null,
+      error: null,
+    });
+  };
+
+  const submitRegenerate = async (): Promise<void> => {
+    if (!regenerate) return;
+    setRegenerate({ ...regenerate, busy: true, error: null, suggestion: null });
+    try {
+      const selected = await window.opencodex.selectedModel.get();
+      if (!selected) {
+        setRegenerate((r) => (r ? { ...r, busy: false, error: 'No model selected' } : r));
+        return;
+      }
+      const res = await window.opencodex.chat.regenerateHunk({
+        conversationId: runId,
+        filePath: regenerate.filePath,
+        originalSnippet: regenerate.originalSnippet,
+        modifiedSnippet: regenerate.modifiedSnippet,
+        instruction: regenerate.instruction,
+        providerId: selected.providerId,
+        modelId: selected.modelId,
+        language: focusedFile?.language ?? 'plaintext',
+      });
+      if (!res.ok) {
+        setRegenerate((r) =>
+          r ? { ...r, busy: false, error: res.error ?? 'regenerate failed' } : r,
+        );
+        return;
+      }
+      setRegenerate((r) => (r ? { ...r, busy: false, suggestion: res.suggestion ?? '' } : r));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setRegenerate((r) => (r ? { ...r, busy: false, error: message } : r));
+    }
+  };
+
+  const provenanceFor = (filePath: string): HunkProvenance[] => provenance[filePath] ?? [];
+
   useEffect(() => {
     if (parsedFiles.length === 0) return;
     const onKey = (e: KeyboardEvent): void => {
@@ -196,6 +285,7 @@ export function MergeReviewModal({
       const target = e.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
       if (target instanceof HTMLElement && target.isContentEditable) return;
+      if (regenerate || showDraftPr || showConflicts) return;
       if (e.key === 'j') {
         e.preventDefault();
         const next = Math.min(parsedFiles.length - 1, focusedIndex + 1);
@@ -218,7 +308,7 @@ export function MergeReviewModal({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [parsedFiles, focusedIndex, bundle, busy]);
+  }, [parsedFiles, focusedIndex, bundle, busy, regenerate, showDraftPr, showConflicts]);
 
   return (
     <div className="approval-modal-backdrop" role="dialog" aria-modal="true">
@@ -349,8 +439,44 @@ export function MergeReviewModal({
                         originalText={focusedFile.original}
                         modifiedText={focusedFile.modified}
                         language={focusedFile.language}
+                        filePath={focusedFile.path}
                         height={400}
+                        onAcceptHunk={(_idx, hunk) => {
+                          setWhyOpenFor(hunk.index);
+                        }}
+                        onRejectHunk={(_idx, hunk) => {
+                          openRegenerate(hunk);
+                        }}
                       />
+                      {whyOpenFor !== null && (
+                        <details
+                          open
+                          style={{
+                            padding: '8px 10px',
+                            borderTop: '1px solid var(--border-row-divider)',
+                            fontSize: 12,
+                          }}
+                        >
+                          <summary style={{ cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                            Why? · hunk #{whyOpenFor}
+                          </summary>
+                          <div style={{ marginTop: 6, color: 'var(--text-muted)' }}>
+                            {provenanceFor(focusedFile.path).length === 0 ? (
+                              <em>No tool call audit data for this hunk yet.</em>
+                            ) : (
+                              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                                {provenanceFor(focusedFile.path).map((p) => (
+                                  <li key={p.toolCallId}>
+                                    <strong>{p.toolName}</strong>
+                                    {p.decision ? ` · ${p.decision}` : null}
+                                    {p.rationale ? ` — ${p.rationale}` : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </details>
+                      )}
                     </>
                   )}
                 </div>
@@ -381,6 +507,28 @@ export function MergeReviewModal({
                 >
                   Reject (discard)
                 </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={!bundle}
+                  onClick={() => setShowDraftPr(true)}
+                  title="Draft a pull request from this diff"
+                >
+                  Draft PR
+                </button>
+                {conflictError && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => setShowConflicts(true)}
+                    style={{
+                      borderColor: 'var(--warn)',
+                      color: 'var(--warn)',
+                    }}
+                  >
+                    Resolve conflicts
+                  </button>
+                )}
               </>
             )}
             {confirm === 'accept' && (
@@ -442,7 +590,91 @@ export function MergeReviewModal({
             </button>
           </div>
         </div>
+
+        {regenerate && (
+          <div
+            style={{
+              borderTop: '1px solid var(--border-strong)',
+              padding: 12,
+              background: 'var(--bg-elevated)',
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px 0', fontSize: 14 }}>
+              Regenerate hunk · {regenerate.filePath} · L{regenerate.hunk.modifiedStartLine}-
+              {regenerate.hunk.modifiedEndLine}
+            </h3>
+            <textarea
+              value={regenerate.instruction}
+              onChange={(e) => setRegenerate({ ...regenerate, instruction: e.target.value })}
+              rows={3}
+              placeholder="Different instruction for this hunk…"
+              style={{
+                width: '100%',
+                padding: 8,
+                background: 'var(--bg-sunken)',
+                border: '1px solid var(--border)',
+                borderRadius: 4,
+                color: 'var(--text-primary)',
+              }}
+            />
+            {regenerate.error && <p className="approvals-save-error">{regenerate.error}</p>}
+            {regenerate.suggestion !== null && (
+              <pre
+                style={{
+                  marginTop: 8,
+                  padding: 8,
+                  background: 'var(--bg-sunken)',
+                  border: '1px solid var(--accent-border)',
+                  borderRadius: 4,
+                  fontSize: 12,
+                  maxHeight: 200,
+                  overflow: 'auto',
+                }}
+              >
+                {regenerate.suggestion}
+              </pre>
+            )}
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={regenerate.busy || !regenerate.instruction.trim()}
+                onClick={() => void submitRegenerate()}
+              >
+                {regenerate.busy ? 'Generating…' : 'Regenerate'}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setRegenerate(null)}
+                style={{ marginLeft: 'auto' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {showDraftPr && bundle && (
+        <DraftPrModal
+          repoRoot={'.'}
+          branch={bundle.branch}
+          initialDiff={bundle.diff}
+          onClose={() => setShowDraftPr(false)}
+        />
+      )}
+
+      {showConflicts && (
+        <MergeConflictResolver
+          repoRoot={'.'}
+          onClose={() => setShowConflicts(false)}
+          onResolved={() => {
+            setConflictError(null);
+            setShowConflicts(false);
+          }}
+        />
+      )}
     </div>
   );
 }

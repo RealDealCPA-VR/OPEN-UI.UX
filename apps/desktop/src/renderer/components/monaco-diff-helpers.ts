@@ -174,3 +174,65 @@ function splitLines(text: string): string[] {
   if (text.length === 0) return [];
   return text.split(/\r\n|\r|\n/);
 }
+
+export interface ToolCallProvenanceInput {
+  id: string;
+  toolName: string;
+  filePath?: string | null;
+  messageId?: string | null;
+  createdAt?: string | null;
+  decision?: string | null;
+  isError?: boolean;
+  rationale?: string | null;
+}
+
+export interface HunkProvenance {
+  toolCallId: string;
+  toolName: string;
+  messageId: string | null;
+  createdAt: string | null;
+  decision: string | null;
+  isError: boolean;
+  rationale: string | null;
+}
+
+export interface HunkWithProvenance {
+  hunk: MonacoDiffHunk;
+  provenance: HunkProvenance[];
+}
+
+export interface DiffBundleLike {
+  filePath: string;
+  hunks: readonly MonacoDiffHunk[];
+}
+
+/**
+ * Pair each hunk with the tool_calls audit rows whose filePath matches.
+ * When toolCalls lack filePath info, all hunks for the matching message
+ * inherit them as a coarse fallback so the "Why?" disclosure has *something*.
+ */
+export function linkHunksToToolCalls(
+  bundle: DiffBundleLike,
+  toolCalls: readonly ToolCallProvenanceInput[],
+): HunkWithProvenance[] {
+  const matchByFile = toolCalls.filter(
+    (tc) => tc.filePath != null && normalisePath(tc.filePath) === normalisePath(bundle.filePath),
+  );
+  const fallback = matchByFile.length === 0 ? toolCalls : [];
+  const provenance: HunkProvenance[] = (matchByFile.length > 0 ? matchByFile : fallback).map(
+    (tc) => ({
+      toolCallId: tc.id,
+      toolName: tc.toolName,
+      messageId: tc.messageId ?? null,
+      createdAt: tc.createdAt ?? null,
+      decision: tc.decision ?? null,
+      isError: tc.isError ?? false,
+      rationale: tc.rationale ?? null,
+    }),
+  );
+  return bundle.hunks.map((hunk) => ({ hunk, provenance }));
+}
+
+function normalisePath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
+}

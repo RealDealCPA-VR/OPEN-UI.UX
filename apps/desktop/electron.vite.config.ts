@@ -3,8 +3,10 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 
 const workspacePackages: Record<string, string> = {
+  '@opencodex/audit-verify': 'packages/audit-verify/src/index.ts',
   '@opencodex/core': 'packages/core/src/index.ts',
   '@opencodex/mcp-client': 'packages/mcp-client/src/index.ts',
+  '@opencodex/memory-local-fs': 'packages/memory-local-fs/src/index.ts',
   '@opencodex/memory-notion': 'packages/memory-notion/src/index.ts',
   '@opencodex/memory-obsidian': 'packages/memory-obsidian/src/index.ts',
   '@opencodex/plugin-sdk': 'packages/plugin-sdk/src/index.ts',
@@ -22,18 +24,29 @@ const workspacePackages: Record<string, string> = {
   '@opencodex/crash-reporting': 'packages/crash-reporting/src/index.ts',
 };
 
-const workspaceAliases = Object.fromEntries(
-  Object.entries(workspacePackages).map(([name, relPath]) => [
-    name,
-    resolve(__dirname, '../..', relPath),
-  ]),
-);
+// Vite resolves alias keys via prefix match: an entry with key `@opencodex/core`
+// will also match `@opencodex/core/process/tree-kill`. We need exact-string
+// matching here, so the subpath aliases come FIRST in array form using regex,
+// and bare-package aliases are anchored with `$`.
+const workspaceSubpathAliases = [
+  {
+    find: /^@opencodex\/core\/process\/tree-kill$/,
+    replacement: resolve(__dirname, '../../packages/core/src/process/tree-kill.ts'),
+  },
+];
+
+const workspaceBareAliases = Object.entries(workspacePackages).map(([name, relPath]) => ({
+  find: new RegExp(`^${name.replace(/[/\\^$*+?.()|[\]{}]/g, '\\$&')}$`),
+  replacement: resolve(__dirname, '../..', relPath),
+}));
+
+const allAliases = [...workspaceSubpathAliases, ...workspaceBareAliases];
 const workspacePackageNames = Object.keys(workspacePackages);
 
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({ exclude: [...workspacePackageNames, 'electron-store'] })],
-    resolve: { alias: workspaceAliases },
+    resolve: { alias: allAliases },
     build: {
       rollupOptions: {
         input: {
@@ -50,8 +63,10 @@ export default defineConfig({
     },
   },
   preload: {
-    plugins: [externalizeDepsPlugin({ exclude: [...workspacePackageNames, 'electron-store'] })],
-    resolve: { alias: workspaceAliases },
+    plugins: [
+      externalizeDepsPlugin({ exclude: [...workspacePackageNames, 'electron-store', 'zod'] }),
+    ],
+    resolve: { alias: allAliases },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/preload/index.ts') },
@@ -67,11 +82,11 @@ export default defineConfig({
     root: resolve(__dirname, 'src/renderer'),
     plugins: [react()],
     resolve: {
-      alias: {
-        '@': resolve(__dirname, 'src/renderer'),
-        '@shared': resolve(__dirname, 'src/shared'),
-        ...workspaceAliases,
-      },
+      alias: [
+        { find: /^@\/(.*)$/, replacement: `${resolve(__dirname, 'src/renderer')}/$1` },
+        { find: /^@shared\/(.*)$/, replacement: `${resolve(__dirname, 'src/shared')}/$1` },
+        ...allAliases,
+      ],
     },
     build: {
       rollupOptions: {

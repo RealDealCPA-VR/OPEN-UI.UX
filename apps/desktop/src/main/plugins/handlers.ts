@@ -17,6 +17,7 @@ import {
 import { getPluginRegistryUrl, setPluginRegistryUrl } from '../storage/settings';
 import { toFriendlyError } from '../util/friendly-error';
 import { PLUGIN_PRESETS } from './presets';
+import { fetchPluginRegistry } from './registry-fetcher';
 
 function resolveBundledPresetPath(presetId: string): string {
   if (app.isPackaged) {
@@ -95,14 +96,7 @@ export function registerPluginHandlers(): void {
   registerInvoke('plugins:fetch-registry', z.void(), async () => {
     const url = getPluginRegistryUrl();
     if (!url) return { entries: [], error: 'no registry URL configured' };
-    try {
-      const response = await fetch(url);
-      if (!response.ok) return { entries: [], error: `HTTP ${response.status}` };
-      const data = await response.json();
-      return { entries: Array.isArray(data) ? data : [], error: null };
-    } catch (err) {
-      return { entries: [], error: err instanceof Error ? err.message : String(err) };
-    }
+    return fetchPluginRegistry(url);
   });
 
   onPluginsChange((plugins) => {

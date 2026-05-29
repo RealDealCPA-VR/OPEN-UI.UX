@@ -47,6 +47,7 @@ async function bundlePlugin(plugin) {
     logLevel: 'warning',
     alias: {
       '@opencodex/core': join(repoRoot, 'packages/core/src/index.ts'),
+      '@opencodex/core/process/tree-kill': join(repoRoot, 'packages/core/src/process/tree-kill.ts'),
       '@opencodex/plugin-sdk': join(repoRoot, 'packages/plugin-sdk/src/index.ts'),
     },
   });

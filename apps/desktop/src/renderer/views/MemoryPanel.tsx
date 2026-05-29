@@ -32,6 +32,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
   >({
     obsidian: null,
     notion: null,
+    'local-fs': null,
   });
   const [busy, setBusy] = useState<BusyState>({ notionTokenSaving: false, testing: null });
   const [confirmingClearToken, setConfirmingClearToken] = useState(false);
@@ -74,7 +75,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
   }, []);
 
   const toggleBackend = useCallback(
-    (backend: MemoryBackendId, enabled: boolean) => {
+    (backend: 'obsidian' | 'notion', enabled: boolean) => {
       if (!status) return;
       const next: MemoryConfig = {
         backends: {

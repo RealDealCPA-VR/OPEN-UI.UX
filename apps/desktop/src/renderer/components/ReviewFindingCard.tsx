@@ -1,0 +1,127 @@
+import type { ReviewFinding, ReviewSeverity } from '../../shared/review';
+
+const SEVERITY_COLOR: Record<ReviewSeverity, { fg: string; bg: string; border: string }> = {
+  bug: { fg: 'var(--danger)', bg: 'var(--danger-bg)', border: 'var(--danger-border)' },
+  smell: { fg: 'var(--warn)', bg: 'var(--bg-elevated)', border: 'var(--border-strong)' },
+  style: { fg: 'var(--text-secondary)', bg: 'var(--bg-elevated)', border: 'var(--border)' },
+  nit: { fg: 'var(--text-muted)', bg: 'var(--bg-sunken)', border: 'var(--border)' },
+};
+
+export interface ReviewFindingCardProps {
+  finding: ReviewFinding;
+  selected: boolean;
+  onToggleSelected: () => void;
+  onOpenInCodebase?: () => void;
+  onCopyPrompt?: () => void;
+}
+
+export function ReviewFindingCard({
+  finding,
+  selected,
+  onToggleSelected,
+  onOpenInCodebase,
+  onCopyPrompt,
+}: ReviewFindingCardProps): JSX.Element {
+  const palette = SEVERITY_COLOR[finding.severity];
+  const lineRange =
+    finding.startLine === finding.endLine
+      ? `L${finding.startLine}`
+      : `L${finding.startLine}-L${finding.endLine}`;
+
+  return (
+    <article
+      className="review-finding-card"
+      style={{
+        border: `1px solid ${palette.border}`,
+        borderRadius: 'var(--radius-md, 8px)',
+        padding: 12,
+        background: 'var(--bg-panel)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+      data-severity={finding.severity}
+    >
+      <header style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelected}
+          aria-label={`Select finding ${finding.title}`}
+        />
+        <span
+          style={{
+            background: palette.bg,
+            color: palette.fg,
+            border: `1px solid ${palette.border}`,
+            padding: '2px 8px',
+            borderRadius: 'var(--radius-pill, 999px)',
+            fontSize: 11,
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+          }}
+        >
+          {finding.severity}
+        </span>
+        <h3
+          style={{
+            margin: 0,
+            fontSize: 14,
+            color: 'var(--text-primary)',
+            flex: 1,
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {finding.title}
+        </h3>
+      </header>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', gap: 6 }}>
+        <code style={{ overflowWrap: 'anywhere' }}>
+          {finding.filePath}:{lineRange}
+        </code>
+      </div>
+      <p style={{ margin: 0, color: 'var(--text-primary)', fontSize: 13, lineHeight: 1.45 }}>
+        {finding.rationale}
+      </p>
+      {finding.suggestedFix && (
+        <pre
+          style={{
+            margin: 0,
+            background: 'var(--bg-sunken)',
+            color: 'var(--text-pre, var(--text-primary))',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm, 6px)',
+            padding: 8,
+            fontSize: 12,
+            overflowX: 'auto',
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {finding.suggestedFix}
+        </pre>
+      )}
+      {finding.retrievedContext.length > 0 && (
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--text-muted)' }}>
+          {finding.retrievedContext.map((ref, i) => (
+            <li key={`${finding.id}-ctx-${i}`}>
+              <code>{ref}</code>
+            </li>
+          ))}
+        </ul>
+      )}
+      <footer style={{ display: 'flex', gap: 8 }}>
+        {onOpenInCodebase && (
+          <button type="button" className="btn" onClick={onOpenInCodebase} style={{ fontSize: 12 }}>
+            Open in Codebase
+          </button>
+        )}
+        {finding.prompt && onCopyPrompt && (
+          <button type="button" className="btn" onClick={onCopyPrompt} style={{ fontSize: 12 }}>
+            Copy fix prompt
+          </button>
+        )}
+      </footer>
+    </article>
+  );
+}

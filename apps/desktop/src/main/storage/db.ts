@@ -152,6 +152,118 @@ const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE tool_calls ADD COLUMN runner_id TEXT;
     `,
   },
+  {
+    version: 11,
+    sql: `
+      CREATE TABLE budgets (
+        id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL CHECK (scope IN ('global','conversation','provider')),
+        scope_id TEXT,
+        period TEXT NOT NULL CHECK (period IN ('conversation','day','month')),
+        amount_usd REAL NOT NULL,
+        warn_threshold_pct INTEGER NOT NULL DEFAULT 80,
+        hard_stop INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX idx_budgets_scope ON budgets(scope, scope_id);
+
+      CREATE TABLE budget_spend (
+        id TEXT PRIMARY KEY,
+        budget_id TEXT NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+        conversation_id TEXT,
+        period_key TEXT NOT NULL,
+        spent_usd REAL NOT NULL DEFAULT 0,
+        UNIQUE(budget_id, period_key)
+      );
+    `,
+  },
+  {
+    version: 12,
+    sql: `
+      CREATE TABLE agent_runs_persistent (
+        id TEXT PRIMARY KEY,
+        task TEXT NOT NULL,
+        provider_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        completed_at TEXT,
+        tokens_input INTEGER NOT NULL DEFAULT 0,
+        tokens_output INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0,
+        stop_reason TEXT,
+        worktree_path TEXT,
+        worktree_branch TEXT,
+        repo_root TEXT,
+        runner_id TEXT,
+        trigger_source TEXT NOT NULL DEFAULT 'user',
+        scheduled_task_id TEXT,
+        parent_run_id TEXT,
+        timeline_json TEXT NOT NULL DEFAULT '[]'
+      );
+
+      CREATE INDEX idx_agent_runs_status ON agent_runs_persistent(status);
+      CREATE INDEX idx_agent_runs_parent ON agent_runs_persistent(parent_run_id);
+    `,
+  },
+  {
+    version: 13,
+    sql: `
+      CREATE VIRTUAL TABLE messages_fts USING fts5(
+        conversation_id UNINDEXED,
+        message_id UNINDEXED,
+        content,
+        tokenize='unicode61'
+      );
+    `,
+  },
+  {
+    version: 14,
+    sql: `
+      CREATE TABLE workspaces (
+        id TEXT PRIMARY KEY,
+        path TEXT NOT NULL UNIQUE,
+        display_name TEXT,
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        rag_enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE conversation_workspaces (
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        PRIMARY KEY (conversation_id, workspace_id)
+      );
+    `,
+  },
+  {
+    version: 15,
+    sql: `
+      CREATE TABLE applied_diffs (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        tool_call_id TEXT,
+        file_path TEXT NOT NULL,
+        diff TEXT NOT NULL,
+        prompt_snapshot TEXT,
+        rag_citations_json TEXT,
+        routing_decision_json TEXT,
+        provider_id TEXT,
+        model_id TEXT,
+        tokens_input INTEGER,
+        tokens_output INTEGER,
+        cost_usd REAL,
+        seed INTEGER,
+        applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX idx_applied_diffs_conv ON applied_diffs(conversation_id);
+      CREATE INDEX idx_applied_diffs_file ON applied_diffs(file_path);
+    `,
+  },
 ];
 
 let db: Database.Database | null = null;

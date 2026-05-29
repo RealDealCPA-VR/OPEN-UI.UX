@@ -23,9 +23,11 @@
     "postinstall": "electron-rebuild -f -w better-sqlite3 || echo 'rebuild-native skipped — run pnpm rebuild-native manually'"
   },
   "dependencies": {
+    "@opencodex/audit-verify": "workspace:*",
     "@opencodex/core": "workspace:*",
     "@opencodex/crash-reporting": "workspace:*",
     "@opencodex/mcp-client": "workspace:*",
+    "@opencodex/memory-local-fs": "workspace:*",
     "@opencodex/memory-notion": "workspace:*",
     "@opencodex/memory-obsidian": "workspace:*",
     "@opencodex/plugin-sdk": "workspace:*",

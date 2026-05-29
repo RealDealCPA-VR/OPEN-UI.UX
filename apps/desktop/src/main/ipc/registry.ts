@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import type { ZodType } from 'zod';
+import type { ZodType, ZodTypeDef } from 'zod';
 import type {
   IpcEventChannel,
   IpcEventChannels,
@@ -14,7 +14,7 @@ type InvokeHandler<C extends IpcInvokeChannel> = (
 
 export function registerInvoke<C extends IpcInvokeChannel>(
   channel: C,
-  requestSchema: ZodType<IpcInvokeChannels[C]['request']>,
+  requestSchema: ZodType<IpcInvokeChannels[C]['request'], ZodTypeDef, unknown>,
   handler: InvokeHandler<C>,
 ): void {
   ipcMain.handle(channel, async (_event, raw: unknown) => {

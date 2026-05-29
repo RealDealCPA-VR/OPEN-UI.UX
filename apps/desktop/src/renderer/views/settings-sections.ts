@@ -29,6 +29,18 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
       'Control which tool calls run automatically, which ask first, and which are blocked. Tier defaults apply to every tool in that tier; per-tool overrides take precedence.',
   },
   {
+    slug: 'routing',
+    title: 'Model routing',
+    description:
+      'Per-task model rules — route tool calls to a small model, reasoning to a frontier model, embeddings to local.',
+  },
+  {
+    slug: 'privacy',
+    title: 'Privacy',
+    description:
+      'Local Only mode + network allowlist + threat model. Block every non-loopback outbound request, or pin the agent to a small set of provider hosts.',
+  },
+  {
     slug: 'plugins',
     title: 'Plugins',
     description:
@@ -63,6 +75,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     title: 'Crash reporting',
     description:
       'Opt-in crash report uploads. Off by default. Stack traces are scrubbed of file paths and user content before send.',
+  },
+  {
+    slug: 'budgets',
+    title: 'Budgets',
+    description:
+      'Per-conversation/day/month spending caps with warn + hard-stop. Always-visible in the status bar.',
   },
   {
     slug: 'audit-log',

@@ -9,6 +9,7 @@ import type {
 } from '../../shared/conversation';
 import type { ContentBlock, Role } from '@opencodex/core';
 import { getDb } from './db';
+import { indexMessageInFts } from './message-search';
 
 interface ConversationRow {
   id: string;
@@ -187,6 +188,12 @@ export function appendMessage(
       req.costUsd ?? null,
       now,
     );
+    // Lane 3 — mirror into messages_fts so conversation search stays fresh.
+    try {
+      indexMessageInFts(id, req.conversationId, req.content, db);
+    } catch {
+      // best-effort; do not block the message insert if FTS is unavailable
+    }
     db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now, req.conversationId);
   });
   tx();
@@ -285,5 +292,11 @@ export function updateAssistantMessage(
     | MessageRow
     | undefined;
   if (!row) throw new Error(`message ${id} not found after update`);
+  // Lane 3 — keep FTS in sync after assistant content is finalised.
+  try {
+    indexMessageInFts(id, row.conversation_id, patch.content, db);
+  } catch {
+    // best-effort
+  }
   return rowToMessage(row);
 }

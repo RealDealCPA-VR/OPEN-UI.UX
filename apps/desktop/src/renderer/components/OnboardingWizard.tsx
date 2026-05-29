@@ -4,11 +4,19 @@ import type { ProviderListItem } from '../../shared/provider-config';
 import type { RunnerInfo, RunnerInstallCheck } from '../../shared/ipc-types';
 import type { WorkspaceState } from '../../shared/workspace';
 import { useSelectedModel } from '../state/selected-model-context';
+import { OllamaStep } from './onboarding/OllamaStep';
 import { RunnersStep } from './onboarding/RunnersStep';
 
-type Step = 'provider' | 'apikey' | 'runners' | 'workspace' | 'skills' | 'done';
+type Step = 'ollama' | 'provider' | 'apikey' | 'runners' | 'workspace' | 'skills' | 'done';
 
-const VISIBLE_STEPS: readonly Step[] = ['provider', 'apikey', 'runners', 'workspace', 'skills'];
+const VISIBLE_STEPS: readonly Step[] = [
+  'ollama',
+  'provider',
+  'apikey',
+  'runners',
+  'workspace',
+  'skills',
+];
 
 const STARTER_SKILLS: ReadonlyArray<{ name: string; description: string }> = [
   { name: 'daily-standup', description: 'Summarize recent git activity in a standup-style report' },
@@ -104,7 +112,7 @@ const STYLES = `
 
 export function OnboardingWizard(): JSX.Element | null {
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState<Step>('provider');
+  const [step, setStep] = useState<Step>('ollama');
   const [chosenProviderId, setChosenProviderId] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [workspace, setWorkspace] = useState<WorkspaceState | null>(null);
@@ -254,6 +262,34 @@ export function OnboardingWizard(): JSX.Element | null {
           </div>
         )}
 
+        {step === 'ollama' && (
+          <OllamaStep
+            onSkip={() => setStep('provider')}
+            onContinueCloud={() => setStep('provider')}
+            onAcceptLocalOnly={async (selectedModelId) => {
+              try {
+                await window.opencodex.providers.save({
+                  id: 'ollama',
+                  apiKey: null,
+                  baseUrl: null,
+                  extra: {},
+                });
+                if (selectedModelId) {
+                  await window.opencodex.selectedModel.set({
+                    providerId: 'ollama',
+                    modelId: selectedModelId,
+                  });
+                }
+                reload();
+                await window.opencodex.onboarding.setComplete(true);
+                setOpen(false);
+                navigate('/chat');
+              } catch (err) {
+                setError(err instanceof Error ? err.message : String(err));
+              }
+            }}
+          />
+        )}
         {step === 'provider' && (
           <ProviderStep
             providers={providers}

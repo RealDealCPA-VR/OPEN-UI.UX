@@ -18,6 +18,8 @@ vi.mock('../storage/settings', () => ({
     storedPlugins.splice(0, storedPlugins.length, ...next);
     return storedPlugins;
   },
+  getTrustedPublisherKeys: () => [],
+  appendPluginConsent: (entry: unknown) => [entry],
 }));
 
 vi.mock('../logger', () => ({

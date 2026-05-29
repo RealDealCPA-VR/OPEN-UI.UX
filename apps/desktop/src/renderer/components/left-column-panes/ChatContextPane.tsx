@@ -2,22 +2,75 @@ import { useEffect, useState } from 'react';
 import type { Conversation } from '../../../shared/conversation';
 import { useChat } from '../../state/chat-context';
 import { useSelectedModel } from '../../state/selected-model-context';
+import { MultiWorkspaceSelector } from '../MultiWorkspaceSelector';
+import { SuggestionsPane } from '../SuggestionsPane';
 
 export default function ChatContextPane(): JSX.Element {
   const { conversations, activeId, selectConversation, createConversation, deleteConversation } =
     useChat();
   const { selected } = useSelectedModel();
   const [query, setQuery] = useState('');
+  // Lane 15 — switch between Conversations list and Pair Suggestions
+  const [tab, setTab] = useState<'conversations' | 'suggestions'>('conversations');
 
   const filtered =
     query.trim().length === 0
       ? conversations
       : conversations.filter((c) => c.title.toLowerCase().includes(query.trim().toLowerCase()));
 
+  if (tab === 'suggestions') {
+    return (
+      <div className="lcc-pane lcc-pane-chat">
+        <div className="lcc-pane-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={false}
+            className="lcc-pane-tab"
+            onClick={() => setTab('conversations')}
+          >
+            Conversations
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={true}
+            className="lcc-pane-tab active"
+            onClick={() => setTab('suggestions')}
+          >
+            Suggestions
+          </button>
+        </div>
+        <SuggestionsPane conversationId={activeId} />
+      </div>
+    );
+  }
+
   return (
     <div className="lcc-pane lcc-pane-chat">
+      <div className="lcc-pane-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={true}
+          className="lcc-pane-tab active"
+          onClick={() => setTab('conversations')}
+        >
+          Conversations
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={false}
+          className="lcc-pane-tab"
+          onClick={() => setTab('suggestions')}
+        >
+          Suggestions
+        </button>
+      </div>
       <div className="lcc-workspace-header">
         <WorkspaceChip />
+        <MultiWorkspaceSelector conversationId={activeId} />
       </div>
       <div className="lcc-pane-head lcc-pane-head-chat">
         <span className="lcc-pane-title">Conversations</span>

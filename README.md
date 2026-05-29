@@ -1,8 +1,8 @@
 # OpenCodex
 
-An open-source desktop coding agent that works with **any LLM**.
+**Mission Control for AI coding agents — your standalone desktop that drives Claude Code, Aider, OpenCode, and a built-in agent over any LLM.**
 
-OpenCodex is a from-scratch, MIT-licensed reimagining of the Codex desktop experience. It runs locally on macOS, Windows, and Linux, talks to whichever LLM provider you point it at, and ships with a real plugin system plus first-class Model Context Protocol (MCP) support.
+OpenCodex is a from-scratch, MIT-licensed desktop app that sits _above_ the coding-agent CLIs you already use. It runs locally on macOS, Windows, and Linux, talks to whichever LLM provider you point it at, drives Claude Code / Aider / OpenCode (and any runner contributed via a plugin) under a unified approval and merge-review UI, and ships with first-class Model Context Protocol (MCP) support.
 
 **New here?** Read [QUICKSTART.md](./QUICKSTART.md) for a 10-minute first run.
 

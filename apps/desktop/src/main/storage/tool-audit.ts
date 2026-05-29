@@ -9,6 +9,7 @@ import {
   type ToolCallAuditRow,
   type ToolCallAuditTriggerSource,
 } from '../../shared/tool-audit';
+import { appendToWorm } from '../tool-audit/worm-mirror';
 import { withSqliteBusyRetry } from '../util/sqlite-retry';
 import { getDb } from './db';
 
@@ -77,6 +78,21 @@ export function recordToolCall(
         input.runnerId ?? null,
       ),
   );
+  appendToWorm({
+    id,
+    messageId: input.messageId,
+    toolName: input.toolName,
+    input: input.input,
+    output: input.output ?? null,
+    decision: input.decision,
+    isError: input.isError,
+    durationMs: input.durationMs,
+    createdAt: new Date().toISOString(),
+    inputTruncated: false,
+    outputTruncated: false,
+    triggerSource: input.triggerSource ?? 'user',
+    runnerId: input.runnerId ?? null,
+  });
   return id;
 }
 
@@ -116,6 +132,18 @@ export function queryToolCalls(
   if (query.until) {
     filters.push(`tc.created_at <= ?`);
     params.push(query.until);
+  }
+  if (query.runnerIds && query.runnerIds.length > 0) {
+    filters.push(`tc.runner_id IN (${query.runnerIds.map(() => '?').join(', ')})`);
+    params.push(...query.runnerIds);
+  }
+  if (query.triggerSource) {
+    filters.push(`tc.trigger_source = ?`);
+    params.push(query.triggerSource);
+  }
+  if (query.filePath) {
+    filters.push(`tc.input_json LIKE ? ESCAPE '\\'`);
+    params.push(`%${query.filePath.replace(/[\\%_]/g, (m) => `\\${m}`)}%`);
   }
 
   const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';

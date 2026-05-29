@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { resolve as resolvePath } from 'node:path';
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { join, resolve as resolvePath } from 'node:path';
 import {
   loadPluginModule,
   readManifest,
+  verifyManifest,
   type Permission,
   type Plugin,
   type PluginHost,
@@ -13,7 +16,12 @@ import type { ProviderFactory, SubagentRunner, Tool } from '@opencodex/core';
 import type { PluginListItem, PluginPanelDescriptor, PluginStatus } from '../../shared/plugins';
 import { runnerRegistry } from '../agent/runner-registry-instance';
 import { logger } from '../logger';
-import { getStoredPlugins, setStoredPlugins } from '../storage/settings';
+import {
+  appendPluginConsent,
+  getStoredPlugins,
+  getTrustedPublisherKeys,
+  setStoredPlugins,
+} from '../storage/settings';
 import { getToolRegistry } from '../tools/registry';
 
 interface RuntimeState {
@@ -230,8 +238,56 @@ export async function loadStoredPlugins(): Promise<void> {
   emit();
 }
 
-export async function installPluginFromPath(installPath: string): Promise<PluginListItem[]> {
+async function readSignature(installPath: string): Promise<string | null> {
+  const sigPath = join(installPath, 'opencodex.plugin.sig');
+  if (!existsSync(sigPath)) return null;
+  try {
+    const raw = await readFile(sigPath, 'utf8');
+    return raw.trim();
+  } catch {
+    return null;
+  }
+}
+
+export interface InstallPluginOptions {
+  acceptUnsigned?: boolean;
+}
+
+export async function installPluginFromPath(
+  installPath: string,
+  options: InstallPluginOptions = {},
+): Promise<PluginListItem[]> {
   const manifest = await readManifest(installPath);
+  const signature = await readSignature(installPath);
+  const trusted = getTrustedPublisherKeys();
+  let signed = false;
+  let signer: string | null = null;
+  if (signature) {
+    const result = verifyManifest(manifest, signature, trusted);
+    if (result.ok && result.signer) {
+      signed = true;
+      signer = result.signer;
+    } else {
+      logger.warn(
+        { pluginName: manifest.name, reason: result.reason },
+        'plugin signature did not verify against any trusted publisher key',
+      );
+    }
+  }
+  if (!signed && !options.acceptUnsigned) {
+    logger.warn(
+      { pluginName: manifest.name },
+      'installing unsigned plugin — caller did not pass acceptUnsigned',
+    );
+  }
+  appendPluginConsent({
+    pluginName: manifest.name,
+    pluginVersion: manifest.version,
+    signed,
+    signer,
+    installedAt: new Date().toISOString(),
+    userAcceptedUnsigned: !signed,
+  });
   const id = `${manifest.name}-${randomUUID().slice(0, 8)}`;
   runtime.set(id, {
     manifest,

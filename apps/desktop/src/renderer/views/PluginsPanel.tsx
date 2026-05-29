@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Permission } from '@opencodex/plugin-sdk';
+import { PluginSearchPanel } from '../components/PluginSearchPanel';
 import type { PluginPreset } from '../../shared/ipc-types';
 import type { PluginListItem } from '../../shared/plugins';
 
 export function PluginsPanel(): JSX.Element {
+  const [tab, setTab] = useState<'installed' | 'search'>('installed');
   const [plugins, setPlugins] = useState<PluginListItem[] | null>(null);
   const [presets, setPresets] = useState<PluginPreset[]>([]);
   const [registryUrl, setRegistryUrl] = useState<string | null>(null);
@@ -28,8 +30,6 @@ export function PluginsPanel(): JSX.Element {
     const installedNames = new Set(plugins.map((p) => p.manifest.name));
     return presets.filter((preset) => !installedNames.has(preset.id));
   }, [plugins, presets]);
-
-  if (!plugins) return <p className="settings-section-desc">Loading…</p>;
 
   const onInstallPreset = async (presetId: string): Promise<void> => {
     setBusyId(`preset:${presetId}`);
@@ -103,8 +103,34 @@ export function PluginsPanel(): JSX.Element {
     }
   };
 
+  if (tab === 'search') {
+    return (
+      <div className="plugins-panel">
+        <div className="plugins-tabs" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <button type="button" className="btn" onClick={() => setTab('installed')}>
+            Installed
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => setTab('search')}>
+            Search
+          </button>
+        </div>
+        <PluginSearchPanel />
+      </div>
+    );
+  }
+
+  if (!plugins) return <p className="settings-section-desc">Loading…</p>;
+
   return (
     <div className="plugins-panel">
+      <div className="plugins-tabs" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <button type="button" className="btn btn-primary" onClick={() => setTab('installed')}>
+          Installed
+        </button>
+        <button type="button" className="btn" onClick={() => setTab('search')}>
+          Search
+        </button>
+      </div>
       {error && <div className="mcp-panel-error">{error}</div>}
 
       {availablePresets.length > 0 && (

@@ -7,9 +7,11 @@ import {
 } from '../../shared/ipc-types';
 import { emit, registerInvoke } from '../ipc/registry';
 import {
+  getCloudProviderTipShown,
   getHoverHintsEnabled,
   getRunnerCliPath,
   getTheme,
+  setCloudProviderTipShown,
   setHoverHintsEnabled,
   setRunnerCliPath,
   setTheme,
@@ -46,4 +48,14 @@ export function registerThemeHandlers(): void {
   registerInvoke('settings:set-runner-cli-path', setRunnerCliPathRequestSchema, (req) => {
     setRunnerCliPath(req.runnerId, req.cliPath);
   });
+
+  // Lane 8 — cloud provider tip persistence
+  registerInvoke('settings:get-cloud-provider-tip-shown', z.void(), () =>
+    getCloudProviderTipShown(),
+  );
+  registerInvoke(
+    'settings:set-cloud-provider-tip-shown',
+    z.object({ value: z.boolean() }),
+    (req) => ({ value: setCloudProviderTipShown(req.value) }),
+  );
 }

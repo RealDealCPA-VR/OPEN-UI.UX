@@ -1,36 +1,59 @@
 import { app, BrowserWindow } from 'electron';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join as pathJoin, join } from 'node:path';
 import { z } from 'zod';
 import { logger } from './logger';
 import { registerAgentHandlers } from './agent/handlers';
+import { registerAntiSycophancyHandlers } from './agent/anti-sycophancy-handlers';
+import { registerResumeHandlers } from './agent/resume-handlers';
+import { hydrateRunRegistryFromStore, promptResumeIfNeeded } from './agent/run-resume';
+import { startRunStoreBridge, stopRunStoreBridge } from './agent/run-store-bridge';
 import { runnerRegistry } from './agent/runner-registry-instance';
 import { internalRunner } from './agent/subagent';
+import { registerAgentTreeHandlers } from './agent/tree-handlers';
 import { registerApprovalHandlers } from './chat/approval-handlers';
+import { registerBudgetHandlers } from './chat/budget-handlers';
 import { registerChatHandlers } from './chat/handlers';
+import { registerProviderSwitchHandlers } from './chat/provider-switch-handlers';
 import { registerReadOnlyChatHandlers } from './chat/read-only-handlers';
 import { registerCodebaseHandlers } from './codebase/handlers';
+import { registerConversationSearchHandlers } from './storage/conversation-search-handlers';
 import { registerFileTreeHandlers } from './file-tree/handlers';
+import { registerGitWorkflowHandlers } from './git/handlers';
 import { registerInvoke } from './ipc/registry';
+import { registerMcpExtraHandlers } from './mcp/extra-handlers';
 import { registerMcpHandlers } from './mcp/handlers';
 import { onMcpServerConnected, shutdownAllServers as shutdownAllMcpServers } from './mcp/manager';
+import { registerLocalFsMemoryHandlers } from './memory/local-fs-handlers';
+import { applyLocalFsBackend } from './memory/local-fs-runtime';
 import { registerMemoryHandlers, startMemory, stopMemory } from './memory';
+import { registerOllamaHandlers } from './ollama/handlers';
 import { registerOnboardingHandlers } from './onboarding/handlers';
+import { notifyPairWatcherBatch, registerPairHandlers } from './pair/handlers';
 import { registerPluginHandlers } from './plugins/handlers';
 import { shutdownAllPlugins } from './plugins/manager';
 import { registerProviderHandlers } from './providers/handlers';
+import {
+  MultiWorkspaceIndexer,
+  setActiveMultiWorkspaceIndexer,
+} from './rag/multi-workspace-indexer';
 import { setWatchedWorkspace, stopWatchedWorkspace } from './rag/watcher';
+import { registerReplayHandlers } from './replay/handlers';
+import { registerReviewHandlers } from './review/handlers';
+import { registerRoutingHandlers } from './routing/handlers';
 import {
   registerSchedulerHandlers,
   startSchedulerForApp,
   stopSchedulerForApp,
 } from './scheduler/handlers';
+import { registerNetworkPolicyHandlers } from './security/handlers';
 import { registerSkillHandlers } from './skills/handlers';
 import { startSkills, stopSkills } from './skills/manager';
 import { registerSelectedModelHandlers } from './selected-model/handlers';
 import { closeDb, getDb, openDb } from './storage/db';
 import {
   getAuditRetentionDays,
+  getAuditWormEnabled,
   getSchedulerEnabledInDev,
   getSettings,
   getTheme,
@@ -39,7 +62,11 @@ import {
 import { purgeToolCallsOlderThan } from './storage/tool-audit';
 import { registerThemeHandlers } from './theme/handlers';
 import { registerToolAuditHandlers } from './tool-audit/handlers';
+import { initWormMirror } from './tool-audit/worm-mirror';
 import { registerToolHandlers } from './tools/handlers';
+import { bootstrapVoice, registerVoiceHandlers } from './voice/handlers';
+import { unregisterPttShortcut } from './voice/global-shortcut';
+import { registerMultiWorkspaceHandlers } from './workspace/multi-workspace-handlers';
 import { resolveAppIconPath } from './app-icon';
 import { createTray, destroyTray } from './tray';
 import { initAutoUpdater, registerUpdateHandlers } from './updater';
@@ -152,6 +179,7 @@ function createWindow(): void {
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     void mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
+    mainWindow.webContents.openDevTools({ mode: 'right' });
   } else {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
@@ -176,6 +204,21 @@ app.whenReady().then(() => {
     logger.warn({ err }, 'audit log retention purge failed');
   }
 
+  // Lane 12 — initialise WORM mirror once the user-data dir + setting exist.
+  try {
+    initWormMirror(getAuditWormEnabled(), app.getPath('userData'));
+  } catch (err) {
+    logger.warn({ err }, 'WORM mirror init failed');
+  }
+
+  // Lane 2 — hydrate persisted agent runs and start the store->registry bridge.
+  try {
+    hydrateRunRegistryFromStore();
+    startRunStoreBridge();
+  } catch (err) {
+    logger.warn({ err }, 'run-store hydration failed');
+  }
+
   try {
     runnerRegistry.register(internalRunner);
   } catch (err) {
@@ -188,8 +231,35 @@ app.whenReady().then(() => {
   void startMemory().catch((err: unknown) => {
     logger.warn({ err }, 'memory startup failed');
   });
+  try {
+    applyLocalFsBackend();
+  } catch (err) {
+    logger.warn({ err }, 'local-fs memory backend init failed');
+  }
   createWindow();
+  // Lane 13 — register global PTT shortcut once the window exists
+  bootstrapVoice();
   createTray(() => mainWindow);
+
+  // Lane 4 — start multi-workspace RAG indexer once the app is ready
+  try {
+    const indexer = new MultiWorkspaceIndexer({
+      baseDir: pathJoin(app.getPath('userData'), 'rag'),
+    });
+    setActiveMultiWorkspaceIndexer(indexer);
+    void indexer.start().catch((err: unknown) => {
+      logger.warn({ err }, 'multi-workspace indexer start failed');
+    });
+  } catch (err) {
+    logger.warn({ err }, 'multi-workspace indexer init failed');
+  }
+
+  // Lane 2 — defer resume prompt until renderer's webContents have loaded
+  if (mainWindow) {
+    mainWindow.webContents.once('did-finish-load', () => promptResumeIfNeeded());
+  } else {
+    promptResumeIfNeeded();
+  }
 
   initWorkspaceWatcher();
 
@@ -241,6 +311,28 @@ app.on('before-quit', () => {
   void shutdownTelemetry();
   stopSchedulerForApp();
   void stopSkills();
+  // Lane 2 — stop run-store bridge so we don't broadcast during shutdown.
+  try {
+    stopRunStoreBridge();
+  } catch {
+    // best-effort
+  }
+  // Lane 13 — release the global push-to-talk accelerator
+  try {
+    unregisterPttShortcut();
+  } catch {
+    // best-effort
+  }
+  // Lane 4 — stop multi-workspace indexer (best-effort)
+  void (async () => {
+    try {
+      const mod = await import('./rag/multi-workspace-indexer');
+      const idx = mod.getActiveMultiWorkspaceIndexer();
+      if (idx) await idx.stop();
+    } catch {
+      // ignore — best-effort during shutdown
+    }
+  })();
   try {
     getDb().pragma('wal_checkpoint(TRUNCATE)');
   } catch (err) {
@@ -262,6 +354,12 @@ function handleWatcherBatch(batch: {
     },
     'workspace watcher batch',
   );
+  // Lane 15 — feed every watcher batch into the pair-suggestions engine.
+  try {
+    notifyPairWatcherBatch(batch);
+  } catch (err) {
+    logger.warn({ err }, 'pair suggestions failed to process watcher batch');
+  }
 }
 
 function initWorkspaceWatcher(): void {
@@ -288,17 +386,34 @@ function registerIpcHandlers(): void {
   registerThemeHandlers();
   registerWorkspaceHandlers();
   registerChatHandlers();
+  registerBudgetHandlers();
+  registerProviderSwitchHandlers();
   registerReadOnlyChatHandlers();
+  registerConversationSearchHandlers();
   registerFileTreeHandlers();
+  registerGitWorkflowHandlers();
   registerMcpHandlers();
+  registerMcpExtraHandlers();
   registerOnboardingHandlers();
+  registerOllamaHandlers();
   registerPluginHandlers();
   registerAgentHandlers();
+  registerAgentTreeHandlers();
+  registerResumeHandlers();
+  registerAntiSycophancyHandlers();
   registerCodebaseHandlers();
   registerTelemetryHandlers();
   registerCrashReportingHandlers();
+  registerNetworkPolicyHandlers();
   registerUpdateHandlers();
   registerMemoryHandlers();
+  registerLocalFsMemoryHandlers();
+  registerMultiWorkspaceHandlers();
+  registerPairHandlers();
+  registerReplayHandlers();
+  registerReviewHandlers();
+  registerRoutingHandlers();
   registerSchedulerHandlers();
   registerSkillHandlers();
+  registerVoiceHandlers();
 }

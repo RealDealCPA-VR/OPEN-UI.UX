@@ -1,15 +1,23 @@
 # OpenCodex
 
-OpenCodex is an open-source desktop coding agent that works with any LLM. Local-first, MIT-licensed, plugin-extensible.
+**Mission Control for AI coding agents — your standalone desktop that drives Claude Code, Aider, OpenCode, and a built-in agent over any LLM.**
 
-## What it is
+OpenCodex is an open-source, local-first, MIT-licensed desktop app that sits *above* the coding-agent CLIs you already use, unifies their approval and merge-review UX, and is provider-agnostic from day one.
 
-- **Electron + TypeScript** monorepo. Runs as a native app on macOS, Windows, and Linux.
+## The three pillars
+
+- **Runners** — drive the built-in agent, Claude Code, Aider, OpenCode, or any runner shipped via a plugin. The subagent tree view (see screenshot below — `apps/desktop/src/renderer/components/AgentRunDrawer.tsx`) shows every parallel worker live: status, tokens, cost, and the diff each one is staging in its own worktree.
+- **Multi-agent orchestration** — fan out subtasks to parallel workers, each with its own model, scope, and git worktree, then accept or reject merges per worker.
+- **MCP + plugins** — every MCP server you connect becomes a tool / resource / prompt source. Third-party packages contribute tools, providers, runners, and full UI panels via the plugin SDK.
+
+## What it is, at a glance
+
+- **Electron + TypeScript** monorepo. Native app on macOS, Windows, and Linux.
 - **Any LLM**: OpenAI, Anthropic, Google, xAI, Mistral, Ollama, OpenRouter — all behind a single `LLMProvider` interface.
 - **Agentic**: a tool registry with permission tiers (`read` / `write` / `execute` / `network`) and an approval system for every mutation.
 - **RAG over your codebase**: Tree-sitter chunker + hybrid retrieval (LanceDB + SQLite FTS5).
 - **MCP-native**: Model Context Protocol servers are first-class tools.
-- **Plugin SDK**: tools, providers, and UI panels can be contributed by third-party packages.
+- **Plugin SDK**: tools, providers, runners, and UI panels can be contributed by third-party packages.
 - **No backend**: API keys live in the OS keychain via `keytar`. Everything runs locally.
 
 ## Where to start

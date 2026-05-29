@@ -9,6 +9,9 @@
   "engines": {
     "node": ">=20"
   },
+  "bin": {
+    "create-opencodex-plugin": "scripts/create-opencodex-plugin.mjs"
+  },
   "scripts": {
     "dev": "pnpm --filter @opencodex/desktop dev",
     "build": "pnpm -r build",

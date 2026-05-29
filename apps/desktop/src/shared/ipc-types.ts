@@ -6,6 +6,11 @@
 import { z } from 'zod';
 import type { AgentRun, AgentRunsChangedEvent } from './agent-runs';
 import type {
+  AgentRespondResumeRequest,
+  AgentRespondResumeResponse,
+  AgentResumePromptEvent,
+} from './agent-resume';
+import type {
   AgentAbortRunRequest,
   AgentAbortRunResponse,
   AgentSpawnFromUiRequest,
@@ -17,6 +22,173 @@ import type {
   ShellShowItemRequest,
   ShellShowItemResponse,
 } from './agent-spawn';
+import type {
+  FanoutConsentRequest,
+  FanoutConsentResponse,
+  PauseRunRequest,
+  PauseRunResponse,
+  ResumeRunRequest,
+  ResumeRunResponse,
+  WorktreePreviewRequest,
+  WorktreePreviewResponse,
+} from './agent-tree';
+import type { AntiSycophancyIpcInvokeChannels } from './anti-sycophancy';
+import type {
+  Budget,
+  BudgetExceededEvent,
+  BudgetWarningEvent,
+  CreateBudgetRequest,
+  DeleteBudgetRequest,
+  GetCurrentSpendRequest,
+  GetCurrentSpendResponse,
+  UpdateBudgetRequest,
+} from './budgets';
+import type { ConversationSearchRequest, ConversationSearchResponse } from './conversation-search';
+import type {
+  GitBranchFromConversationRequest,
+  GitBranchFromConversationResponse,
+  GitCommitHunksRequest,
+  GitCommitHunksResponse,
+  GitDraftPrRequest,
+  GitDraftPrResponse,
+  GitOpenPrInBrowserRequest,
+  GitOpenPrInBrowserResponse,
+  ListConflictsRequest,
+  ListConflictsResponse,
+  RegenerateHunkRequest,
+  RegenerateHunkResponse,
+  ResolveConflictRequest,
+  ResolveConflictResponse,
+} from './git-workflow';
+import type {
+  McpFetchRegistryResponse,
+  McpHealthStatsResponse,
+  McpListServerToolsRequest,
+  McpListServerToolsResponse,
+  McpPermissionsResponse,
+  McpRegistryUrlResponse,
+  McpRevokePermissionRequest,
+  McpRevokePermissionResponse,
+  McpRunToolRequest,
+  McpRunToolResponse,
+  McpSetRegistryUrlRequest,
+} from './mcp-registry';
+import type { LocalFsMemoryIpcInvokeChannels } from './memory-local-fs';
+import type {
+  AddAllowlistEntryRequest,
+  NetworkPolicy,
+  NetworkPolicyChangedEvent,
+  RemoveAllowlistEntryRequest,
+  SetLocalOnlyModeRequest,
+} from './network-policy';
+import type {
+  OllamaInstallProgress,
+  OllamaInstallRequest,
+  OllamaInstallResult,
+  OllamaListInstallersResponse,
+  OllamaProbeResult,
+} from './ollama';
+import type {
+  PairApplyAsContextRequest,
+  PairApplyAsContextResponse,
+  PairDismissSuggestionRequest,
+  PairDismissSuggestionResponse,
+  PairGetActiveSuggestionsRequest,
+  PairGetActiveSuggestionsResponse,
+  PairSetActiveConversationRequest,
+  PairSuggestionEvent,
+} from './pair';
+import type {
+  EstimateCostsAcrossProvidersRequest,
+  EstimateCostsAcrossProvidersResponse,
+  ProviderSwitchChangedEvent,
+  SwitchProviderRequest,
+  SwitchProviderResponse,
+} from './provider-switch';
+import type {
+  AppliedDiff,
+  ExportProvenanceBundleRequest,
+  ExportProvenanceBundleResponse,
+  GetAppliedDiffRequest,
+  ListAppliedDiffsRequest,
+  ListAppliedDiffsResponse,
+  ProvenanceBundle,
+  ReplayConversationRequest,
+  ReplayDiffRequest,
+  ReplayDiffResult,
+  ReplayProgressEvent,
+  ReplayResult,
+} from './replay';
+import type {
+  FetchDiffRequest,
+  FetchDiffResponse,
+  GenerateFindingsRequest,
+  GenerateFindingsResponse,
+  PostCommentsRequest,
+  PostCommentsResponse,
+} from './review';
+import type {
+  CreateRoutingPolicyRequest,
+  DeleteRoutingPolicyRequest,
+  RoutingChangedEvent,
+  RoutingState,
+  SetActiveRoutingPolicyRequest,
+  UpdateRoutingPolicyRequest,
+} from './routing';
+import type {
+  CheckBinaryResponse,
+  DownloadModelRequest,
+  DownloadModelResponse,
+  DownloadProgressEvent,
+  GetVoiceConfigResponse,
+  SetBinaryPathRequest,
+  SetPttShortcutRequest,
+  SetPttShortcutResponse,
+  SetSelectedVoiceModelRequest,
+  StartRecordingRequest,
+  StartRecordingResponse,
+  StopRecordingRequest,
+  StopRecordingResponse,
+  VoicePttEvent,
+} from './voice';
+import type {
+  CreateWorkspaceRequest,
+  DeleteWorkspaceRequest,
+  LinkWorkspaceRequest,
+  ListConversationWorkspacesRequest,
+  ListWorkspacesResponse,
+  SetPrimaryWorkspaceRequest,
+  SetWorkspaceRagEnabledRequest,
+  UnlinkWorkspaceRequest,
+  WorkspaceEntry,
+  WorkspacesChangedEvent,
+} from './workspaces';
+
+export type {
+  FanoutConsentRequest,
+  FanoutConsentRequestedEvent,
+  FanoutConsentDecision,
+  FanoutConsentResponse,
+  FanoutPlanTask,
+  PauseRunRequest,
+  PauseRunResponse,
+  ResumeRunRequest,
+  ResumeRunResponse,
+  RunPausedChangedEvent,
+  WorktreePreviewFile,
+  WorktreePreviewRequest,
+  WorktreePreviewResponse,
+} from './agent-tree';
+export { fanoutConsentRequestedChannel, runPausedChangedChannel } from './agent-tree';
+export type {
+  OllamaInstallProgress,
+  OllamaInstallRequest,
+  OllamaInstallResult,
+  OllamaInstallerKind,
+  OllamaListInstallersResponse,
+  OllamaModelEntry,
+  OllamaProbeResult,
+} from './ollama';
 import type {
   CodebasePendingEditsResponse,
   CodebaseReadFileRequest,
@@ -59,6 +231,10 @@ import type { SelectedModel } from './selected-model';
 import type { ShellOutputEvent } from './shell-output';
 import type { SetThemeRequest, ThemeChangedEvent, ThemePreference } from './theme';
 import type {
+  AuditWormStatus,
+  SetAuditWormEnabledRequest,
+  ToolCallAuditExportRequest,
+  ToolCallAuditExportResult,
   ToolCallAuditPurgeResult,
   ToolCallAuditQuery,
   ToolCallAuditQueryResult,
@@ -232,7 +408,10 @@ export const pluginPresetSchema = z.object({
 
 export type PluginPreset = z.infer<typeof pluginPresetSchema>;
 
-export interface IpcInvokeChannels {
+export interface IpcInvokeChannelsBase
+  extends AntiSycophancyIpcInvokeChannels, LocalFsMemoryIpcInvokeChannels {}
+
+export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
   'app:version': {
     request: void;
     response: string;
@@ -718,6 +897,318 @@ export interface IpcInvokeChannels {
     request: GitInitRequest;
     response: GitInitResult;
   };
+  // Lane: phase14-tier1-cost-ceiling — budgets
+  'budgets:list': {
+    request: void;
+    response: Budget[];
+  };
+  'budgets:create': {
+    request: CreateBudgetRequest;
+    response: Budget;
+  };
+  'budgets:update': {
+    request: UpdateBudgetRequest;
+    response: Budget;
+  };
+  'budgets:delete': {
+    request: DeleteBudgetRequest;
+    response: { ok: boolean };
+  };
+  'budgets:get-current-spend': {
+    request: GetCurrentSpendRequest;
+    response: GetCurrentSpendResponse;
+  };
+  // Lane 2 — background jobs / resume prompt
+  'agent:respond-resume': {
+    request: AgentRespondResumeRequest;
+    response: AgentRespondResumeResponse;
+  };
+  // Lane 3 — conversation search
+  'conversations:search': {
+    request: ConversationSearchRequest;
+    response: ConversationSearchResponse;
+  };
+  // Lane 4 — multi-workspace
+  'workspaces:list': {
+    request: void;
+    response: ListWorkspacesResponse;
+  };
+  'workspaces:create': {
+    request: CreateWorkspaceRequest;
+    response: ListWorkspacesResponse;
+  };
+  'workspaces:delete': {
+    request: DeleteWorkspaceRequest;
+    response: ListWorkspacesResponse;
+  };
+  'workspaces:set-primary': {
+    request: SetPrimaryWorkspaceRequest;
+    response: ListWorkspacesResponse;
+  };
+  'workspaces:set-rag-enabled': {
+    request: SetWorkspaceRagEnabledRequest;
+    response: ListWorkspacesResponse;
+  };
+  'workspaces:link-to-conversation': {
+    request: LinkWorkspaceRequest;
+    response: { workspaces: WorkspaceEntry[] };
+  };
+  'workspaces:unlink-from-conversation': {
+    request: UnlinkWorkspaceRequest;
+    response: { workspaces: WorkspaceEntry[] };
+  };
+  'workspaces:list-for-conversation': {
+    request: ListConversationWorkspacesRequest;
+    response: { workspaces: WorkspaceEntry[] };
+  };
+  // Lane 5 — routing
+  'routing:get-state': {
+    request: void;
+    response: RoutingState;
+  };
+  'routing:create-policy': {
+    request: CreateRoutingPolicyRequest;
+    response: RoutingState;
+  };
+  'routing:update-policy': {
+    request: UpdateRoutingPolicyRequest;
+    response: RoutingState;
+  };
+  'routing:delete-policy': {
+    request: DeleteRoutingPolicyRequest;
+    response: RoutingState;
+  };
+  'routing:set-active': {
+    request: SetActiveRoutingPolicyRequest;
+    response: RoutingState;
+  };
+  // Lane 6 — replay / provenance
+  'replay:list-applied-diffs': {
+    request: ListAppliedDiffsRequest;
+    response: ListAppliedDiffsResponse;
+  };
+  'replay:get-applied-diff': {
+    request: GetAppliedDiffRequest;
+    response: AppliedDiff | null;
+  };
+  'replay:export-provenance-bundle': {
+    request: ExportProvenanceBundleRequest;
+    response: ExportProvenanceBundleResponse;
+  };
+  'replay:replay-conversation': {
+    request: ReplayConversationRequest;
+    response: ReplayResult;
+  };
+  'replay:replay-diff': {
+    request: ReplayDiffRequest;
+    response: ReplayDiffResult;
+  };
+  'replay:get-conversation-bundle': {
+    request: { id: string };
+    response: { bundle: ProvenanceBundle | null };
+  };
+  // Lane 8 — ollama onboarding
+  'ollama:probe': {
+    request: void;
+    response: OllamaProbeResult;
+  };
+  'ollama:install': {
+    request: OllamaInstallRequest;
+    response: OllamaInstallResult;
+  };
+  'ollama:list-installable-managers': {
+    request: void;
+    response: OllamaListInstallersResponse;
+  };
+  'settings:get-cloud-provider-tip-shown': {
+    request: void;
+    response: boolean;
+  };
+  'settings:set-cloud-provider-tip-shown': {
+    request: { value: boolean };
+    response: { value: boolean };
+  };
+  // Lane 9 — git workflow
+  'git:branch-from-conversation': {
+    request: GitBranchFromConversationRequest;
+    response: GitBranchFromConversationResponse;
+  };
+  'git:commit-hunks': {
+    request: GitCommitHunksRequest;
+    response: GitCommitHunksResponse;
+  };
+  'git:draft-pr': {
+    request: GitDraftPrRequest;
+    response: GitDraftPrResponse;
+  };
+  'git:open-pr-in-browser': {
+    request: GitOpenPrInBrowserRequest;
+    response: GitOpenPrInBrowserResponse;
+  };
+  'git:list-conflicts': {
+    request: ListConflictsRequest;
+    response: ListConflictsResponse;
+  };
+  'git:resolve-conflict': {
+    request: ResolveConflictRequest;
+    response: ResolveConflictResponse;
+  };
+  'chat:regenerate-hunk': {
+    request: RegenerateHunkRequest;
+    response: RegenerateHunkResponse;
+  };
+  // Lane 10 — review
+  'review:fetch-diff': {
+    request: FetchDiffRequest;
+    response: FetchDiffResponse;
+  };
+  'review:generate-findings': {
+    request: GenerateFindingsRequest;
+    response: GenerateFindingsResponse;
+  };
+  'review:post-comments': {
+    request: PostCommentsRequest;
+    response: PostCommentsResponse;
+  };
+  // Lane 11 — network policy / privacy
+  'network:get-policy': {
+    request: void;
+    response: NetworkPolicy;
+  };
+  'network:set-local-only': {
+    request: SetLocalOnlyModeRequest;
+    response: NetworkPolicy;
+  };
+  'network:add-allowlist-entry': {
+    request: AddAllowlistEntryRequest;
+    response: NetworkPolicy;
+  };
+  'network:remove-allowlist-entry': {
+    request: RemoveAllowlistEntryRequest;
+    response: NetworkPolicy;
+  };
+  // Lane 12 — audit export / WORM
+  'tool-audit:export-bundle': {
+    request: ToolCallAuditExportRequest;
+    response: ToolCallAuditExportResult;
+  };
+  'tool-audit:get-worm': {
+    request: void;
+    response: AuditWormStatus;
+  };
+  'tool-audit:set-worm': {
+    request: SetAuditWormEnabledRequest;
+    response: AuditWormStatus;
+  };
+  // Lane 13 — voice
+  'voice:check-binary': {
+    request: void;
+    response: CheckBinaryResponse;
+  };
+  'voice:download-model': {
+    request: DownloadModelRequest;
+    response: DownloadModelResponse;
+  };
+  'voice:start-recording': {
+    request: StartRecordingRequest;
+    response: StartRecordingResponse;
+  };
+  'voice:stop-recording': {
+    request: StopRecordingRequest;
+    response: StopRecordingResponse;
+  };
+  'voice:set-ptt-shortcut': {
+    request: SetPttShortcutRequest;
+    response: SetPttShortcutResponse;
+  };
+  'voice:get-config': {
+    request: void;
+    response: GetVoiceConfigResponse;
+  };
+  'voice:set-selected-model': {
+    request: SetSelectedVoiceModelRequest;
+    response: GetVoiceConfigResponse;
+  };
+  'voice:set-binary-path': {
+    request: SetBinaryPathRequest;
+    response: GetVoiceConfigResponse;
+  };
+  // Lane 14 — MCP marketplace / health / permissions
+  'mcp:get-registry-url': {
+    request: void;
+    response: McpRegistryUrlResponse;
+  };
+  'mcp:set-registry-url': {
+    request: McpSetRegistryUrlRequest;
+    response: McpRegistryUrlResponse;
+  };
+  'mcp:fetch-registry': {
+    request: void;
+    response: McpFetchRegistryResponse;
+  };
+  'mcp:get-health-stats': {
+    request: void;
+    response: McpHealthStatsResponse;
+  };
+  'mcp:get-permissions': {
+    request: void;
+    response: McpPermissionsResponse;
+  };
+  'mcp:revoke-permission': {
+    request: McpRevokePermissionRequest;
+    response: McpRevokePermissionResponse;
+  };
+  'mcp:run-tool': {
+    request: McpRunToolRequest;
+    response: McpRunToolResponse;
+  };
+  'mcp:list-server-tools': {
+    request: McpListServerToolsRequest;
+    response: McpListServerToolsResponse;
+  };
+  // Lane 15 — pair suggestions
+  'pair:get-active-suggestions': {
+    request: PairGetActiveSuggestionsRequest;
+    response: PairGetActiveSuggestionsResponse;
+  };
+  'pair:dismiss-suggestion': {
+    request: PairDismissSuggestionRequest;
+    response: PairDismissSuggestionResponse;
+  };
+  'pair:apply-as-context': {
+    request: PairApplyAsContextRequest;
+    response: PairApplyAsContextResponse;
+  };
+  'pair:set-active-conversation': {
+    request: PairSetActiveConversationRequest;
+    response: { ok: boolean };
+  };
+  // Lane 17 — agent-tree pause/resume/preview/fanout
+  'agent:pause-run': {
+    request: PauseRunRequest;
+    response: PauseRunResponse;
+  };
+  'agent:resume-run': {
+    request: ResumeRunRequest;
+    response: ResumeRunResponse;
+  };
+  'agent:get-worktree-preview': {
+    request: WorktreePreviewRequest;
+    response: WorktreePreviewResponse;
+  };
+  'agent:fanout-consent': {
+    request: FanoutConsentRequest;
+    response: FanoutConsentResponse;
+  };
+  // Lane 18 — provider switch + cost comparison
+  'chat:switch-provider': {
+    request: SwitchProviderRequest;
+    response: SwitchProviderResponse;
+  };
+  'chat:estimate-costs-across-providers': {
+    request: EstimateCostsAcrossProvidersRequest;
+    response: EstimateCostsAcrossProvidersResponse;
+  };
 }
 
 export interface IpcEventChannels {
@@ -743,6 +1234,28 @@ export interface IpcEventChannels {
   'ui:error': UiErrorEvent;
   'runner:install-progress': RunnerInstallProgress;
   'runner:friendly-error': RunnerFriendlyError;
+  // Lane: phase14-tier1-cost-ceiling
+  'budget:warning': BudgetWarningEvent;
+  'budget:exceeded': BudgetExceededEvent;
+  // Lane 2 — background jobs
+  'agent:resume-prompt': AgentResumePromptEvent;
+  // Lane 4 — multi-workspace
+  'workspaces:changed': WorkspacesChangedEvent;
+  // Lane 5 — routing
+  'routing:changed': RoutingChangedEvent;
+  // Lane 6 — replay
+  'replay:progress': ReplayProgressEvent;
+  // Lane 8 — ollama
+  'ollama:install-progress': OllamaInstallProgress;
+  // Lane 11 — privacy
+  'network:policy-changed': NetworkPolicyChangedEvent;
+  // Lane 13 — voice
+  'voice:download-progress': DownloadProgressEvent;
+  'voice:ptt-event': VoicePttEvent;
+  // Lane 15 — pair
+  'pair:suggestion': PairSuggestionEvent;
+  // Lane 18 — provider switch
+  'chat:provider-switched': ProviderSwitchChangedEvent;
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

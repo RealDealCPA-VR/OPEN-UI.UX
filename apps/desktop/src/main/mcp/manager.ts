@@ -17,7 +17,16 @@ import { getMcpServers, setMcpServers } from '../storage/settings';
 import { getToolRegistry } from '../tools/registry';
 import { friendlyErrorMessage } from '../util/friendly-error';
 import { emitUiError } from '../util/ui-error';
+import {
+  recordConnected,
+  recordDisconnected,
+  recordError,
+  recordReconnect,
+  recordStatus,
+} from './health-stats';
 import { adaptMcpTool, mcpToolName } from './tool-adapter';
+
+export { getAllHealthStats, getHealthStats } from './health-stats';
 
 interface RuntimeState {
   client: McpClient | null;
@@ -191,6 +200,7 @@ async function connectServer(server: McpServerEntry, attempt = 0): Promise<void>
   r.status = 'connecting';
   r.lastError = undefined;
   r.connectStartedAt = Date.now();
+  recordStatus(server.id, 'connecting');
   emit();
 
   const client = new McpClient(server.id, server.config as McpServerConfig);
@@ -202,6 +212,7 @@ async function connectServer(server: McpServerEntry, attempt = 0): Promise<void>
     current.status = 'disconnected';
     current.client = null;
     unregisterServerTools(server.id);
+    recordDisconnected(server.id);
     emit();
     if (!server.enabled) return;
     // If the child died within the first 500ms, it almost certainly never
@@ -228,6 +239,7 @@ async function connectServer(server: McpServerEntry, attempt = 0): Promise<void>
     r.serverInfo = client.info?.serverInfo;
     r.connectedAt = new Date().toISOString();
     r.toastedFailure = false;
+    recordConnected(server.id);
     await refreshCounts(server.id, client);
     emit();
     for (const l of connectedListeners) {
@@ -241,6 +253,7 @@ async function connectServer(server: McpServerEntry, attempt = 0): Promise<void>
     r.status = 'error';
     r.client = null;
     r.lastError = friendlyErrorMessage(err);
+    if (r.lastError) recordError(server.id, r.lastError);
     logger.warn({ err, serverId: server.id }, 'mcp connect failed');
     if (!r.toastedFailure) {
       r.toastedFailure = true;
@@ -258,6 +271,7 @@ async function connectServer(server: McpServerEntry, attempt = 0): Promise<void>
 
 function scheduleReconnect(server: McpServerEntry, attempt: number, earlyExit: boolean): void {
   const r = ensureRuntime(server.id);
+  recordReconnect(server.id);
   const delay = earlyExit
     ? RECONNECT_MAX_MS
     : Math.min(RECONNECT_BASE_MS * 2 ** Math.min(attempt, 6), RECONNECT_MAX_MS);
@@ -369,6 +383,7 @@ export async function setServerEnabled(id: string, enabled: boolean): Promise<Mc
     }
     r.client = null;
     r.status = 'disabled';
+    recordStatus(id, 'disabled');
   }
   emit();
   return readState();
