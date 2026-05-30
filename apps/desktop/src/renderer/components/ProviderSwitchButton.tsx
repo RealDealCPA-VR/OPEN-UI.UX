@@ -50,11 +50,16 @@ export function ProviderSwitchButton({
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent): void => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setError(null);
-        setInitialSelection(null);
-      }
+      const root = rootRef.current;
+      if (!root) return;
+      // composedPath() walks past shadow boundaries and reflects React Portal
+      // chains too — covers ModelPicker dropdowns rendered into other parents.
+      const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+      if (path.length > 0 && path.includes(root)) return;
+      if (root.contains(e.target as Node)) return;
+      setOpen(false);
+      setError(null);
+      setInitialSelection(null);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);

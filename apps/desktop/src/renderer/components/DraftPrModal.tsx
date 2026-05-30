@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getBridge } from '../bridge';
 import { Modal } from './Modal';
 
 interface DraftPrModalProps {
@@ -34,7 +35,9 @@ export function DraftPrModal({
     let cancelled = false;
     void (async () => {
       try {
-        const res = await window.opencodex.git.draftPr({
+        const bridge = getBridge();
+        if (!bridge) throw new Error('Preload bridge unavailable.');
+        const res = await bridge.git.draftPr({
           repoRoot,
           branch,
           ...(baseBranch ? { baseBranch } : {}),
@@ -64,7 +67,9 @@ export function DraftPrModal({
     setOpening(true);
     setError(null);
     try {
-      const res = await window.opencodex.git.openPrInBrowser({
+      const bridge = getBridge();
+      if (!bridge) throw new Error('Preload bridge unavailable.');
+      const res = await bridge.git.openPrInBrowser({
         repoRoot,
         branch,
         ...(baseBranch ? { baseBranch } : {}),

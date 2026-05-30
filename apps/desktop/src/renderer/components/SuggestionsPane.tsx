@@ -44,7 +44,9 @@ export function SuggestionsPane({ conversationId }: SuggestionsPaneProps): JSX.E
         return [evt.suggestion, ...prev];
       });
     });
-    return off;
+    return () => {
+      if (typeof off === 'function') off();
+    };
   }, [conversationId]);
 
   const handleDismiss = useCallback(async (id: string): Promise<void> => {

@@ -14,7 +14,9 @@ function validateEntry(raw: string): string | null {
 }
 
 export function PrivacyPanel(): JSX.Element {
-  const networkApi = useMemo(() => window.opencodex.network, []);
+  // window.opencodex.network is stable for the renderer lifetime; reading directly
+  // is correct, and useMemo([]) here gave the wrong impression of reactivity.
+  const networkApi = window.opencodex?.network;
   const [policy, setPolicy] = useState<NetworkPolicy | null>(null);
   const [loadError, setLoadError] = useState<string | null>(() =>
     networkApi

@@ -12,6 +12,7 @@ import { LocalOnlyPill } from './LocalOnlyPill';
 import { McpToolRunner } from './McpToolRunner';
 import { StatusBar } from './StatusBar';
 import { useCollapseState } from '../state/use-collapse-state';
+import { getBridge } from '../bridge';
 import brandLogoUrl from '../assets/brand.png';
 
 interface NavItem {
@@ -71,7 +72,9 @@ export function AppShell(): JSX.Element {
   const activeRoute = useMemo(() => routeFromPathname(location.pathname), [location.pathname]);
 
   useEffect(() => {
-    window.opencodex.getVersion().then(setVersion).catch(console.error);
+    const bridge = getBridge();
+    if (!bridge) return;
+    bridge.getVersion().then(setVersion).catch(console.error);
   }, []);
 
   useEffect(() => {

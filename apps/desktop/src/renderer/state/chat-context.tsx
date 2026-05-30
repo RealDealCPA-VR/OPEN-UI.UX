@@ -66,10 +66,11 @@ interface ActiveStream {
 const EMPTY_MESSAGES: StoredMessage[] = [];
 
 function appendDeltaBlock(blocks: ContentBlock[], delta: string): ContentBlock[] {
-  const last = blocks[blocks.length - 1];
+  const lastIdx = blocks.length - 1;
+  const last = blocks[lastIdx];
   if (last && last.type === 'text') {
-    const next = blocks.slice(0, -1);
-    next.push({ type: 'text', text: last.text + delta });
+    const next = blocks.slice();
+    next[lastIdx] = { type: 'text', text: last.text + delta };
     return next;
   }
   return [...blocks, { type: 'text', text: delta }];
@@ -87,6 +88,8 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
   const [reloadKey, setReloadKey] = useState(0);
 
   const activeStreamRef = useRef<ActiveStream | null>(null);
+  const pendingDeltaRef = useRef<string>('');
+  const deltaFlushRafRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,20 +167,45 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
     if (errorMessage) setError(errorMessage);
   }, []);
 
+  const flushPendingDelta = useCallback((): void => {
+    deltaFlushRafRef.current = null;
+    const buffered = pendingDeltaRef.current;
+    if (buffered.length === 0) return;
+    pendingDeltaRef.current = '';
+    setDraft((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        text: prev.text + buffered,
+        blocks: appendDeltaBlock(prev.blocks, buffered),
+      };
+    });
+  }, []);
+
   useEffect(() => {
     return window.opencodex.chat.onEvent((payload) => {
       const current = activeStreamRef.current;
       if (!current || current.streamId !== payload.streamId) return;
       const event = payload.event;
+      if (event.type === 'text_delta') {
+        pendingDeltaRef.current += event.delta;
+        if (deltaFlushRafRef.current === null) {
+          deltaFlushRafRef.current = requestAnimationFrame(flushPendingDelta);
+        }
+        return;
+      }
+      // Non-delta events must observe any pending text before they're applied,
+      // otherwise tool_call/done would race past in-flight deltas.
+      if (pendingDeltaRef.current.length > 0) {
+        if (deltaFlushRafRef.current !== null) {
+          cancelAnimationFrame(deltaFlushRafRef.current);
+          deltaFlushRafRef.current = null;
+        }
+        flushPendingDelta();
+      }
       setDraft((prev) => {
         if (!prev) return prev;
         switch (event.type) {
-          case 'text_delta':
-            return {
-              ...prev,
-              text: prev.text + event.delta,
-              blocks: appendDeltaBlock(prev.blocks, event.delta),
-            };
           case 'tool_call':
             return {
               ...prev,
@@ -217,7 +245,7 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
       if (event.type === 'done') void finalizeStream(null);
       if (event.type === 'error') void finalizeStream(event.message);
     });
-  }, [finalizeStream]);
+  }, [finalizeStream, flushPendingDelta]);
 
   const selectConversation = useCallback((id: string | null): void => {
     setActiveId(id);

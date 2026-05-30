@@ -17,22 +17,28 @@ export function SettingsRail({
   onQueryChange,
 }: SettingsRailProps): JSX.Element {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const navRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const isMeta = e.metaKey || e.ctrlKey;
-      if (isMeta && e.key === 'f' && document.activeElement?.closest('.settings-view')) {
-        e.preventDefault();
+    // Scope Cmd/Ctrl+F to the enclosing .settings-view so the shortcut does
+    // not steal focus when the user is anywhere else in the app.
+    const settingsRoot = navRef.current?.closest('.settings-view');
+    if (!settingsRoot) return;
+    const onKey = (e: Event): void => {
+      const ke = e as KeyboardEvent;
+      const isMeta = ke.metaKey || ke.ctrlKey;
+      if (isMeta && ke.key === 'f') {
+        ke.preventDefault();
         inputRef.current?.focus();
         inputRef.current?.select();
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    settingsRoot.addEventListener('keydown', onKey);
+    return () => settingsRoot.removeEventListener('keydown', onKey);
   }, []);
 
   return (
-    <nav className="settings-rail" aria-label="Settings sections">
+    <nav ref={navRef} className="settings-rail" aria-label="Settings sections">
       <div className="settings-rail-search" style={{ position: 'relative' }}>
         <input
           ref={inputRef}

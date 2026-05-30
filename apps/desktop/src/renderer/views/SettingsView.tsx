@@ -77,6 +77,7 @@ function SettingsViewBody({ defaultSection }: { defaultSection: SettingsSection 
     if (!anchor) return;
     let cancelled = false;
     let innerHandle: number | null = null;
+    let highlightedEl: HTMLElement | null = null;
     const handle = window.setTimeout(() => {
       if (cancelled) return;
       const el = document.querySelector<HTMLElement>(
@@ -85,14 +86,19 @@ function SettingsViewBody({ defaultSection }: { defaultSection: SettingsSection 
       if (!el) return;
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       el.classList.add('settings-anchor-highlight');
+      highlightedEl = el;
       const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const ms = prefersReduced ? 0 : 1600;
-      innerHandle = window.setTimeout(() => el.classList.remove('settings-anchor-highlight'), ms);
+      innerHandle = window.setTimeout(() => {
+        el.classList.remove('settings-anchor-highlight');
+        highlightedEl = null;
+      }, ms);
     }, 60);
     return () => {
       cancelled = true;
       window.clearTimeout(handle);
       if (innerHandle !== null) window.clearTimeout(innerHandle);
+      if (highlightedEl) highlightedEl.classList.remove('settings-anchor-highlight');
     };
   }, [location.search, location.hash, currentSection.slug]);
 

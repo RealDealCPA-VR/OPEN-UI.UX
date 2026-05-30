@@ -4,6 +4,7 @@ import './CommandPalette.css';
 import type { ConversationSearchHit } from '../../shared/conversation-search';
 import type { CodebaseSearchHit } from '../../shared/codebase-search';
 import type { Skill } from '../../shared/skills';
+import { getBridge } from '../bridge';
 import {
   flattenForKeyboardNav,
   groupByCategory,
@@ -84,10 +85,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
 
   useEffect(() => {
     if (!open) return;
+    const bridge = getBridge();
+    if (!bridge) return;
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      void window.opencodex.workspace
+      void bridge.workspace
         .get()
         .then((s) => {
           if (!cancelled) setWorkspaceRoot(s.active);
@@ -101,10 +104,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
 
   useEffect(() => {
     if (!open) return;
+    const bridge = getBridge();
+    if (!bridge) return;
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      void window.opencodex.skills
+      void bridge.skills
         .list()
         .then((res) => {
           if (!cancelled) setSkills(res.skills);
@@ -118,10 +123,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
 
   useEffect(() => {
     if (!open) return;
+    const bridge = getBridge();
+    if (!bridge) return;
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      void window.opencodex.mcp
+      void bridge.mcp
         .list()
         .then(async (state) => {
           if (cancelled) return;
@@ -132,7 +139,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
           await Promise.all(
             connectedServers.map(async (server) => {
               try {
-                const res = await window.opencodex.mcp.listServerTools({ serverId: server.id });
+                const res = await bridge.mcp.listServerTools({ serverId: server.id });
                 for (const tool of res.tools) {
                   collected.push({
                     serverId: server.id,
@@ -172,17 +179,19 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
         ? bridge.search({ query: debouncedQuery, limit: SEARCH_LIMIT })
         : Promise.resolve({ hits: [] });
 
-      const filesPromise: Promise<CodebaseSearchHit[]> = workspaceRoot
-        ? window.opencodex.codebase
-            .search({
-              workspaceRoot,
-              query: debouncedQuery,
-              mode: 'both',
-              limit: SEARCH_LIMIT,
-            })
-            .then((res) => res.hits)
-            .catch(() => [])
-        : Promise.resolve([]);
+      const codebaseBridge = getBridge()?.codebase;
+      const filesPromise: Promise<CodebaseSearchHit[]> =
+        workspaceRoot && codebaseBridge
+          ? codebaseBridge
+              .search({
+                workspaceRoot,
+                query: debouncedQuery,
+                mode: 'both',
+                limit: SEARCH_LIMIT,
+              })
+              .then((res) => res.hits)
+              .catch(() => [])
+          : Promise.resolve([]);
 
       Promise.all([messagesPromise, filesPromise])
         .then(([m, f]) => {

@@ -87,8 +87,37 @@ function mockBridge(opts: {
     skills: {
       installStarterPack: vi.fn(async () => undefined),
     },
+    // OllamaStep now mounts first and reads window.opencodex.ollama in two
+    // useEffects. The component's 15.9 lazy guards mean a missing namespace
+    // no longer crashes production, but the test still needs a no-op probe so
+    // the step actually renders its Skip CTA. Return a not-running probe so
+    // the "no Ollama detected" branch shows the Skip button immediately.
+    ollama: {
+      probe: vi.fn(async () => ({ running: false, models: [], error: null })),
+      listInstallableManagers: vi.fn(async () => ({ installers: [] })),
+      onInstallProgress: vi.fn(() => () => {}),
+      install: vi.fn(async () => ({ ok: false, exitCode: 1, stderrTail: 'stub' })),
+    },
+    agent: {
+      listRunners: vi.fn(async () => []),
+      checkRunnerInstalled: vi.fn(async () => ({ ok: true })),
+    },
   } as unknown as Window['opencodex'];
   return { save, test, setComplete };
+}
+
+/**
+ * The wizard's initial step is `ollama`, so tests that exercise the provider
+ * step need to click "Skip — use cloud provider" first. Centralized here so
+ * the test bodies stay focused on what they're actually verifying.
+ */
+async function advanceToProviderStep(): Promise<void> {
+  const skipBtn = await waitFor(() =>
+    screen.getByRole('button', { name: /Skip — use cloud provider/i }),
+  );
+  act(() => {
+    fireEvent.click(skipBtn);
+  });
 }
 
 async function importComponent(): Promise<typeof OnboardingWizardModule.OnboardingWizard> {
@@ -120,6 +149,9 @@ describe('OnboardingWizard', () => {
     mockBridge({ complete: false });
     const Wizard = await importComponent();
     renderWizard(Wizard);
+    // The wizard's first visible step is now `ollama`; skipping it lands on
+    // the provider step, which is what this test originally guarded.
+    await advanceToProviderStep();
     await waitFor(() => expect(screen.getByText(/Pick a provider/i)).toBeTruthy());
   });
 
@@ -139,6 +171,7 @@ describe('OnboardingWizard', () => {
     mockBridge({ complete: false });
     const Wizard = await importComponent();
     renderWizard(Wizard);
+    await advanceToProviderStep();
     await waitFor(() => screen.getByText(/Pick a provider/i));
     const radio = screen.getByRole('radio', { name: /OpenAI/i }) as HTMLInputElement;
     act(() => {
@@ -157,6 +190,7 @@ describe('OnboardingWizard', () => {
     });
     const Wizard = await importComponent();
     renderWizard(Wizard);
+    await advanceToProviderStep();
     await waitFor(() => screen.getByText(/Pick a provider/i));
     const radio = screen.getByRole('radio', { name: /OpenAI/i }) as HTMLInputElement;
     act(() => {

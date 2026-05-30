@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CodebaseSearchHit } from '../../shared/codebase-search';
+import { getBridge } from '../bridge';
 import { HoverHint } from './HoverHint';
 
 type SearchScope = 'current-dir' | 'repo' | 'mcp';
@@ -108,12 +109,14 @@ export function CodebaseSearchBox({
     }
     const reqId = ++reqIdRef.current;
     const handle = window.setTimeout(async () => {
+      const bridge = getBridge();
+      if (!bridge) return;
       setSearching(true);
       setError(null);
       const startedAt = performance.now();
       try {
         if (scope === 'mcp') {
-          const entries = await window.opencodex.mcp.listResources();
+          const entries = await bridge.mcp.listResources();
           if (reqIdRef.current !== reqId) return;
           const q = trimmed.toLowerCase();
           const hits: CodebaseSearchHit[] = entries
@@ -139,7 +142,7 @@ export function CodebaseSearchBox({
           setOpen(true);
           return;
         }
-        const res = await window.opencodex.codebase.search({
+        const res = await bridge.codebase.search({
           workspaceRoot,
           query: trimmed,
           mode: 'both',

@@ -57,9 +57,12 @@ export function ReplayConversationModal({
   useEffect(() => {
     const bridge = replayBridge();
     if (!bridge?.onProgress) return;
-    return bridge.onProgress((event) => {
+    const off = bridge.onProgress((event) => {
       setProgress(event);
     });
+    return () => {
+      if (typeof off === 'function') off();
+    };
   }, []);
 
   const runReplay = async (): Promise<void> => {

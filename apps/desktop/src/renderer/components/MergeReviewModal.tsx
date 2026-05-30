@@ -3,6 +3,7 @@ import { MonacoDiffViewer } from './MonacoDiffViewer';
 import type { HunkProvenance, MonacoDiffHunk } from './monaco-diff-helpers';
 import { DraftPrModal } from './DraftPrModal';
 import { MergeConflictResolver } from './MergeConflictResolver';
+import { getBridge } from '../bridge';
 import type { AppliedDiff } from '../../shared/replay';
 
 interface MergeReviewModalProps {
@@ -203,10 +204,16 @@ export function MergeReviewModal({
   const modalRootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    const bridge = getBridge();
+    if (!bridge) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoadError('Preload bridge unavailable.');
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
-        const b = await window.opencodex.agent.getMergeBundle(runId);
+        const b = await bridge.agent.getMergeBundle(runId);
         if (!cancelled) {
           setBundle({ diff: b.diff, files: b.files, branch: b.branch });
         }
@@ -220,10 +227,12 @@ export function MergeReviewModal({
   }, [runId]);
 
   useEffect(() => {
+    const bridge = getBridge();
+    if (!bridge) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await window.opencodex.replay.listAppliedDiffs({
+        const res = await bridge.replay.listAppliedDiffs({
           conversationId,
           limit: 200,
         });
@@ -268,7 +277,9 @@ export function MergeReviewModal({
     setActionError(null);
     setConflictError(null);
     try {
-      const res = await window.opencodex.agent.acceptMerge(runId);
+      const bridge = getBridge();
+      if (!bridge) throw new Error('Preload bridge unavailable.');
+      const res = await bridge.agent.acceptMerge(runId);
       if (!res.ok) {
         const msg = res.error ?? 'merge failed';
         setActionError(msg);
@@ -291,7 +302,9 @@ export function MergeReviewModal({
     setBusy('reject');
     setActionError(null);
     try {
-      const res = await window.opencodex.agent.rejectMerge(runId);
+      const bridge = getBridge();
+      if (!bridge) throw new Error('Preload bridge unavailable.');
+      const res = await bridge.agent.rejectMerge(runId);
       if (!res.ok) {
         setActionError(res.error ?? 'reject failed');
         return;
@@ -337,12 +350,17 @@ export function MergeReviewModal({
     if (!regenerate) return;
     setRegenerate({ ...regenerate, busy: true, error: null, suggestion: null });
     try {
-      const selected = await window.opencodex.selectedModel.get();
+      const bridge = getBridge();
+      if (!bridge) {
+        setRegenerate((r) => (r ? { ...r, busy: false, error: 'Preload bridge unavailable.' } : r));
+        return;
+      }
+      const selected = await bridge.selectedModel.get();
       if (!selected) {
         setRegenerate((r) => (r ? { ...r, busy: false, error: 'No model selected' } : r));
         return;
       }
-      const res = await window.opencodex.chat.regenerateHunk({
+      const res = await bridge.chat.regenerateHunk({
         conversationId,
         filePath: regenerate.filePath,
         originalSnippet: regenerate.originalSnippet,
@@ -397,17 +415,17 @@ export function MergeReviewModal({
 
   useEffect(() => {
     if (parsedFiles.length === 0) return;
+    const root = modalRootRef.current;
+    if (!root) return;
     const onKey = (e: KeyboardEvent): void => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
       if (target instanceof HTMLElement && target.isContentEditable) return;
       if (regenerate || showDraftPr || showConflicts) return;
-      const root = modalRootRef.current;
-      const active = document.activeElement;
-      if (root && active && active !== document.body && !root.contains(active)) return;
       // Hand off j/k/a/r to the inner MonacoDiffViewer when the user is
       // focused there — per-hunk nav and accept/reject should win.
+      const active = document.activeElement;
       const inDiffViewer = active instanceof HTMLElement && !!active.closest('.monaco-diff-viewer');
       if (e.shiftKey && (e.key === 'J' || e.key === 'K')) {
         e.preventDefault();
@@ -444,8 +462,8 @@ export function MergeReviewModal({
         setConfirm('reject');
       }
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    root.addEventListener('keydown', onKey);
+    return () => root.removeEventListener('keydown', onKey);
   }, [parsedFiles, focusedIndex, bundle, busy, regenerate, showDraftPr, showConflicts]);
 
   return (

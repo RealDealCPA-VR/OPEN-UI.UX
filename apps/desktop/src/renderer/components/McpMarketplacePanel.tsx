@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { McpServerPreset, McpState } from '../../shared/mcp';
 import type { McpFetchRegistryResponse, McpRegistryEntry } from '../../shared/mcp-registry';
+import { getBridge } from '../bridge';
 
 interface MarketplaceCard {
   id: string;
@@ -25,31 +26,37 @@ export function McpMarketplacePanel(): JSX.Element {
   const [draftUrl, setDraftUrl] = useState('');
 
   useEffect(() => {
-    void window.opencodex.mcp.list().then(setState);
-    void window.opencodex.mcp.presets().then(setPresets);
-    const off = window.opencodex.mcp.onChanged((next) => setState(next));
-    void window.opencodex.mcp.getRegistryUrl().then(({ url }) => {
+    const bridge = getBridge();
+    if (!bridge) return;
+    void bridge.mcp.list().then(setState);
+    void bridge.mcp.presets().then(setPresets);
+    const off = bridge.mcp.onChanged((next) => setState(next));
+    void bridge.mcp.getRegistryUrl().then(({ url }) => {
       setRegistryUrlState(url);
       setDraftUrl(url);
     });
-    void window.opencodex.mcp.fetchRegistry().then(setRegistry);
+    void bridge.mcp.fetchRegistry().then(setRegistry);
     return off;
   }, []);
 
   const onRefresh = useCallback(async () => {
+    const bridge = getBridge();
+    if (!bridge) return;
     setError(null);
-    const next = await window.opencodex.mcp.fetchRegistry();
+    const next = await bridge.mcp.fetchRegistry();
     setRegistry(next);
     if (next.error) setError(next.error);
   }, []);
 
   const onSaveUrl = useCallback(async () => {
+    const bridge = getBridge();
+    if (!bridge) return;
     const trimmed = draftUrl.trim();
     try {
-      const res = await window.opencodex.mcp.setRegistryUrl(trimmed.length === 0 ? null : trimmed);
+      const res = await bridge.mcp.setRegistryUrl(trimmed.length === 0 ? null : trimmed);
       setRegistryUrlState(res.url);
       setEditingUrl(false);
-      const next = await window.opencodex.mcp.fetchRegistry();
+      const next = await bridge.mcp.fetchRegistry();
       setRegistry(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -86,10 +93,12 @@ export function McpMarketplacePanel(): JSX.Element {
   }, [presets, registry, state]);
 
   const onInstall = useCallback(async (card: MarketplaceCard) => {
+    const bridge = getBridge();
+    if (!bridge) return;
     setBusyId(card.id);
     setError(null);
     try {
-      await window.opencodex.mcp.add({ ...card.template, enabled: true });
+      await bridge.mcp.add({ ...card.template, enabled: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

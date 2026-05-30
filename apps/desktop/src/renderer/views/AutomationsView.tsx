@@ -111,9 +111,11 @@ export function AutomationsView(): JSX.Element {
   useEffect(() => {
     const skillId = searchParams.get('prefillSkill');
     if (!skillId || editing !== null) return;
+    let cancelled = false;
     void (async () => {
       try {
         const res = await window.opencodex.skills.list();
+        if (cancelled) return;
         const skill: Skill | undefined = res.skills.find((s) => s.id === skillId);
         if (!skill) return;
         setPrefill({
@@ -132,6 +134,9 @@ export function AutomationsView(): JSX.Element {
         // ignore
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [searchParams, setSearchParams, editing]);
 
   const toggleEnabled = useCallback(async (task: ScheduledTask) => {

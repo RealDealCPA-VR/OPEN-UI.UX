@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AgentRun } from '../../shared/agent-runs';
+import { getBridge } from '../bridge';
 import {
   currentToolName,
   formatDurationMs,
@@ -22,10 +23,16 @@ export function JobsPane({ initialRuns }: JobsPaneProps = {}): JSX.Element {
 
   useEffect(() => {
     if (initialRuns !== undefined) return;
+    const bridge = getBridge();
+    if (!bridge) {
+      setLoadError('Preload bridge unavailable.');
+      setRuns([]);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
-        const list = await window.opencodex.agent.listRuns();
+        const list = await bridge.agent.listRuns();
         if (!cancelled) setRuns(list);
       } catch (err) {
         if (!cancelled) {
@@ -34,7 +41,7 @@ export function JobsPane({ initialRuns }: JobsPaneProps = {}): JSX.Element {
         }
       }
     })();
-    const off = window.opencodex.agent.onRunsChanged((payload) => {
+    const off = bridge.agent.onRunsChanged((payload) => {
       setRuns(payload.runs);
     });
     return () => {
@@ -58,7 +65,9 @@ export function JobsPane({ initialRuns }: JobsPaneProps = {}): JSX.Element {
       return next;
     });
     try {
-      const res = await window.opencodex.agent.abortRun(runId);
+      const bridge = getBridge();
+      if (!bridge) throw new Error('Preload bridge unavailable.');
+      const res = await bridge.agent.abortRun(runId);
       if (!res.ok) {
         setAbortError((m) => ({ ...m, [runId]: res.error ?? 'cancel failed' }));
       }

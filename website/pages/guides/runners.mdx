@@ -48,7 +48,7 @@ Pick `internal` when you want:
 |---|---|---|---|
 | Claude Code | `@opencodex/runner-claude-code` | `claude` | yes |
 | OpenCode | `@opencodex/runner-opencode` | `opencode` | yes |
-| Aider | `@opencodex/runner-aider` | `aider` | no (spinner only) |
+| Aider | `@opencodex/runner-aider` | `aider` | yes (line-by-line) |
 
 Each adapter is a thin wrapper that spawns the CLI as a child process,
 parses its stdout, and yields normalized `ChatEvent`s. None of them ship a

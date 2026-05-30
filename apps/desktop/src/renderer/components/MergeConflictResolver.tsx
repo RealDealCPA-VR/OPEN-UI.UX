@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { MergeConflictHunk } from '../../shared/git-workflow';
+import { getBridge } from '../bridge';
 
 interface MergeConflictResolverProps {
   repoRoot: string;
@@ -18,8 +19,14 @@ export function MergeConflictResolver({
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    const bridge = getBridge();
+    if (!bridge) {
+      setError('Preload bridge unavailable.');
+      setLoading(false);
+      return;
+    }
     try {
-      const res = await window.opencodex.git.listConflicts({ repoRoot });
+      const res = await bridge.git.listConflicts({ repoRoot });
       setHunks(res.hunks);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -41,7 +48,9 @@ export function MergeConflictResolver({
     setBusyIndex(hunk.index);
     setError(null);
     try {
-      const res = await window.opencodex.git.resolveConflict({
+      const bridge = getBridge();
+      if (!bridge) throw new Error('Preload bridge unavailable.');
+      const res = await bridge.git.resolveConflict({
         repoRoot,
         filePath: hunk.filePath,
         hunkIndex: 0,

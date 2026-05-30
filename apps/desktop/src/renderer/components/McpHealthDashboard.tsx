@@ -1,26 +1,29 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { McpHealthStats } from '../../shared/mcp-registry';
+import { getBridge } from '../bridge';
 
 export function McpHealthDashboard(): JSX.Element {
   const [stats, setStats] = useState<McpHealthStats[] | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const res = await window.opencodex.mcp.getHealthStats();
+    const bridge = getBridge();
+    if (!bridge) return;
+    const res = await bridge.mcp.getHealthStats();
     setStats(res.stats);
   }, []);
 
   useEffect(() => {
+    const bridge = getBridge();
+    if (!bridge) return;
     queueMicrotask(() => {
       void refresh();
     });
-    const off = window.opencodex.mcp.onChanged(() => {
+    const off = bridge.mcp.onChanged(() => {
       void refresh();
     });
-    const interval = setInterval(() => void refresh(), 5000);
     return () => {
       off();
-      clearInterval(interval);
     };
   }, [refresh]);
 

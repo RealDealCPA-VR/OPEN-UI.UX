@@ -101,7 +101,10 @@ export function createAiderRunner(host: PluginHost): SubagentRunner {
   return {
     id: 'aider',
     displayName: 'Aider',
-    streaming: false,
+    // Aider runs with --no-stream (no token cursor), but the runner relays
+    // each stdout line as a separate text_delta as it arrives — so the
+    // ChatEvent iterator IS streaming in the contract sense.
+    streaming: true,
 
     async *run(opts: SubagentRunOptions): AsyncIterable<ChatEvent> {
       const cliPath = await resolveCliPath(host);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PendingEditAnnotation } from '../views/codebase-pending-edits-derive';
+import { getBridge } from '../bridge';
 // Note: codebase-pending-edits-derive.ts imports the `EditAnnotation` type from
 // this file. The cycle is type-only on both sides (verbatim type imports), so
 // it is safely erased at runtime.
@@ -59,9 +60,11 @@ export function FileTree({
   const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
+    const bridge = getBridge();
+    if (!bridge) return;
     let cancelled = false;
     (async () => {
-      const result = await window.opencodex.fileTree.list();
+      const result = await bridge.fileTree.list();
       if (cancelled) return;
       setWorkspaceRoot(result.workspaceRoot);
       setRoot({ entries: result.entries, expanded: true, loading: false });
@@ -73,7 +76,9 @@ export function FileTree({
   }, [reloadKey]);
 
   useEffect(() => {
-    return window.opencodex.workspace.onChanged(() => setReloadKey((k) => k + 1));
+    const bridge = getBridge();
+    if (!bridge) return;
+    return bridge.workspace.onChanged(() => setReloadKey((k) => k + 1));
   }, []);
 
   useEffect(() => {
@@ -103,7 +108,9 @@ export function FileTree({
         ...prev,
         [path]: { entries: [], expanded: true, loading: true },
       }));
-      const result = await window.opencodex.fileTree.list(path);
+      const bridge = getBridge();
+      if (!bridge) return;
+      const result = await bridge.fileTree.list(path);
       setChildren((prev) => ({
         ...prev,
         [path]: { entries: result.entries, expanded: true, loading: false },

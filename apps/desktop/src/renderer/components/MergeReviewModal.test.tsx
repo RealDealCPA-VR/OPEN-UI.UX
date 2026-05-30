@@ -166,7 +166,8 @@ describe('MergeReviewModal', () => {
       'src/a.ts',
     );
 
-    fireEvent.keyDown(document, { key: 'J', shiftKey: true });
+    const dialog = screen.getByRole('dialog');
+    fireEvent.keyDown(dialog, { key: 'J', shiftKey: true });
 
     await waitFor(() =>
       expect(screen.getByTestId('mocked-monaco-diff-viewer').getAttribute('data-file')).toBe(

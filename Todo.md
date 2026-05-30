@@ -1158,276 +1158,276 @@ Highest leverage in the audit. Three root causes drive ~180 of 192 test failures
 
 ### 15.3 — Electron security boundary
 
-- [ ] **Install a Content-Security-Policy on the renderer session** — currently none. Combined with the missing handlers below, any in-renderer XSS gets full access to a very large `window.opencodex` bridge surface including `agent:spawn-from-ui`, `runner:install`, `plugins:install-from-path`, `skills:import-from-url`, `mcp:run-tool`.
-- [ ] **Register `app.on('web-contents-created', ...)` handlers**: `will-navigate` (block off-origin), `setWindowOpenHandler` (return `{ action: 'deny' }` and route through `shell.openExternal`), `setPermissionRequestHandler` and `setPermissionCheckHandler` on `session.defaultSession`. None are currently set.
-- [ ] **Validate `opencodex://` deep-link URLs before forwarding to renderer** — current handler does plain `webContents.send` with the raw URL.
-- [ ] **`registerInvoke` should check `event.senderFrame` / `event.sender`** — sub-frames can currently call privileged IPC.
-- [ ] **Wire `apps/desktop/src/main/security/network-policy.ts` into `session.webRequest`** — the kernel + Zod schemas + tests are good, but enforcement is opt-in by every outbound caller via `assertOutboundAllowed`. Install an `onBeforeRequest` filter so it's enforced uniformly.
-- [ ] **Network-policy footgun**: empty allowlist silently means "allow all". Document this on the type and add a config-time warning.
-- [ ] **Fail-closed on corrupted privacy-policy store** — currently silently drops to permissive defaults.
-- [ ] **Add `isDestroyed()` guard to `emit()`** — `broadcast()` has it, `emit()` doesn't (window-close race).
-- [ ] **Recognise IPv4-mapped IPv6 loopback** in the network-policy host check (currently misses `::ffff:127.0.0.1`).
+- [x] **Install a Content-Security-Policy on the renderer session** — currently none. Combined with the missing handlers below, any in-renderer XSS gets full access to a very large `window.opencodex` bridge surface including `agent:spawn-from-ui`, `runner:install`, `plugins:install-from-path`, `skills:import-from-url`, `mcp:run-tool`.
+- [x] **Register `app.on('web-contents-created', ...)` handlers**: `will-navigate` (block off-origin), `setWindowOpenHandler` (return `{ action: 'deny' }` and route through `shell.openExternal`), `setPermissionRequestHandler` and `setPermissionCheckHandler` on `session.defaultSession`. None are currently set.
+- [x] **Validate `opencodex://` deep-link URLs before forwarding to renderer** — current handler does plain `webContents.send` with the raw URL.
+- [x] **`registerInvoke` should check `event.senderFrame` / `event.sender`** — sub-frames can currently call privileged IPC.
+- [x] **Wire `apps/desktop/src/main/security/network-policy.ts` into `session.webRequest`** — the kernel + Zod schemas + tests are good, but enforcement is opt-in by every outbound caller via `assertOutboundAllowed`. Install an `onBeforeRequest` filter so it's enforced uniformly.
+- [x] **Network-policy footgun**: empty allowlist silently means "allow all". Document this on the type and add a config-time warning.
+- [x] **Fail-closed on corrupted privacy-policy store** — currently silently drops to permissive defaults.
+- [x] **Add `isDestroyed()` guard to `emit()`** — `broadcast()` has it, `emit()` doesn't (window-close race).
+- [x] **Recognise IPv4-mapped IPv6 loopback** in the network-policy host check (currently misses `::ffff:127.0.0.1`).
 
 ### 15.4 — MCP protocol robustness (`packages/mcp-client`)
 
-- [ ] **Drain child stderr in `StdioTransport`** (`packages/mcp-client/src/stdio-transport.ts:18-42`) — `spawn` is called with `['pipe','pipe','pipe']` but only stdout has a data listener. ~64 KB of stderr (init banners, warnings) fills the pipe and the child blocks on `write(2)`, every request then times out silently. On `stop()`, capture the buffered stderr in the diagnostic.
-- [ ] **Scrub the env handed to MCP servers** — same `StdioTransport` currently passes full `process.env`, including every LLM API key in the parent shell. Pass only the keys declared by the server config.
-- [ ] **Add a host allowlist to HTTP/SSE transports** — currently a poisoned `mcp_servers.json` can fetch any URL including `127.0.0.1:<other-port>` or cloud metadata IPs (`169.254.169.254`). Allowlist + reject `0.0.0.0`/link-local/metadata.
-- [ ] **Route server-initiated JSON-RPC requests** (`sampling`, `elicit`) — client currently can't dispatch them, so server hangs and the operator sees a silent freeze.
-- [ ] **Send `notifications/cancelled` on request timeout** — currently the client gives up locally but the server keeps running the work.
-- [ ] **Open the long-lived GET SSE channel in `HttpTransport`** — currently absent, so `listChanged` notifications are dead.
-- [ ] **Protocol-version negotiation** on connect.
-- [ ] **JSON-RPC message discriminator** — a message with both `result` and `method` currently passes both `isRequest` and `isResponse`. Tighten.
-- [ ] **Multi-listener `onClose` and `onNotification`** — currently single-listener.
+- [x] **Drain child stderr in `StdioTransport`** (`packages/mcp-client/src/stdio-transport.ts:18-42`) — `spawn` is called with `['pipe','pipe','pipe']` but only stdout has a data listener. ~64 KB of stderr (init banners, warnings) fills the pipe and the child blocks on `write(2)`, every request then times out silently. On `stop()`, capture the buffered stderr in the diagnostic.
+- [x] **Scrub the env handed to MCP servers** — same `StdioTransport` currently passes full `process.env`, including every LLM API key in the parent shell. Pass only the keys declared by the server config.
+- [x] **Add a host allowlist to HTTP/SSE transports** — currently a poisoned `mcp_servers.json` can fetch any URL including `127.0.0.1:<other-port>` or cloud metadata IPs (`169.254.169.254`). Allowlist + reject `0.0.0.0`/link-local/metadata.
+- [x] **Route server-initiated JSON-RPC requests** (`sampling`, `elicit`) — client currently can't dispatch them, so server hangs and the operator sees a silent freeze.
+- [x] **Send `notifications/cancelled` on request timeout** — currently the client gives up locally but the server keeps running the work.
+- [x] **Open the long-lived GET SSE channel in `HttpTransport`** — currently absent, so `listChanged` notifications are dead.
+- [x] **Protocol-version negotiation** on connect.
+- [x] **JSON-RPC message discriminator** — a message with both `result` and `method` currently passes both `isRequest` and `isResponse`. Tighten.
+- [x] **Multi-listener `onClose` and `onNotification`** — currently single-listener.
 
 ### 15.5 — Core provider abstraction (`packages/core`)
 
-- [ ] **Replace hand-rolled `zodToJSONSchema`** (`packages/core/src/json-schema.ts:26-64`) with the `zod-to-json-schema` npm package — current converter throws `UnsupportedZodTypeError` for `ZodLiteral`, `ZodUnion`, `ZodDiscriminatedUnion`, `ZodEffects` (any `.refine()`/`.transform()`), `ZodAny`, `ZodUnknown`, `ZodTuple`, `ZodLazy`, `ZodPipeline`, `ZodIntersection`, `ZodBranded`. Any plugin-SDK tool using `.refine()` or unions throws at registration. Configure with `{ target: 'jsonSchema7', $refStrategy: 'none' }`.
-- [ ] **Add `toolChoice` and `responseFormat` to `ChatRequest`** (`packages/core/src/provider.ts:7-16`) — currently providers have to drop or hack these. Mapping (per audit): Anthropic → `tool_choice`; OpenAI → `tool_choice` + `response_format`; Google → `toolConfig.functionCallingConfig` + `generationConfig.responseMimeType/responseSchema`; OpenAI-compatible passthroughs (xAI/Mistral/OpenRouter); Ollama maps json_object → `format: 'json'`. Do **not** add a parallel `system?` field — system prompts already flow through `Message[]` with `role: 'system'` and Anthropic/Google providers already extract them.
-- [ ] **Add `reasoning?: boolean | { effort?: 'low'|'medium'|'high'; maxTokens?: number }` to `ChatRequest`** and drop the `req as unknown as { reasoning?, hasReasoning? }` cast in `routing-provider.ts:167-173`. Update `routing-provider.test.ts:108-110` to set `reasoning: true` directly.
-- [ ] **Add `reasoning?: boolean` to `ModelCapabilities`** (`packages/core/src/capabilities.ts:9-21`) and have routing verify the resolved model declares it before dispatch. While there, fix the systemic asymmetry: routing also doesn't gate `tool_call → toolUse` or `embedding → embeddings`. Add a `gateResolved` helper that fails over via `rule.fallback → defaultRef` when the resolved model lacks the required capability, and surface a `degradedReason?: 'capability_mismatch'` in `RoutingDecision`. Add a config-time validator that warns at policy-load when a rule's target model lacks the required capability.
-- [ ] **Extend `stopReasonSchema`** (`packages/core/src/events.ts:30-48`) with `'cancelled'` and `'content_filter'`; **add `code` field to `errorEventSchema`** (`'rate_limit' | 'auth' | 'context_length' | 'invalid_request' | 'network' | 'server' | 'timeout' | 'content_filter' | 'cancelled' | 'unknown'`). Centralize provider → code mapping in a `mapHttpStatusToErrorCode(status, providerErrorType?)` helper so the duplicated `status >= 500 || status === 429` logic across 7 providers becomes one call.
-- [ ] **Fix `collectSubagentResult` reducer** (`packages/core/src/runner.ts`):
-  - [ ] Don't mislabel cancellation as `'budget_exceeded'` (line 160-162). Emit `'cancelled'` (new stopReason) when signal aborts; populate `error` with `signal.reason` for observability; don't clobber an existing `'error'` stopReason.
-  - [ ] Make `'error'` terminal-sticky — `'done'` after `'error'` currently downgrades to `'end_turn'` (lines 141-154). Wrap the `'done'` body in `if (error === undefined && stopReason !== 'error') { ... }`.
-  - [ ] Wrap the `for await` (line 97) in try/catch — currently iterator throws escape as a raw rejection, losing partial `text`/`toolEvents` and never reaching `stopReason: 'runner_error'` (a dead enum value otherwise). Set `stopReason = 'runner_error'`, capture `error = String(cause)`, fall through to the existing return so accumulators are preserved; flush still-pending tool_calls into `toolEvents` with `isError: true`.
-  - [ ] Don't push orphan `tool_result` events with `name: ''` (lines 126-134) — either drop and log, or push with a visible sentinel like `<orphan:${evt.id}>` and `isError: true`. Add a test in `internal-runner.test.ts`.
-- [ ] **Document the budget-enforcement contract** on `SubagentRunner.run` JSDoc (`packages/core/src/runner.ts:59-72`): runners are responsible for honoring `opts.budget` and emitting `done` with `stopReason: 'budget_exceeded'`. Optionally provide a `wrapWithBudget(iter, budget, signal)` helper. Update `examples/plugins/runner-stub` to demonstrate a `maxWallTimeMs` check.
-- [ ] **Add `ToolCancelledError`** as a sibling of `ToolNotFoundError`/`ToolInputError` and check `ctx.signal.aborted` before dispatch in `ToolRegistry.execute` (`packages/core/src/tool-registry.ts:45-51`). Add a test asserting a pre-aborted controller never reaches `tool.execute`.
-- [ ] **Add optional `dispose?(): Promise<void>` to `LLMProvider`** (`packages/core/src/provider.ts:29-38`) and call `await prev.dispose?.()` when re-creating a provider. Cheap forward-compat for plugin-contributed providers holding sockets/subprocesses.
+- [x] **Replace hand-rolled `zodToJSONSchema`** (`packages/core/src/json-schema.ts:26-64`) with the `zod-to-json-schema` npm package — current converter throws `UnsupportedZodTypeError` for `ZodLiteral`, `ZodUnion`, `ZodDiscriminatedUnion`, `ZodEffects` (any `.refine()`/`.transform()`), `ZodAny`, `ZodUnknown`, `ZodTuple`, `ZodLazy`, `ZodPipeline`, `ZodIntersection`, `ZodBranded`. Any plugin-SDK tool using `.refine()` or unions throws at registration. Configure with `{ target: 'jsonSchema7', $refStrategy: 'none' }`.
+- [x] **Add `toolChoice` and `responseFormat` to `ChatRequest`** (`packages/core/src/provider.ts:7-16`) — currently providers have to drop or hack these. Mapping (per audit): Anthropic → `tool_choice`; OpenAI → `tool_choice` + `response_format`; Google → `toolConfig.functionCallingConfig` + `generationConfig.responseMimeType/responseSchema`; OpenAI-compatible passthroughs (xAI/Mistral/OpenRouter); Ollama maps json_object → `format: 'json'`. Do **not** add a parallel `system?` field — system prompts already flow through `Message[]` with `role: 'system'` and Anthropic/Google providers already extract them.
+- [x] **Add `reasoning?: boolean | { effort?: 'low'|'medium'|'high'; maxTokens?: number }` to `ChatRequest`** and drop the `req as unknown as { reasoning?, hasReasoning? }` cast in `routing-provider.ts:167-173`. Update `routing-provider.test.ts:108-110` to set `reasoning: true` directly.
+- [x] **Add `reasoning?: boolean` to `ModelCapabilities`** (`packages/core/src/capabilities.ts:9-21`) and have routing verify the resolved model declares it before dispatch. While there, fix the systemic asymmetry: routing also doesn't gate `tool_call → toolUse` or `embedding → embeddings`. Add a `gateResolved` helper that fails over via `rule.fallback → defaultRef` when the resolved model lacks the required capability, and surface a `degradedReason?: 'capability_mismatch'` in `RoutingDecision`. Add a config-time validator that warns at policy-load when a rule's target model lacks the required capability.
+- [x] **Extend `stopReasonSchema`** (`packages/core/src/events.ts:30-48`) with `'cancelled'` and `'content_filter'`; **add `code` field to `errorEventSchema`** (`'rate_limit' | 'auth' | 'context_length' | 'invalid_request' | 'network' | 'server' | 'timeout' | 'content_filter' | 'cancelled' | 'unknown'`). Centralize provider → code mapping in a `mapHttpStatusToErrorCode(status, providerErrorType?)` helper so the duplicated `status >= 500 || status === 429` logic across 7 providers becomes one call.
+- [x] **Fix `collectSubagentResult` reducer** (`packages/core/src/runner.ts`):
+  - [x] Don't mislabel cancellation as `'budget_exceeded'` (line 160-162). Emit `'cancelled'` (new stopReason) when signal aborts; populate `error` with `signal.reason` for observability; don't clobber an existing `'error'` stopReason.
+  - [x] Make `'error'` terminal-sticky — `'done'` after `'error'` currently downgrades to `'end_turn'` (lines 141-154). Wrap the `'done'` body in `if (error === undefined && stopReason !== 'error') { ... }`.
+  - [x] Wrap the `for await` (line 97) in try/catch — currently iterator throws escape as a raw rejection, losing partial `text`/`toolEvents` and never reaching `stopReason: 'runner_error'` (a dead enum value otherwise). Set `stopReason = 'runner_error'`, capture `error = String(cause)`, fall through to the existing return so accumulators are preserved; flush still-pending tool_calls into `toolEvents` with `isError: true`.
+  - [x] Don't push orphan `tool_result` events with `name: ''` (lines 126-134) — either drop and log, or push with a visible sentinel like `<orphan:${evt.id}>` and `isError: true`. Add a test in `internal-runner.test.ts`.
+- [x] **Document the budget-enforcement contract** on `SubagentRunner.run` JSDoc (`packages/core/src/runner.ts:59-72`): runners are responsible for honoring `opts.budget` and emitting `done` with `stopReason: 'budget_exceeded'`. Optionally provide a `wrapWithBudget(iter, budget, signal)` helper. Update `examples/plugins/runner-stub` to demonstrate a `maxWallTimeMs` check.
+- [x] **Add `ToolCancelledError`** as a sibling of `ToolNotFoundError`/`ToolInputError` and check `ctx.signal.aborted` before dispatch in `ToolRegistry.execute` (`packages/core/src/tool-registry.ts:45-51`). Add a test asserting a pre-aborted controller never reaches `tool.execute`.
+- [x] **Add optional `dispose?(): Promise<void>` to `LLMProvider`** (`packages/core/src/provider.ts:29-38`) and call `await prev.dispose?.()` when re-creating a provider. Cheap forward-compat for plugin-contributed providers holding sockets/subprocesses.
 - [ ] **Add a `assertProviderHonorsAbort(provider)` test helper** and wire it into every `packages/provider-*/src/*.test.ts` + the plugin-sdk README.
 
 ### 15.6 — Provider implementation bugs (every `packages/provider-*`)
 
-- [ ] **SSE final-event loss** — every SSE reader drops the trailing event if the stream ends without `\n\n`. Flush on stream end.
-- [ ] **Don't leak the HTTP connection on early break** — readers don't call `reader.cancel()` when consumer breaks out of the for-await.
-- [ ] **OpenAI Responses API drops `tool`-role messages with string content** silently. Coerce to a structured `tool_result` block instead.
-- [ ] **OpenAI tool-call deltas require `index`** — many OpenAI-compatible servers omit it; OpenRouter and xAI inherit the bug. Fall back to keying by `id` when `index` is absent.
-- [ ] **OpenRouter `capabilities()` returns undefined** for any model not in the static list, even after `listModels()` just returned it live. Merge live results into the capability cache.
-- [ ] **Google maps SAFETY/RECITATION/BLOCKLIST/PROHIBITED_CONTENT finishReasons to `stop_sequence`** — policy blocks become silent empty turns. Map to `error` with `code: 'content_filter'`.
-- [ ] **Google `parseToolArgs` wraps non-JSON string args in `{ value: <raw> }`** — mutates tool input shape. Either reject or pass through with an explicit `_raw` marker.
-- [ ] **Google `wrapToolOutput` loses `isError` for object outputs**. Preserve the flag.
-- [ ] **Populate `costUsd` in every provider** — pricing is available, no provider currently computes cost, which makes the desktop budget manager's `accrue` no-op for token-only events.
-- [ ] **Mistral schema discards `cached_tokens`**.
-- [ ] **Mistral emits one usage event per chunk** when server includes usage mid-stream — coalesce.
-- [ ] **No provider implements retry/backoff** despite emitting `retryable: true`. Add `Retry-After` parsing + exponential backoff helper in core.
-- [ ] **Error messages include raw response bodies untruncated** — risk of secret echo through proxies. Cap to 4 KB and strip `Authorization`-shaped patterns.
-- [ ] **No API-key format validation** — accepts empty/whitespace keys, fails late.
-- [ ] **Replace hardcoded `KNOWN` model arrays with live `/v1/models` fetches**, cached with TTL. (OpenRouter already does live fetch; bring the others to parity.)
-- [ ] **Voyage `chat()` is an async generator that throws** — embeddings-only provider. Move `chat` off the contract or document the throw.
-- [ ] **Ollama synthesizes `tool_call` ids from a per-stream counter** — collides across turns when the conversation continues. Use a UUID or content hash.
-- [ ] **Per-provider JSON-Schema dialect quirks not normalized** — Google in particular rejects many real tool schemas. Add a small normalizer per provider.
-- [ ] **`JSON.stringify(output ?? '')` across all providers converts `null` outputs into `'""'`** — explicit-null tool result becomes empty string. Distinguish.
+- [x] **SSE final-event loss** — every SSE reader drops the trailing event if the stream ends without `\n\n`. Flush on stream end.
+- [x] **Don't leak the HTTP connection on early break** — readers don't call `reader.cancel()` when consumer breaks out of the for-await.
+- [x] **OpenAI Responses API drops `tool`-role messages with string content** silently. Coerce to a structured `tool_result` block instead.
+- [x] **OpenAI tool-call deltas require `index`** — many OpenAI-compatible servers omit it; OpenRouter and xAI inherit the bug. Fall back to keying by `id` when `index` is absent.
+- [x] **OpenRouter `capabilities()` returns undefined** for any model not in the static list, even after `listModels()` just returned it live. Merge live results into the capability cache.
+- [x] **Google maps SAFETY/RECITATION/BLOCKLIST/PROHIBITED_CONTENT finishReasons to `stop_sequence`** — policy blocks become silent empty turns. Map to `error` with `code: 'content_filter'`.
+- [x] **Google `parseToolArgs` wraps non-JSON string args in `{ value: <raw> }`** — mutates tool input shape. Either reject or pass through with an explicit `_raw` marker.
+- [x] **Google `wrapToolOutput` loses `isError` for object outputs**. Preserve the flag.
+- [x] **Populate `costUsd` in every provider** — pricing is available, no provider currently computes cost, which makes the desktop budget manager's `accrue` no-op for token-only events.
+- [x] **Mistral schema discards `cached_tokens`**.
+- [x] **Mistral emits one usage event per chunk** when server includes usage mid-stream — coalesce.
+- [x] **No provider implements retry/backoff** despite emitting `retryable: true`. Add `Retry-After` parsing + exponential backoff helper in core.
+- [x] **Error messages include raw response bodies untruncated** — risk of secret echo through proxies. Cap to 4 KB and strip `Authorization`-shaped patterns.
+- [x] **No API-key format validation** — accepts empty/whitespace keys, fails late.
+- [x] **Replace hardcoded `KNOWN` model arrays with live `/v1/models` fetches**, cached with TTL. (OpenRouter already does live fetch; bring the others to parity.)
+- [x] **Voyage `chat()` is an async generator that throws** — embeddings-only provider. Move `chat` off the contract or document the throw.
+- [x] **Ollama synthesizes `tool_call` ids from a per-stream counter** — collides across turns when the conversation continues. Use a UUID or content hash.
+- [x] **Per-provider JSON-Schema dialect quirks not normalized** — Google in particular rejects many real tool schemas. Add a small normalizer per provider.
+- [x] **`JSON.stringify(output ?? '')` across all providers converts `null` outputs into `'""'`** — explicit-null tool result becomes empty string. Distinguish.
 
 ### 15.7 — Runner adapters (`packages/runner-{aider,claude-code,opencode}`)
 
-- [ ] **Aider auto-commits to the user's repo** — runs with `--yes` and no `--no-auto-commits`, bypassing the OpenCodex approval system (explicitly forbidden by CLAUDE.md). Add `--no-auto-commits` + a config switch.
-- [ ] **opencode runner uses non-existent CLI flags** (`--headless`, `--message`) — likely never worked. Audit against the real opencode CLI and fix or remove.
-- [ ] **`spawn` on Windows without `shell:true`** breaks `.cmd`/`.ps1` shims that pip/npm/scoop install. Detect platform and shell-spawn the wrapper.
-- [ ] **`scrubEnv` strips every `*_API_KEY` + `XDG_CONFIG_HOME`** then sets `stdio: 'ignore'` — the spawned CLI can't authenticate and hangs at the auth prompt. The probe reports "timeout — set path in Settings", misdiagnosing auth as install. Pass through the user-configured keys; close stdin instead of ignoring it.
-- [ ] **Windows fallback path list is a stub** (`C:\Program Files\<name>\<name>.exe`) — doesn't match real install locations (`%LOCALAPPDATA%`, scoop shims, npm-global, pipx). Expand.
-- [ ] **No runner honors `budget.maxWallTimeMs`** despite the field being on the contract.
-- [ ] **treeKill is fire-and-forget with an unref'd SIGKILL timer** — orphan risk on Electron shutdown. Await the SIGTERM then escalate.
-- [ ] **Abort doesn't wake the run loop** — consumer can wedge until the next yield.
-- [ ] **Stream-level errors (EPIPE) are unhandled** — `child.on('error')` only catches spawn errors. Add `child.stdout.on('error', ...)` and the same for `stderr`/`stdin`.
-- [ ] **`detached:true` on POSIX with no `setsid`/`unref` and no parent-crash handling** — orphans children on Electron crash.
-- [ ] **No ANSI stripping on stdio** — aider's TTY-style output leaks raw escape sequences into chat. Strip via `strip-ansi` or equivalent.
-- [ ] **No buffer-length cap on `LineBuffer`/`NdjsonBuffer`** — OOM risk on a runaway runner.
-- [ ] **Aider drops empty lines despite `LineBuffer` preserving them** — visible gap in transcripts.
-- [ ] **Aider `--yes` is deprecated; missing `--no-pretty --no-stream`** so output stalls in non-TTY.
-- [ ] **`fallbackTextDelta` in opencode runner mis-attributes non-JSON stderr lines as model text** — drop or tag explicitly.
-- [ ] **`stdin: 'ignore'` blocks rate-limit retry-y/n prompts and auth prompts** in all three runners. Close stdin properly instead.
-- [ ] **`InstallCheck` interface is duplicated in each runner package** — extract `SubagentRunnerInstallCheck` reference from `packages/core` and import.
+- [x] **Aider auto-commits to the user's repo** — runs with `--yes` and no `--no-auto-commits`, bypassing the OpenCodex approval system (explicitly forbidden by CLAUDE.md). Add `--no-auto-commits` + a config switch.
+- [x] **opencode runner uses non-existent CLI flags** (`--headless`, `--message`) — likely never worked. Audit against the real opencode CLI and fix or remove.
+- [x] **`spawn` on Windows without `shell:true`** breaks `.cmd`/`.ps1` shims that pip/npm/scoop install. Detect platform and shell-spawn the wrapper.
+- [x] **`scrubEnv` strips every `*_API_KEY` + `XDG_CONFIG_HOME`** then sets `stdio: 'ignore'` — the spawned CLI can't authenticate and hangs at the auth prompt. The probe reports "timeout — set path in Settings", misdiagnosing auth as install. Pass through the user-configured keys; close stdin instead of ignoring it.
+- [x] **Windows fallback path list is a stub** (`C:\Program Files\<name>\<name>.exe`) — doesn't match real install locations (`%LOCALAPPDATA%`, scoop shims, npm-global, pipx). Expand.
+- [x] **No runner honors `budget.maxWallTimeMs`** despite the field being on the contract.
+- [x] **treeKill is fire-and-forget with an unref'd SIGKILL timer** — orphan risk on Electron shutdown. Await the SIGTERM then escalate.
+- [x] **Abort doesn't wake the run loop** — consumer can wedge until the next yield.
+- [x] **Stream-level errors (EPIPE) are unhandled** — `child.on('error')` only catches spawn errors. Add `child.stdout.on('error', ...)` and the same for `stderr`/`stdin`.
+- [x] **`detached:true` on POSIX with no `setsid`/`unref` and no parent-crash handling** — orphans children on Electron crash.
+- [x] **No ANSI stripping on stdio** — aider's TTY-style output leaks raw escape sequences into chat. Strip via `strip-ansi` or equivalent.
+- [x] **No buffer-length cap on `LineBuffer`/`NdjsonBuffer`** — OOM risk on a runaway runner.
+- [x] **Aider drops empty lines despite `LineBuffer` preserving them** — visible gap in transcripts.
+- [x] **Aider `--yes` is deprecated; missing `--no-pretty --no-stream`** so output stalls in non-TTY.
+- [x] **`fallbackTextDelta` in opencode runner mis-attributes non-JSON stderr lines as model text** — drop or tag explicitly.
+- [x] **`stdin: 'ignore'` blocks rate-limit retry-y/n prompts and auth prompts** in all three runners. Close stdin properly instead.
+- [x] **`InstallCheck` interface is duplicated in each runner package** — extract `SubagentRunnerInstallCheck` reference from `packages/core` and import.
 
 ### 15.8 — Telemetry & crash-reporting (`packages/telemetry`, `packages/crash-reporting`)
 
-- [ ] **Crash-reporting opt-out is a no-op at runtime** — flipping `enabled → false` in settings doesn't tear Sentry down until next launch. Add a `Sentry.close()` path.
-- [ ] **`scrubEvent` misses every Sentry surface that carries PII** — it walks `event.user` / `request.url` / `extra` but skips `event.exception` (stack frames + `frame.vars`), `breadcrumbs`, `contexts`, `tags`, `request.data/headers`, `message`. Walk all of them and apply the same scrub.
-- [ ] **Initialize Sentry with `integrations: []`** (or an explicit minimal list) — default integrations include `OnUncaughtException`, `Console`, `Breadcrumbs`, `ElectronMinidump`, `Net`; Net captures every LLM provider URL (with any bearer-token query strings), Console captures `logger.info` payloads including `workspaceRoot`/conversationId/model IDs.
-- [ ] **`anonymizeId` is a 32-bit non-cryptographic hash** — trivially reversible against the small space of provider/model strings. Switch to HMAC-SHA-256 with a per-install random salt stored in keychain.
-- [ ] **Telemetry queue is unbounded** — events accumulate forever if `posthog-node` import fails or is slow. Cap at N events with drop-oldest.
-- [ ] **`load()` is retried indefinitely after permanent failure** — `resolved` stays null and `loading` clears to null on rejection, causing a thundering retry on every `track()` call. Cache the failure for a TTL.
-- [ ] **All `track()` events land on hard-coded `distinctId: 'anonymous'`** — `identify()` traits land under whatever id the caller chose, events under the shared anonymous, so events from different installs co-mingle. Either pass `distinctId` through `track()` or set it on `identify()`.
-- [ ] **Exported zod schemas are never used to parse the runtime config inside the package** — callers can pass arbitrary garbage. Parse on construction.
-- [ ] **Add sampling/rate-limit/maxBreadcrumbs** — currently 100% capture once enabled. Defaults: `tracesSampleRate: 0.1`, `sampleRate: 1.0`, `maxBreadcrumbs: 50`.
-- [ ] **Arbitrary telemetry host with no allowlist** — phones home to wherever the user/plugin sets, including the user's local machine. Allowlist `posthog.com` and the user's self-hosted host explicitly.
-- [ ] **Asymmetric first-time enable**: crash manager (`apps/desktop/src/main/crash/manager.ts:66`) installs live on first enable but a first disable doesn't tear down. Symmetric.
-- [ ] **`process.env.POSTHOG_API_KEY` / `SENTRY_DSN` are silently picked up at startup** — could be injected. Require explicit settings opt-in.
+- [x] **Crash-reporting opt-out is a no-op at runtime** — flipping `enabled → false` in settings doesn't tear Sentry down until next launch. Add a `Sentry.close()` path.
+- [x] **`scrubEvent` misses every Sentry surface that carries PII** — it walks `event.user` / `request.url` / `extra` but skips `event.exception` (stack frames + `frame.vars`), `breadcrumbs`, `contexts`, `tags`, `request.data/headers`, `message`. Walk all of them and apply the same scrub.
+- [x] **Initialize Sentry with `integrations: []`** (or an explicit minimal list) — default integrations include `OnUncaughtException`, `Console`, `Breadcrumbs`, `ElectronMinidump`, `Net`; Net captures every LLM provider URL (with any bearer-token query strings), Console captures `logger.info` payloads including `workspaceRoot`/conversationId/model IDs.
+- [x] **`anonymizeId` is a 32-bit non-cryptographic hash** — trivially reversible against the small space of provider/model strings. Switch to HMAC-SHA-256 with a per-install random salt stored in keychain.
+- [x] **Telemetry queue is unbounded** — events accumulate forever if `posthog-node` import fails or is slow. Cap at N events with drop-oldest.
+- [x] **`load()` is retried indefinitely after permanent failure** — `resolved` stays null and `loading` clears to null on rejection, causing a thundering retry on every `track()` call. Cache the failure for a TTL.
+- [x] **All `track()` events land on hard-coded `distinctId: 'anonymous'`** — `identify()` traits land under whatever id the caller chose, events under the shared anonymous, so events from different installs co-mingle. Either pass `distinctId` through `track()` or set it on `identify()`.
+- [x] **Exported zod schemas are never used to parse the runtime config inside the package** — callers can pass arbitrary garbage. Parse on construction.
+- [x] **Add sampling/rate-limit/maxBreadcrumbs** — currently 100% capture once enabled. Defaults: `tracesSampleRate: 0.1`, `sampleRate: 1.0`, `maxBreadcrumbs: 50`.
+- [x] **Arbitrary telemetry host with no allowlist** — phones home to wherever the user/plugin sets, including the user's local machine. Allowlist `posthog.com` and the user's self-hosted host explicitly.
+- [x] **Asymmetric first-time enable**: crash manager (`apps/desktop/src/main/crash/manager.ts:66`) installs live on first enable but a first disable doesn't tear down. Symmetric.
+- [x] **`process.env.POSTHOG_API_KEY` / `SENTRY_DSN` are silently picked up at startup** — could be injected. Require explicit settings opt-in.
 
 ### 15.9 — Renderer UX & a11y (`apps/desktop/src/renderer`)
 
-- [ ] **Centralise `window.opencodex` access through one null-checking helper** — 13 components in `components/` A-M and several in N-Z + `views/` dereference the bridge with no guard (`AppShell`, `ApprovalQueue`, `ActiveRunCard`, `AgentRunDrawer`, `AgentSpawnModal`, `AgentTreeView` direct sites, `BudgetSpendIndicator`, `CodebasePreviewPane`, `CodebaseSearchBox`, `CommandPalette`, `DraftPrModal`, `FileTree`, `JobsPane`, `McpHealthDashboard`, `McpMarketplacePanel`, `McpPermissionSurface`, `McpToolRunner`, `MergeConflictResolver`, `MergeReviewModal`, `EmbeddedTerminal` partially). Pattern reference: `AddToMemoryButton`, `AgentResumePrompt`, `AgentTreeView.bridge()`, `MultiWorkspaceSelector`, `FanoutConsentModal` — they already do the right thing.
-- [ ] **`MergeReviewModal` passes `runId` as `conversationId`** to `regenerateHunk` and **`repoRoot='.'`** to `DraftPrModal` and `MergeConflictResolver` — data-loss risk on the wrong repo.
-- [ ] **Add a shared `<Modal>` wrapper with focus trap + Escape + focus-restore** — no modal currently traps focus or restores it on close (AgentSpawnModal, ApprovalQueue tab actions, MergeReviewModal, DraftPrModal, OnboardingWizard).
-- [ ] **Add a top-level React `ErrorBoundary`** around `AppShell` and per-view boundaries — `SettingsView.tsx:43` throws synchronously when `SETTINGS_SECTIONS` is empty; any panel crash currently blanks the whole shell.
-- [ ] **Remove the global `*:focus-visible { outline: none }` in `styles.css`** — strips keyboard focus indicators across the entire app (WCAG 2.4.7). Replace with per-element `:focus-visible` rules that match the design system.
-- [ ] **Fix dark-mode contrast** — `--text-muted` and `--text-faint` fall below AA. Audit + raise.
-- [ ] **Define the missing CSS vars** — `--surface-2`, `--surface-3`, `--text-1`, `--text-2` are referenced but undefined, producing unstyled fallbacks.
-- [ ] **`OnboardingWizard` mounts on the `ollama` step** but `OllamaStep` reads `window.opencodex.ollama.{probe, listInstallableManagers}` synchronously in `useEffect` — root cause of the OnboardingWizard test failure and a real runtime crash if the preload bridge takes a tick to install. Either lazy-load the ollama namespace or guard the call.
+- [x] **Centralise `window.opencodex` access through one null-checking helper** — 13 components in `components/` A-M and several in N-Z + `views/` dereference the bridge with no guard (`AppShell`, `ApprovalQueue`, `ActiveRunCard`, `AgentRunDrawer`, `AgentSpawnModal`, `AgentTreeView` direct sites, `BudgetSpendIndicator`, `CodebasePreviewPane`, `CodebaseSearchBox`, `CommandPalette`, `DraftPrModal`, `FileTree`, `JobsPane`, `McpHealthDashboard`, `McpMarketplacePanel`, `McpPermissionSurface`, `McpToolRunner`, `MergeConflictResolver`, `MergeReviewModal`, `EmbeddedTerminal` partially). Pattern reference: `AddToMemoryButton`, `AgentResumePrompt`, `AgentTreeView.bridge()`, `MultiWorkspaceSelector`, `FanoutConsentModal` — they already do the right thing.
+- [x] **`MergeReviewModal` passes `runId` as `conversationId`** to `regenerateHunk` and **`repoRoot='.'`** to `DraftPrModal` and `MergeConflictResolver` — data-loss risk on the wrong repo.
+- [x] **Add a shared `<Modal>` wrapper with focus trap + Escape + focus-restore** — no modal currently traps focus or restores it on close (AgentSpawnModal, ApprovalQueue tab actions, MergeReviewModal, DraftPrModal, OnboardingWizard).
+- [x] **Add a top-level React `ErrorBoundary`** around `AppShell` and per-view boundaries — `SettingsView.tsx:43` throws synchronously when `SETTINGS_SECTIONS` is empty; any panel crash currently blanks the whole shell.
+- [x] **Remove the global `*:focus-visible { outline: none }` in `styles.css`** — strips keyboard focus indicators across the entire app (WCAG 2.4.7). Replace with per-element `:focus-visible` rules that match the design system.
+- [x] **Fix dark-mode contrast** — `--text-muted` and `--text-faint` fall below AA. Audit + raise.
+- [x] **Define the missing CSS vars** — `--surface-2`, `--surface-3`, `--text-1`, `--text-2` are referenced but undefined, producing unstyled fallbacks.
+- [x] **`OnboardingWizard` mounts on the `ollama` step** but `OllamaStep` reads `window.opencodex.ollama.{probe, listInstallableManagers}` synchronously in `useEffect` — root cause of the OnboardingWizard test failure and a real runtime crash if the preload bridge takes a tick to install. Either lazy-load the ollama namespace or guard the call.
 - [ ] **`PluginSearchPanel` installs registry URLs as if they were filesystem paths** — high-severity security smell even though the comment marks it placeholder. Replace with a real registry fetch (or hide the panel until backed).
-- [ ] **`PluginPanelHost.toFileUrl` does no path-traversal validation**.
-- [ ] **`VoiceInputButton` uses deprecated `ScriptProcessorNode`** and stops recording on `pointerLeave` — replace with `AudioWorkletNode`, end recording on explicit user action.
-- [ ] **`ScheduledTaskEditorModal` does not reset `model` state on provider switch** — stale model lingers.
-- [ ] **`ScheduledTaskRunsDrawer` runs a 1Hz `setInterval` even when idle** — re-renders without need. Pause when no in-flight run.
-- [ ] **`ProviderSwitchButton` outside-click logic breaks if `ModelPicker` portals its dropdown** — use a single click-outside hook that traverses portal trees.
+- [x] **`PluginPanelHost.toFileUrl` does no path-traversal validation**.
+- [x] **`VoiceInputButton` uses deprecated `ScriptProcessorNode`** and stops recording on `pointerLeave` — replace with `AudioWorkletNode`, end recording on explicit user action.
+- [x] **`ScheduledTaskEditorModal` does not reset `model` state on provider switch** — stale model lingers.
+- [x] **`ScheduledTaskRunsDrawer` runs a 1Hz `setInterval` even when idle** — re-renders without need. Pause when no in-flight run.
+- [x] **`ProviderSwitchButton` outside-click logic breaks if `ModelPicker` portals its dropdown** — use a single click-outside hook that traverses portal trees.
 - [ ] **`SettingsRail` installs a window-level Cmd+F hijack** that conflicts with embedded Monaco search.
-- [ ] **`OnboardingBanner` uses `window.location.reload()`** to relaunch the wizard — nukes in-flight chat state. Re-mount the wizard component instead.
-- [ ] **`ReplayConversationModal` / `SuggestionsPane` return-off without typecheck** — risk of `destroy is not a function` on unmount.
-- [ ] **`OllamaStep`'s `useCallback([selectedModelId])` on `runProbe` double-probes** after auto-select.
-- [ ] **`ApprovalQueue`, `MergeReviewModal`, `AgentRunDrawer` install global keydown listeners** (1-6, a/r, j/k) that hijack keystrokes when focus is outside the owning component. Scope to the owning panel.
-- [ ] **`AgentRunDrawer` effect depends on the whole `run` object** — refetches the merge bundle every tick. Depend on `run.id` + a content hash.
-- [ ] **`Markdown` re-parses on every render** — memoize on input string.
-- [ ] **`McpHealthDashboard` runs a 5s poll on top of an `onChanged` subscription** — pick one.
+- [x] **`OnboardingBanner` uses `window.location.reload()`** to relaunch the wizard — nukes in-flight chat state. Re-mount the wizard component instead.
+- [x] **`ReplayConversationModal` / `SuggestionsPane` return-off without typecheck** — risk of `destroy is not a function` on unmount.
+- [x] **`OllamaStep`'s `useCallback([selectedModelId])` on `runProbe` double-probes** after auto-select. _(not a real issue — already correct in main per Lane 3; deps are `[]` with `selectedModelIdRef`)_
+- [x] **`ApprovalQueue`, `MergeReviewModal`, `AgentRunDrawer` install global keydown listeners** (1-6, a/r, j/k) that hijack keystrokes when focus is outside the owning component. Scope to the owning panel.
+- [x] **`AgentRunDrawer` effect depends on the whole `run` object** — refetches the merge bundle every tick. Depend on `run.id` + a content hash.
+- [x] **`Markdown` re-parses on every render** — memoize on input string.
+- [x] **`McpHealthDashboard` runs a 5s poll on top of an `onChanged` subscription** — pick one.
 - [ ] **`FanoutConsentModal` and `AgentTreeView` async/`setInterval` cleanup races** — cancel + clear on unmount.
-- [ ] **AppShell missing a "Skip to main content" landmark and ChatView/SettingsView/ReviewView missing an `<h1>`** — keyboard a11y baseline.
-- [ ] **`AutomationsView` `prefillSkill` effect has an uncancelled race** — guard with a cancellation flag.
-- [ ] **`PrivacyPanel` snapshots `window.opencodex.network` in a stale `useMemo`** — depend on the right keys.
-- [ ] **`UpdatesPanel` re-registers its check-ref on every state flip** — stable ref.
-- [ ] **`ChatView` `setState` during render for `seededInput`** — move to effect or memo.
-- [ ] **`SettingsView` highlight effect leaks its inner `setTimeout`** — clear on unmount.
-- [ ] **`AgentRunRow` nested `<button>` accessibility violation** — flatten.
-- [ ] **`AgentSpawnModal` derived-state-in-render anti-pattern** — compute via `useMemo`.
+- [x] **AppShell missing a "Skip to main content" landmark and ChatView/SettingsView/ReviewView missing an `<h1>`** — keyboard a11y baseline.
+- [x] **`AutomationsView` `prefillSkill` effect has an uncancelled race** — guard with a cancellation flag.
+- [x] **`PrivacyPanel` snapshots `window.opencodex.network` in a stale `useMemo`** — depend on the right keys.
+- [x] **`UpdatesPanel` re-registers its check-ref on every state flip** — stable ref.
+- [x] **`ChatView` `setState` during render for `seededInput`** — move to effect or memo.
+- [x] **`SettingsView` highlight effect leaks its inner `setTimeout`** — clear on unmount.
+- [x] **`AgentRunRow` nested `<button>` accessibility violation** — flatten. _(not a real issue — Review/Resume sit outside the toggle button in `audit-row-body`)_
+- [x] **`AgentSpawnModal` derived-state-in-render anti-pattern** — compute via `useMemo`.
 - [ ] **Index entry is `index.tsx`, not `main.tsx`** — fix any docs/tests that reference the wrong filename.
-- [ ] **`index.html` missing `theme-color` meta and inline theme-attribute bootstrap** — first paint flashes the wrong theme.
-- [ ] **`AppShell` `grid-template-columns` transition triggers full-app reflow** on every sidebar toggle — animate width on the sidebar element instead.
-- [ ] **Body-level `background-attachment: fixed` radial gradients + `backdrop-filter` are perf hotspots** — bench and drop if needed.
-- [ ] **`appendDeltaBlock` allocates O(n) array per streaming text delta** — pool or batch.
-- [ ] **`useTransferConsumer` re-fires handler on every render when caller passes inline handler** — document the memoize requirement or accept a ref.
+- [x] **`index.html` missing `theme-color` meta and inline theme-attribute bootstrap** — first paint flashes the wrong theme.
+- [x] **`AppShell` `grid-template-columns` transition triggers full-app reflow** on every sidebar toggle — animate width on the sidebar element instead.
+- [x] **Body-level `background-attachment: fixed` radial gradients + `backdrop-filter` are perf hotspots** — bench and drop if needed.
+- [x] **`appendDeltaBlock` allocates O(n) array per streaming text delta** — pool or batch.
+- [x] **`useTransferConsumer` re-fires handler on every render when caller passes inline handler** — document the memoize requirement or accept a ref.
 
 ### 15.10 — Codebase / RAG / Git (`apps/desktop/src/main`)
 
-- [ ] **RAG pipeline is unwired** — `MultiWorkspaceIndexer.onBatch` only logs; `@opencodex/rag-chunker` is imported zero times in main; no embedding provider is invoked. Wire end-to-end: chunk → embed → upsert → search. (Top finding for "advertised feature doesn't work".)
-- [ ] **`LanceVectorStore` is a SQLite shim that writes `lance.db`** — masquerades as LanceDB. Either swap to real LanceDB or rename to `SqliteVectorStore` and update docs.
-- [ ] **`searchByVector` is O(N) full-scan** with per-query cosine norm — unusable at monorepo scale. Add an ANN index (HNSW or product quantization).
-- [ ] **Singleton `setWatchedWorkspace` leaks chokidar handles** on rapid workspace switches — properly `await close()` the prior watcher.
-- [ ] **`.gitignore` is read once at start, never refreshed** — runtime edits are ignored until restart. Watch `.gitignore` itself or re-read on every walk.
-- [ ] **Custom glob parser miscompiles character classes** — replace with `picomatch` or `minimatch`.
-- [ ] **Git operations leak full stderr** (including credential-helper URLs) into thrown errors visible to renderer. Scrub.
-- [ ] **`draftPr` ships raw diff to whichever cloud LLM provider is configured** — secrets accidentally in the working tree leak. Redact via secret-scanner.
-- [ ] **`openPrInBrowser` does `host.includes('github')`** — `evilgithubclone.com` passes. Exact-match `host === 'github.com'` or `endsWith('.github.com')`.
-- [ ] **`branchFromConversation` accepts caller-supplied `baseRef` without `--` separator or format validation** — `--orphan` works as a checkout flag. Add `git check-ref-format` validation + explicit `--`.
-- [ ] **No submodule handling anywhere** — worktrees, diffs, commits silently skip submodule content.
-- [ ] **`file-tree` handler claims `hasChildren=true` for every directory regardless of contents** — fix or stat lazily.
-- [ ] **`file-tree` silently caps at 500 entries with no `truncated` flag** — return `{ entries, truncated }`.
-- [ ] **`file-tree` re-reads `.gitignore` synchronously per IPC call** — cache.
-- [ ] **`codebase:read-file` slurps the full file into memory before slicing to a 256 KB preview** — stream and slice.
-- [ ] **`codebase.searchFilenames` walks sequentially with no depth limit** — add limits + use the workspace's `.gitignore`.
+- [x] **RAG pipeline is unwired** — `MultiWorkspaceIndexer.onBatch` only logs; `@opencodex/rag-chunker` is imported zero times in main; no embedding provider is invoked. Wire end-to-end: chunk → embed → upsert → search. (Top finding for "advertised feature doesn't work".)
+- [x] **`LanceVectorStore` is a SQLite shim that writes `lance.db`** — masquerades as LanceDB. Either swap to real LanceDB or rename to `SqliteVectorStore` and update docs.
+- [x] **`searchByVector` is O(N) full-scan** with per-query cosine norm — unusable at monorepo scale. Add an ANN index (HNSW or product quantization).
+- [x] **Singleton `setWatchedWorkspace` leaks chokidar handles** on rapid workspace switches — properly `await close()` the prior watcher.
+- [x] **`.gitignore` is read once at start, never refreshed** — runtime edits are ignored until restart. Watch `.gitignore` itself or re-read on every walk.
+- [x] **Custom glob parser miscompiles character classes** — replace with `picomatch` or `minimatch`.
+- [x] **Git operations leak full stderr** (including credential-helper URLs) into thrown errors visible to renderer. Scrub.
+- [x] **`draftPr` ships raw diff to whichever cloud LLM provider is configured** — secrets accidentally in the working tree leak. Redact via secret-scanner.
+- [x] **`openPrInBrowser` does `host.includes('github')`** — `evilgithubclone.com` passes. Exact-match `host === 'github.com'` or `endsWith('.github.com')`.
+- [x] **`branchFromConversation` accepts caller-supplied `baseRef` without `--` separator or format validation** — `--orphan` works as a checkout flag. Add `git check-ref-format` validation + explicit `--`.
+- [x] **No submodule handling anywhere** — worktrees, diffs, commits silently skip submodule content.
+- [x] **`file-tree` handler claims `hasChildren=true` for every directory regardless of contents** — fix or stat lazily.
+- [x] **`file-tree` silently caps at 500 entries with no `truncated` flag** — return `{ entries, truncated }`.
+- [x] **`file-tree` re-reads `.gitignore` synchronously per IPC call** — cache.
+- [x] **`codebase:read-file` slurps the full file into memory before slicing to a 256 KB preview** — stream and slice.
+- [x] **`codebase.searchFilenames` walks sequentially with no depth limit** — add limits + use the workspace's `.gitignore`.
 
 ### 15.11 — Scheduler / triggers / skills / pair / onboarding (`apps/desktop/src/main`)
 
-- [ ] **Cron is hardcoded to UTC** — "every day at 9am" runs at the wrong wall-clock time outside UTC. Add `tz` field per task; resolve via `cron-parser`'s tz option.
-- [ ] **`runCatchup` leaves `next_run_at` stale** — after a catch-up fire, the row's `next_run_at` still points at the past time.
-- [ ] **After-sleep/wake catch-up only fires the most-recent missed slot**, no visibility into the missed-fire count — log to telemetry as `scheduler.missed_slots: N`.
-- [ ] **`* * * * *` can stack unbounded under back-pressure** — concurrent-run guard re-schedules immediately on completion. Add an in-flight count limit per task.
-- [ ] **>24-day `setTimeout` clamp case unhandled** — break long delays into chained timers or use a wall-clock loop.
-- [ ] **Scheduler module-level singletons (`running`/`timer`/`listTasksImpl`/`fireImpl`) + `__resetForTests`** make tests race each other — encapsulate in a `Scheduler` class.
-- [ ] **Cron tasks survive crash/restart only at minute grain** — sub-minute drift on start. Add a monotonic fire-log persisted on every fire.
-- [ ] **Git-hook URLs bake the listener port at install time** — refresh on every listener start by writing the port to `<workspace>/.git/hooks/opencodex-port` and having the wrapper read it at runtime.
-- [ ] **Triggers listener `lastTriggerAt` map grows unbounded** — cap size or TTL.
-- [ ] **File-watcher debounce discards the changed-file path** — agent prompt can't reference it. Plumb through.
-- [ ] **Glob converter widens unscoped `**`to`.\*`across`/`\*\* — silent security footgun. Use a real glob lib.
-- [ ] **`skills:import-from-url` accepts any HTTPS host** — no allowlist, no cert pinning, no checksum vs registry entry. Allowlist + checksum.
-- [ ] **Skill substitution is purely textual** — `{{arg_name}}` lands inside the system prompt with no prompt-injection mitigation. Escape or fence with delimiters the model is taught to treat as data.
-- [ ] **Skill cron-auto-registration silently pins linked scheduled tasks to whichever provider/model was selected at sync time** — surface this in the UI and offer a "Use current selected model" option.
-- [ ] **Onboarding has no resumable state — just a single boolean `complete`** — track per-step state so a user closing mid-wizard gets back where they were.
-- [ ] **Pair `CITATION_RE` and `BARE_PATH_RE` accept traversal paths and Windows backslashes** — `..\\..\\..\\secret.env` mentioned in a message body flows verbatim into a system message via `pair:apply-as-context`. Sanitize.
+- [x] **Cron is hardcoded to UTC** — "every day at 9am" runs at the wrong wall-clock time outside UTC. Add `tz` field per task; resolve via `cron-parser`'s tz option.
+- [x] **`runCatchup` leaves `next_run_at` stale** — after a catch-up fire, the row's `next_run_at` still points at the past time.
+- [x] **After-sleep/wake catch-up only fires the most-recent missed slot**, no visibility into the missed-fire count — log to telemetry as `scheduler.missed_slots: N`.
+- [x] **`* * * * *` can stack unbounded under back-pressure** — concurrent-run guard re-schedules immediately on completion. Add an in-flight count limit per task.
+- [x] **>24-day `setTimeout` clamp case unhandled** — break long delays into chained timers or use a wall-clock loop.
+- [x] **Scheduler module-level singletons (`running`/`timer`/`listTasksImpl`/`fireImpl`) + `__resetForTests`** make tests race each other — encapsulate in a `Scheduler` class.
+- [x] **Cron tasks survive crash/restart only at minute grain** — sub-minute drift on start. Add a monotonic fire-log persisted on every fire.
+- [x] **Git-hook URLs bake the listener port at install time** — refresh on every listener start by writing the port to `<workspace>/.git/hooks/opencodex-port` and having the wrapper read it at runtime.
+- [x] **Triggers listener `lastTriggerAt` map grows unbounded** — cap size or TTL.
+- [x] **File-watcher debounce discards the changed-file path** — agent prompt can't reference it. Plumb through.
+- [x] **Glob converter widens unscoped `**`to`.\*`across`/`\*\* — silent security footgun. Use a real glob lib.
+- [x] **`skills:import-from-url` accepts any HTTPS host** — no allowlist, no cert pinning, no checksum vs registry entry. Allowlist + checksum.
+- [x] **Skill substitution is purely textual** — `{{arg_name}}` lands inside the system prompt with no prompt-injection mitigation. Escape or fence with delimiters the model is taught to treat as data.
+- [x] **Skill cron-auto-registration silently pins linked scheduled tasks to whichever provider/model was selected at sync time** — surface this in the UI and offer a "Use current selected model" option.
+- [x] **Onboarding has no resumable state — just a single boolean `complete`** — track per-step state so a user closing mid-wizard gets back where they were.
+- [x] **Pair `CITATION_RE` and `BARE_PATH_RE` accept traversal paths and Windows backslashes** — `..\\..\\..\\secret.env` mentioned in a message body flows verbatim into a system message via `pair:apply-as-context`. Sanitize.
 
 ### 15.12 — Storage / audit / WORM / providers in main
 
-- [ ] **`audit-verify` canonicalization is fragile** — only the bundle's top-level five keys are stabilized; `entries[*].input/output` are `z.unknown()` blobs whose JSON property order depends on the parser. Any reserializer breaks signatures. Use a real JCS implementation or include `output_sha256` so the signature covers a hash of canonical bytes, not the bytes themselves.
-- [ ] **`audit-verify` trusts the public key embedded in the bundle by default** — any bundle "verifies". Default the CLI and library to a pinned trust anchor; only accept embedded key with `--accept-embedded-pubkey`.
-- [ ] **`audit-verify` CLI test (`cli.test.ts`) never spawns the bin** — assembles a 21-line stub string, asserts `toContain(...)` on it. Refactor `bin/audit-verify.mjs` to expose `export async function main(argv, { stdout, stderr })` returning an exit code; have the shebang wrapper call it. Replace the stub with synthetic argv calls + in-memory streams. Keep one gated end-to-end `spawnSync` test behind `existsSync('dist/index.js')`.
-- [ ] **`audit-verify` CLI footguns** — help goes to stderr (should be stdout for `--help`); no stdin support; flag values can be flag-like; base64 error-handling is dead code.
-- [ ] **WORM mirror does not implement write-once or tamper-evident semantics** on any platform — Windows is explicitly a no-op. Document the gap honestly; on Linux/macOS use `chattr +a` / `chflags uappnd`; on Windows use Object Manager ACLs or skip with a documented limitation.
-- [ ] **WORM `setWormEnabled(true)` lacks a try/catch around `openSync`** — `appendToWorm` has one but the enable path doesn't, so a disk-full / permission-denied propagates out of the IPC handler and the toggle state is left inconsistent (`enabled = true`, no fd).
-- [ ] **Migrations have no max-supported-version guard** — downgrades silently corrupt. Refuse to open if `schema_version > MAX_SUPPORTED`.
-- [ ] **`withSqliteBusyRetry` not applied on conversation/applied-diffs writes** — flakes under concurrent IPC.
-- [ ] **LIKE-escape inconsistency between audit query and export** — values containing `%` or `_` produce wrong matches.
-- [ ] **MCP servers spawned from main inherit the full process env** — same fix as 15.4 stderr scrub, applied here too.
-- [ ] **`run_shell` README claims "sandboxed" execution** — replace with the actual guarantees once 15.2 path-guard fix lands.
-- [ ] **Stale `rebuildMessageFts` test** — `appendMessage` already auto-mirrors into `messages_fts`. Either remove the rebuild path or test the auto-mirror.
-- [ ] **Provider catalog is a static hand-edited list** — never refreshed from live `/v1/models`. Cache + refresh on settings open.
-- [ ] **Ollama `listModels` returns the hardcoded catalog** instead of probing `/api/tags`. Use the live response.
-- [ ] **Ollama probe hardcodes `127.0.0.1:11434`** — ignores configured `baseUrl` / `OLLAMA_HOST` / IPv6. 800ms timeout is too tight for cold start. Use configured value, bump to 3s, fall back to `localhost` on IPv6 failure.
-- [ ] **No precedence layer for selected model** — single flat global. Add workspace > conversation > global precedence.
-- [ ] **No auto-clear when a selected model disappears from the catalog** — chat:start throws today. Detect on catalog refresh, clear, surface a renderer toast.
-- [ ] **`providers:save` preserves previous `lastTestResult` after the API key changes** — UI shows "Last tested OK" against an untested key. Clear on key write.
-- [ ] **RoutingProvider lacks a hard last-ditch fallback** when the resolved provider isn't loaded — chat fails outright. Fall back to the configured default and surface a `degradedReason`.
-- [ ] **Routing IPC `webContents.send` lacks an `isDestroyed()` guard** — race during window close.
-- [ ] **`probeBinary` has no spawn timeout** — renderer can hang during onboarding.
-- [ ] **Curl-pipe-sh installer has no integrity check and no concurrency gate** — verify checksum vs registry, single-flight.
+- [x] **`audit-verify` canonicalization is fragile** — only the bundle's top-level five keys are stabilized; `entries[*].input/output` are `z.unknown()` blobs whose JSON property order depends on the parser. Any reserializer breaks signatures. Use a real JCS implementation or include `output_sha256` so the signature covers a hash of canonical bytes, not the bytes themselves.
+- [x] **`audit-verify` trusts the public key embedded in the bundle by default** — any bundle "verifies". Default the CLI and library to a pinned trust anchor; only accept embedded key with `--accept-embedded-pubkey`.
+- [x] **`audit-verify` CLI test (`cli.test.ts`) never spawns the bin** — assembles a 21-line stub string, asserts `toContain(...)` on it. Refactor `bin/audit-verify.mjs` to expose `export async function main(argv, { stdout, stderr })` returning an exit code; have the shebang wrapper call it. Replace the stub with synthetic argv calls + in-memory streams. Keep one gated end-to-end `spawnSync` test behind `existsSync('dist/index.js')`.
+- [x] **`audit-verify` CLI footguns** — help goes to stderr (should be stdout for `--help`); no stdin support; flag values can be flag-like; base64 error-handling is dead code.
+- [x] **WORM mirror does not implement write-once or tamper-evident semantics** on any platform — Windows is explicitly a no-op. Document the gap honestly; on Linux/macOS use `chattr +a` / `chflags uappnd`; on Windows use Object Manager ACLs or skip with a documented limitation.
+- [x] **WORM `setWormEnabled(true)` lacks a try/catch around `openSync`** — `appendToWorm` has one but the enable path doesn't, so a disk-full / permission-denied propagates out of the IPC handler and the toggle state is left inconsistent (`enabled = true`, no fd).
+- [x] **Migrations have no max-supported-version guard** — downgrades silently corrupt. Refuse to open if `schema_version > MAX_SUPPORTED`.
+- [x] **`withSqliteBusyRetry` not applied on conversation/applied-diffs writes** — flakes under concurrent IPC.
+- [x] **LIKE-escape inconsistency between audit query and export** — values containing `%` or `_` produce wrong matches.
+- [x] **MCP servers spawned from main inherit the full process env** — same fix as 15.4 stderr scrub, applied here too.
+- [x] **`run_shell` README claims "sandboxed" execution** — replace with the actual guarantees once 15.2 path-guard fix lands.
+- [x] **Stale `rebuildMessageFts` test** — `appendMessage` already auto-mirrors into `messages_fts`. Either remove the rebuild path or test the auto-mirror.
+- [x] **Provider catalog is a static hand-edited list** — never refreshed from live `/v1/models`. Cache + refresh on settings open.
+- [x] **Ollama `listModels` returns the hardcoded catalog** instead of probing `/api/tags`. Use the live response.
+- [x] **Ollama probe hardcodes `127.0.0.1:11434`** — ignores configured `baseUrl` / `OLLAMA_HOST` / IPv6. 800ms timeout is too tight for cold start. Use configured value, bump to 3s, fall back to `localhost` on IPv6 failure.
+- [x] **No precedence layer for selected model** — single flat global. Add workspace > conversation > global precedence.
+- [x] **No auto-clear when a selected model disappears from the catalog** — chat:start throws today. Detect on catalog refresh, clear, surface a renderer toast.
+- [x] **`providers:save` preserves previous `lastTestResult` after the API key changes** — UI shows "Last tested OK" against an untested key. Clear on key write.
+- [x] **RoutingProvider lacks a hard last-ditch fallback** when the resolved provider isn't loaded — chat fails outright. Fall back to the configured default and surface a `degradedReason`.
+- [x] **Routing IPC `webContents.send` lacks an `isDestroyed()` guard** — race during window close.
+- [x] **`probeBinary` has no spawn timeout** — renderer can hang during onboarding.
+- [x] **Curl-pipe-sh installer has no integrity check and no concurrency gate** — verify checksum vs registry, single-flight.
 
 ### 15.13 — Memory backends (`packages/memory-{local-fs,obsidian,notion}`)
 
-- [ ] **Extract shared `atomic-write` / `bm25` / `snippet` from `memory-local-fs` and `memory-obsidian` into a small shared util package** — currently duplicated near-verbatim; new bugs will diverge.
-- [ ] **Read-modify-write across whole markdown files with no in-process mutex or file lock** — concurrent appends silently clobber each other. Add a per-file async lock.
-- [ ] **Atomic-write tmp+rename skips `fsync`** — durability is theatrical. `fsync(fd)` before rename; `fsync(dir)` after.
-- [ ] **`local-fs` markdown parser doesn't track code fences** — `## heading` inside a fenced example creates a phantom section, and `append('heading', ...)` can inject content into a code block. Track fence depth.
-- [ ] **CRLF line endings silently flattened to LF on every append** on Windows — preserve source EOL.
-- [ ] **Obsidian path-guard is purely syntactic** — symlink inside the vault pointing to `/home` escapes. Same realpath fix as 15.2.
-- [ ] **Obsidian `createNote` TOCTOU race** — `exists` then atomic rename clobbers concurrent create. Open with `O_CREAT|O_EXCL` instead.
-- [ ] **Obsidian `createNote` `{title, ...extraFrontMatter}` lets `extraFrontMatter.title` override the explicit `title` arg** — fix arg precedence.
-- [ ] **Front-matter render+parse not round-trip safe for values with quotes** — switch to a proper YAML serializer.
-- [ ] **Notion has no retries, no pagination on `search` (25-result cap) or `readPage` (100-block cap)** — silent truncation. Add cursor pagination + exponential backoff for 429/5xx.
-- [ ] **Notion `createPage` double-renders the title** — sets `properties.title` AND prepends a giant H1. Drop one.
-- [ ] **Notion `summarizeProperties` drops ~half of real Notion property types** — handle the full schema or document the subset.
+- [x] **Extract shared `atomic-write` / `bm25` / `snippet` from `memory-local-fs` and `memory-obsidian` into a small shared util package** — currently duplicated near-verbatim; new bugs will diverge.
+- [x] **Read-modify-write across whole markdown files with no in-process mutex or file lock** — concurrent appends silently clobber each other. Add a per-file async lock.
+- [x] **Atomic-write tmp+rename skips `fsync`** — durability is theatrical. `fsync(fd)` before rename; `fsync(dir)` after.
+- [x] **`local-fs` markdown parser doesn't track code fences** — `## heading` inside a fenced example creates a phantom section, and `append('heading', ...)` can inject content into a code block. Track fence depth.
+- [x] **CRLF line endings silently flattened to LF on every append** on Windows — preserve source EOL.
+- [x] **Obsidian path-guard is purely syntactic** — symlink inside the vault pointing to `/home` escapes. Same realpath fix as 15.2.
+- [x] **Obsidian `createNote` TOCTOU race** — `exists` then atomic rename clobbers concurrent create. Open with `O_CREAT|O_EXCL` instead.
+- [x] **Obsidian `createNote` `{title, ...extraFrontMatter}` lets `extraFrontMatter.title` override the explicit `title` arg** — fix arg precedence.
+- [x] **Front-matter render+parse not round-trip safe for values with quotes** — switch to a proper YAML serializer.
+- [x] **Notion has no retries, no pagination on `search` (25-result cap) or `readPage` (100-block cap)** — silent truncation. Add cursor pagination + exponential backoff for 429/5xx.
+- [x] **Notion `createPage` double-renders the title** — sets `properties.title` AND prepends a giant H1. Drop one.
+- [x] **Notion `summarizeProperties` drops ~half of real Notion property types** — handle the full schema or document the subset.
 
 ### 15.14 — Plugin SDK & examples
 
-- [ ] **Scaffold generates `SubagentRunner` with the wrong `run()` signature** — generated code won't typecheck against the actual contract. Fix `scripts/create-opencodex-plugin.mjs` template.
-- [ ] **All four example plugin tsconfigs use `noEmit: true` but manifests point to `dist/index.js`** — examples can't be sideloaded as written. Fix in concert with 15.2's noEmit fix.
-- [ ] **`registerSlashCommand` and `registerProvider` silently drop their inputs** — manifest fields that compile and validate do nothing at runtime. Wire up or remove from the contract.
-- [ ] **`engines.opencodex` parsed but never enforced** against the host version. Check at install.
-- [ ] **`manifest.entry`, `panels[].entry`, `slashCommands[].entry` accept absolute and `../`-prefixed strings** — path-traversal at load. Require relative + reject `..`.
-- [ ] **No zod validation at the plugin-host runtime boundary** — tool/provider/runner objects taken on trust despite the CLAUDE.md mandate. Add zod parses in `registerTool`/`registerProvider`/`registerRunner`.
-- [ ] **Plugin ID collision via `randomUUID().slice(0,8)` (32 bits)** — too few for a long-lived install registry. Use the full UUID or content hash.
-- [ ] **`permissions: []` defaults combined with `acceptUnsigned: false` produces silent grant** — surface in the install UI.
-- [ ] **Scaffold pre-requests three permissions including `agent.runner` without explanation** — narrow the default + document.
-- [ ] **Scaffold pins `@opencodex/core ^0.1.0` but published SDK is at `0.0.0`** — fix once you cut the first version.
-- [ ] **`canonicalJson` is a hand-rolled JCS substitute that drops `undefined` and ignores BigInt/Date/Map** — add version-tag on signature; consider real JCS lib.
-- [ ] **`ContributionSchema` and `PermissionSchema` allow no plugin-defined extensions and aren't enforced against the contributions list** — either lock down or open up consistently.
-- [ ] **`ui-panel` example panel.html loaded as iframe but has no CSP and no isolation guarantees documented** — add CSP + document trust model.
-- [ ] **Two example plugins lack READMEs** — `hello-world` and `runner-stub` (or whichever pair).
+- [x] **Scaffold generates `SubagentRunner` with the wrong `run()` signature** — generated code won't typecheck against the actual contract. Fix `scripts/create-opencodex-plugin.mjs` template.
+- [x] **All four example plugin tsconfigs use `noEmit: true` but manifests point to `dist/index.js`** — examples can't be sideloaded as written. Fix in concert with 15.2's noEmit fix.
+- [x] **`registerSlashCommand` and `registerProvider` silently drop their inputs** — manifest fields that compile and validate do nothing at runtime. Wire up or remove from the contract.
+- [x] **`engines.opencodex` parsed but never enforced** against the host version. Check at install.
+- [x] **`manifest.entry`, `panels[].entry`, `slashCommands[].entry` accept absolute and `../`-prefixed strings** — path-traversal at load. Require relative + reject `..`.
+- [x] **No zod validation at the plugin-host runtime boundary** — tool/provider/runner objects taken on trust despite the CLAUDE.md mandate. Add zod parses in `registerTool`/`registerProvider`/`registerRunner`.
+- [x] **Plugin ID collision via `randomUUID().slice(0,8)` (32 bits)** — too few for a long-lived install registry. Use the full UUID or content hash.
+- [x] **`permissions: []` defaults combined with `acceptUnsigned: false` produces silent grant** — surface in the install UI.
+- [x] **Scaffold pre-requests three permissions including `agent.runner` without explanation** — narrow the default + document.
+- [x] **Scaffold pins `@opencodex/core ^0.1.0` but published SDK is at `0.0.0`** — fix once you cut the first version.
+- [x] **`canonicalJson` is a hand-rolled JCS substitute that drops `undefined` and ignores BigInt/Date/Map** — add version-tag on signature; consider real JCS lib.
+- [x] **`ContributionSchema` and `PermissionSchema` allow no plugin-defined extensions and aren't enforced against the contributions list** — either lock down or open up consistently.
+- [x] **`ui-panel` example panel.html loaded as iframe but has no CSP and no isolation guarantees documented** — add CSP + document trust model.
+- [x] **Two example plugins lack READMEs** — `hello-world` and `runner-stub` (or whichever pair).
 
 ### 15.15 — Build, CI, docs
 
-- [ ] **Run e2e (Playwright) in CI** — currently absent.
-- [ ] **`apps/desktop/e2e/smoke.spec.ts:7` references `out/main/index.js`** but electron-vite emits `index.cjs` — ENOENT before launch. Fix path.
-- [ ] **`tsconfig.base.json` missing path mappings for `provider-voyage`, `runner-aider`, `runner-claude-code`, `runner-opencode`** — sync from vitest aliases (or generate one from the other).
-- [ ] **`vitest.config.ts` missing runner-\* aliases** — though they're never imported as modules today, add for parity with tsconfig and to prevent drift.
-- [ ] **`docs.yml` uses npm in a pnpm monorepo** — install pnpm via `pnpm/action-setup@v4`, commit `website/pnpm-lock.yaml`, change to `pnpm install --frozen-lockfile` + `pnpm build`. Drop the "or npm install / yarn install" alternatives from `website/README.md`.
-- [ ] **Husky v9 deprecation shim** (`.husky/_/husky.sh`) — bump scripts to the v9+ format so v10 upgrade is a no-op.
-- [ ] **electron-builder has no Linux signing**, **no autoupdate `channel:` config**, **ships `releaseType: draft`** so updates won't reach end users until promoted. Either flip to a non-draft channel or document the manual-promotion model.
-- [ ] **ESLint config ignores `*.config.js/mjs` but typechecks `*.config.ts`** — inconsistent. Pick one.
-- [ ] **`format:check` after `test` wastes CI minutes** — run format:check first (sub-second) so format failures fail fast.
-- [ ] **`playwright.config.ts` has no retries, no per-OS projects** — add `retries: 2` for flaky CI and a Windows project.
-- [ ] **electron-builder `files` glob excludes `.ts`/`.md` but `extraResources` runner dists may not exist** if `noEmit` fix not landed — coordinate with 15.2.
-- [ ] **CI rebuild-native is `continue-on-error: true` with a misleading "tests will be skipped" warning** — no test actually skips on sqlite-missing. Either drop the `continue-on-error` (matches reality) or add real `describe.skipIf(!sqliteOk)` gates around all sqlite-touching tests (~15 files).
-- [ ] **`check-placeholders` patterns are too narrow** — miss the documented placeholder shape per the auditor; tighten so future placeholders are caught.
+- [x] **Run e2e (Playwright) in CI** — currently absent.
+- [x] **`apps/desktop/e2e/smoke.spec.ts:7` references `out/main/index.js`** but electron-vite emits `index.cjs` — ENOENT before launch. Fix path.
+- [x] **`tsconfig.base.json` missing path mappings for `provider-voyage`, `runner-aider`, `runner-claude-code`, `runner-opencode`** — sync from vitest aliases (or generate one from the other).
+- [x] **`vitest.config.ts` missing runner-\* aliases** — though they're never imported as modules today, add for parity with tsconfig and to prevent drift.
+- [x] **`docs.yml` uses npm in a pnpm monorepo** — install pnpm via `pnpm/action-setup@v4`, commit `website/pnpm-lock.yaml`, change to `pnpm install --frozen-lockfile` + `pnpm build`. Drop the "or npm install / yarn install" alternatives from `website/README.md`.
+- [x] **Husky v9 deprecation shim** (`.husky/_/husky.sh`) — bump scripts to the v9+ format so v10 upgrade is a no-op.
+- [x] **electron-builder has no Linux signing**, **no autoupdate `channel:` config**, **ships `releaseType: draft`** so updates won't reach end users until promoted. Either flip to a non-draft channel or document the manual-promotion model.
+- [x] **ESLint config ignores `*.config.js/mjs` but typechecks `*.config.ts`** — inconsistent. Pick one.
+- [x] **`format:check` after `test` wastes CI minutes** — run format:check first (sub-second) so format failures fail fast.
+- [x] **`playwright.config.ts` has no retries, no per-OS projects** — add `retries: 2` for flaky CI and a Windows project.
+- [x] **electron-builder `files` glob excludes `.ts`/`.md` but `extraResources` runner dists may not exist** if `noEmit` fix not landed — coordinate with 15.2.
+- [x] **CI rebuild-native is `continue-on-error: true` with a misleading "tests will be skipped" warning** — no test actually skips on sqlite-missing. Either drop the `continue-on-error` (matches reality) or add real `describe.skipIf(!sqliteOk)` gates around all sqlite-touching tests (~15 files).
+- [x] **`check-placeholders` patterns are too narrow** — miss the documented placeholder shape per the auditor; tighten so future placeholders are caught.
 
 ### 15.16 — Docs drift
 
-- [ ] **`MANUAL.md` nav-rail / Settings / onboarding mismatch** — describes 5-item rail with Cmd+1..5 (reality: 7 items, Cmd+1..6, including Runners + Reviewer); calls Runners "the 15th Settings section" (reality: top-level `/runners` route); says onboarding is 4 steps (reality: 6); says 16 Settings sections (reality: 19, Routing + Privacy + Budgets undocumented).
-- [ ] **`MANUAL.md` describes a `/settings/scheduled-tasks` route** but App.tsx redirects to `/automations` only.
-- [ ] **`MANUAL.md` Memory section says "two backends"** but `memory-local-fs` ships too.
-- [ ] **`MANUAL.md` Settings → Indexing description is leaner than reality** (chat-mode is one of several knobs).
-- [ ] **`MANUAL.md` cites Cmd/Ctrl+, and Cmd/Ctrl+\ but never Cmd/Ctrl+P (Command Palette)**.
-- [ ] **`MANUAL.md` Settings rail Cmd/Ctrl+F conflicts with Chat slash menu and Codebase search** (cross-reference with the 15.9 SettingsRail Cmd+F hijack fix).
-- [ ] **`README.md` + `CLAUDE.md` reference `packages/providers/` which doesn't exist** — real packages are flat (`provider-openai`, etc.). README package tree omits `audit-verify`, `telemetry`, `crash-reporting`, `rag-chunker`, `runner-*`, `memory-local-fs`.
-- [ ] **`README.md` dev setup omits `pnpm typecheck` and the `check-placeholders` precondition for tagging** — add.
-- [ ] **`MANUAL.md` and `HANDOFF.md` disagree on onboarding step count** — single source of truth.
-- [ ] **`SECURITY.md` in-scope list omits runner adapters, memory backends, audit-verify, 127.0.0.1 webhook listener** — expand.
-- [ ] **`Todo.md` undercounts shipped work** — Reviewer view, create-opencodex-plugin scaffold, audit-verify CLI, memory-local-fs backend, all four reference plugins ship but appear as `- [ ]`. Sweep and check off (separate pass from this section).
-- [ ] **Remove the stray `CUsersVRProjectsOPEN-UI-UX-handoff-fmt.tmp` temp file at repo root** — malformed shell-path artifact; trips `check-placeholders`.
-- [ ] **`RELEASE_NOTES_TEMPLATE.md` links `opencodex.dev`** flagged undecided by `PLACEHOLDERS.md` — pin once the domain is decided.
-- [ ] **Unlinked `docs/*.md` files** (`release-signing`, `plugin-signing`, `plugin-registry`, `local-only-threat-model`, `security-model`, `positioning`, `provider-authoring`) — link from a docs index or from `README.md` so they're discoverable.
-- [ ] **`PR template` hardcodes `packages/providers/openai/__tests__/`** path that doesn't match the real layout — update.
-- [ ] **Nextra 2.13 is one major behind** — `useNextSeoProps` is removed in Nextra 3. Plan the bump.
-- [ ] **Website branding mismatch** — `package.json` is `"opencodex-docs"` but `theme.config.tsx` brands as `"OpenCodex"`. Unify.
-- [ ] **`theme.config.tsx` `useNextSeoProps` title template duplicates name on landing page** — fix template.
-- [ ] **`docsRepositoryBase` points at `/tree/main/website` but Nextra appends the page path** — "Edit on GitHub" links to nonexistent paths. Fix base.
-- [ ] **`useNextSeoProps` not configured for description** — every page renders without `<meta name="description">`.
-- [ ] **`./building-a-runner` link missing trailing slash** inconsistent with `trailingSlash: true`.
+- [x] **`MANUAL.md` nav-rail / Settings / onboarding mismatch** — describes 5-item rail with Cmd+1..5 (reality: 7 items, Cmd+1..6, including Runners + Reviewer); calls Runners "the 15th Settings section" (reality: top-level `/runners` route); says onboarding is 4 steps (reality: 6); says 16 Settings sections (reality: 19, Routing + Privacy + Budgets undocumented).
+- [x] **`MANUAL.md` describes a `/settings/scheduled-tasks` route** but App.tsx redirects to `/automations` only.
+- [x] **`MANUAL.md` Memory section says "two backends"** but `memory-local-fs` ships too.
+- [x] **`MANUAL.md` Settings → Indexing description is leaner than reality** (chat-mode is one of several knobs).
+- [x] **`MANUAL.md` cites Cmd/Ctrl+, and Cmd/Ctrl+\ but never Cmd/Ctrl+P (Command Palette)**.
+- [x] **`MANUAL.md` Settings rail Cmd/Ctrl+F conflicts with Chat slash menu and Codebase search** (cross-reference with the 15.9 SettingsRail Cmd+F hijack fix).
+- [x] **`README.md` + `CLAUDE.md` reference `packages/providers/` which doesn't exist** — real packages are flat (`provider-openai`, etc.). README package tree omits `audit-verify`, `telemetry`, `crash-reporting`, `rag-chunker`, `runner-*`, `memory-local-fs`.
+- [x] **`README.md` dev setup omits `pnpm typecheck` and the `check-placeholders` precondition for tagging** — add.
+- [x] **`MANUAL.md` and `HANDOFF.md` disagree on onboarding step count** — single source of truth.
+- [x] **`SECURITY.md` in-scope list omits runner adapters, memory backends, audit-verify, 127.0.0.1 webhook listener** — expand.
+- [x] **`Todo.md` undercounts shipped work** — Reviewer view, create-opencodex-plugin scaffold, audit-verify CLI, memory-local-fs backend, all four reference plugins ship but appear as `- [ ]`. Sweep and check off (separate pass from this section).
+- [x] **Remove the stray `CUsersVRProjectsOPEN-UI-UX-handoff-fmt.tmp` temp file at repo root** — malformed shell-path artifact; trips `check-placeholders`.
+- [x] **`RELEASE_NOTES_TEMPLATE.md` links `opencodex.dev`** flagged undecided by `PLACEHOLDERS.md` — pin once the domain is decided.
+- [x] **Unlinked `docs/*.md` files** (`release-signing`, `plugin-signing`, `plugin-registry`, `local-only-threat-model`, `security-model`, `positioning`, `provider-authoring`) — link from a docs index or from `README.md` so they're discoverable.
+- [x] **`PR template` hardcodes `packages/providers/openai/__tests__/`** path that doesn't match the real layout — update.
+- [x] **Nextra 2.13 is one major behind** — `useNextSeoProps` is removed in Nextra 3. Plan the bump.
+- [x] **Website branding mismatch** — `package.json` is `"opencodex-docs"` but `theme.config.tsx` brands as `"OpenCodex"`. Unify.
+- [x] **`theme.config.tsx` `useNextSeoProps` title template duplicates name on landing page** — fix template.
+- [x] **`docsRepositoryBase` points at `/tree/main/website` but Nextra appends the page path** — "Edit on GitHub" links to nonexistent paths. Fix base.
+- [x] **`useNextSeoProps` not configured for description** — every page renders without `<meta name="description">`.
+- [x] **`./building-a-runner` link missing trailing slash** inconsistent with `trailingSlash: true`.
 - [ ] **`runner-aider` docs claim Aider is "non-streaming"** — verify against `packages/runner-aider/src/runner.ts` (the audit noted it DOES stream line-by-line). Fix doc or fix the `streaming: false` flag.
 
 ### 15.17 — Notes

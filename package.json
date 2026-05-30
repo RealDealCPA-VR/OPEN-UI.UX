@@ -21,6 +21,7 @@
     "typecheck": "pnpm -r typecheck",
     "pretest": "pnpm --filter @opencodex/desktop exec node scripts/ensure-native-abi.mjs node",
     "test": "vitest run",
+    "diagnose": "node apps/desktop/scripts/diagnose.mjs",
     "bench": "pnpm --filter @opencodex/desktop run bench",
     "test:watch": "vitest",
     "check-placeholders": "node scripts/check-placeholders.mjs",

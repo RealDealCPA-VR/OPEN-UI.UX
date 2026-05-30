@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { getBridge } from '../bridge';
 
 interface EmbeddedTerminalProps {
   /** Chat stream id; filters incoming shell:output events. Empty disables stream filtering. */
@@ -118,9 +119,9 @@ export function EmbeddedTerminal({
       }
     })();
 
-    const bridge = window.opencodex?.chat.onShellOutput;
-    if (bridge) {
-      unsubscribe = bridge((payload) => {
+    const shellOutputSub = getBridge()?.chat.onShellOutput;
+    if (shellOutputSub) {
+      unsubscribe = shellOutputSub((payload) => {
         if (!matchesStream(payload.streamId, streamId)) return;
         if (payload.toolUseId !== toolUseId) return;
         const chunk = payload.chunk;

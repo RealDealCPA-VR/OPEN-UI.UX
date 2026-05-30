@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentRun, AgentRunToolEvent } from '../../shared/agent-runs';
 import type { RunnerFriendlyError, RunnerFriendlyErrorKind } from '../../shared/runner-discovery';
+import { getBridge } from '../bridge';
 import { pushTransfer } from '../state/transfer';
 import {
   canContinueInChat,
@@ -84,6 +85,7 @@ export function AgentRunDrawer({
   const [showRawError, setShowRawError] = useState(false);
   const [respawnBusy, setRespawnBusy] = useState<'same' | 'internal' | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const drawerRef = useRef<HTMLElement | null>(null);
   const eventRefs = useRef<Array<HTMLLIElement | null>>([]);
 
   useEffect(() => {
@@ -109,8 +111,10 @@ export function AgentRunDrawer({
     async (mode: 'same' | 'internal') => {
       setRespawnBusy(mode);
       try {
+        const bridge = getBridge();
+        if (!bridge) throw new Error('Preload bridge unavailable.');
         const useRunnerId = mode === 'same' ? run.runnerId : 'internal';
-        const res = await window.opencodex.agent.spawnFromUi({
+        const res = await bridge.agent.spawnFromUi({
           task: run.task,
           providerId: run.providerId,
           modelId: run.modelId,
@@ -128,11 +132,16 @@ export function AgentRunDrawer({
     [run.runnerId, run.task, run.providerId, run.modelId, run.worktreeRepoRoot],
   );
 
+  const runUnresolved = hasUnresolvedWorktree(run);
+  const runContentHash = `${run.mergeStatus ?? ''}|${run.worktreeBranch ?? ''}`;
+
   useEffect(() => {
-    if (!hasUnresolvedWorktree(run)) return;
+    if (!runUnresolved) return;
+    const bridge = getBridge();
+    if (!bridge) return;
     let cancelled = false;
     const runId = run.id;
-    void window.opencodex.agent
+    void bridge.agent
       .getMergeBundle(runId)
       .then((b) => {
         if (cancelled) return;
@@ -153,8 +162,8 @@ export function AgentRunDrawer({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run.id, run.mergeStatus, run.worktreeBranch]);
+    // run object identity intentionally excluded; the content hash captures every field we depend on.
+  }, [run.id, runContentHash, runUnresolved]);
 
   const currentBundleState = bundleState?.runId === run.id ? bundleState : null;
   const bundle = currentBundleState?.bundle ?? null;
@@ -196,6 +205,8 @@ export function AgentRunDrawer({
   }, []);
 
   useEffect(() => {
+    const root = drawerRef.current;
+    if (!root) return;
     const onKey = (e: KeyboardEvent): void => {
       if (events.length === 0) return;
       const target = e.target as HTMLElement | null;
@@ -210,8 +221,8 @@ export function AgentRunDrawer({
         focusEvent(prev);
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    root.addEventListener('keydown', onKey);
+    return () => root.removeEventListener('keydown', onKey);
   }, [events.length, focusedIdx, focusEvent]);
 
   const handleContinue = (): void => {
@@ -225,9 +236,11 @@ export function AgentRunDrawer({
 
   return (
     <aside
+      ref={drawerRef}
       className="agent-run-drawer"
       role="complementary"
       aria-label="Agent run detail"
+      tabIndex={-1}
       style={{ overflow: 'hidden', position: 'fixed' }}
     >
       <div

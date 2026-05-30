@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { HoverHint } from './HoverHint';
+import { getBridge } from '../bridge';
 import type { WhisperModel } from '../../shared/voice';
 
 interface VoiceInputButtonProps {
@@ -10,6 +11,32 @@ interface VoiceInputButtonProps {
 type RecordingState = 'idle' | 'preparing' | 'recording' | 'transcribing' | 'error';
 
 const TARGET_SAMPLE_RATE = 16000;
+
+// Inline worklet — keeps the renderer bundle a single chunk and avoids a sibling
+// public/ asset. The worklet emits whatever the upstream node delivers on
+// channel 0 back to the main thread via `port.postMessage`.
+const WORKLET_SOURCE = `
+class CaptureProcessor extends AudioWorkletProcessor {
+  process(inputs) {
+    const input = inputs[0];
+    if (!input || input.length === 0) return true;
+    const channel = input[0];
+    if (!channel) return true;
+    // Copy because the buffer is reused across render quanta.
+    this.port.postMessage(new Float32Array(channel));
+    return true;
+  }
+}
+registerProcessor('capture-processor', CaptureProcessor);
+`;
+
+let workletModuleUrl: string | null = null;
+function getWorkletModuleUrl(): string {
+  if (workletModuleUrl) return workletModuleUrl;
+  const blob = new Blob([WORKLET_SOURCE], { type: 'application/javascript' });
+  workletModuleUrl = URL.createObjectURL(blob);
+  return workletModuleUrl;
+}
 
 function downsampleToMono16k(input: Float32Array, fromRate: number): Int16Array {
   if (fromRate === TARGET_SAMPLE_RATE) {
@@ -63,7 +90,7 @@ export function VoiceInputButton({ onTranscript, disabled }: VoiceInputButtonPro
   const sessionIdRef = useRef<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const ctxRef = useRef<AudioContext | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const workletRef = useRef<AudioWorkletNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const chunksRef = useRef<Float32Array[]>([]);
   const sampleRateRef = useRef<number>(TARGET_SAMPLE_RATE);
@@ -82,10 +109,12 @@ export function VoiceInputButton({ onTranscript, disabled }: VoiceInputButtonPro
   }, [onTranscript]);
 
   useEffect(() => {
+    const bridge = getBridge();
+    if (!bridge) return;
     let cancelled = false;
     void (async () => {
       try {
-        const cfg = await window.opencodex.voice.getConfig();
+        const cfg = await bridge.voice.getConfig();
         if (cancelled) return;
         queueMicrotask(() => {
           if (!cancelled) setModel(cfg.selectedModel);
@@ -101,9 +130,12 @@ export function VoiceInputButton({ onTranscript, disabled }: VoiceInputButtonPro
 
   const teardown = useCallback(async (): Promise<void> => {
     try {
-      processorRef.current?.disconnect();
+      if (workletRef.current) {
+        workletRef.current.port.onmessage = null;
+        workletRef.current.disconnect();
+      }
       sourceRef.current?.disconnect();
-      processorRef.current = null;
+      workletRef.current = null;
       sourceRef.current = null;
       if (ctxRef.current && ctxRef.current.state !== 'closed') {
         await ctxRef.current.close();
@@ -123,10 +155,16 @@ export function VoiceInputButton({ onTranscript, disabled }: VoiceInputButtonPro
 
   const start = useCallback(async () => {
     if (stateRef.current !== 'idle' && stateRef.current !== 'error') return;
+    const bridge = getBridge();
+    if (!bridge) {
+      setErrorMsg('Preload bridge unavailable.');
+      setState('error');
+      return;
+    }
     setErrorMsg(null);
     setState('preparing');
     try {
-      const check = await window.opencodex.voice.checkBinary();
+      const check = await bridge.voice.checkBinary();
       if (!check.found) {
         setErrorMsg(check.setupHint ?? 'whisper-cli not found');
         setState('error');
@@ -138,22 +176,22 @@ export function VoiceInputButton({ onTranscript, disabled }: VoiceInputButtonPro
       const ctx = new AudioCtor();
       ctxRef.current = ctx;
       sampleRateRef.current = ctx.sampleRate;
+      await ctx.audioWorklet.addModule(getWorkletModuleUrl());
       const source = ctx.createMediaStreamSource(stream);
       sourceRef.current = source;
-      // ScriptProcessor is deprecated but the most portable way to get raw
-      // PCM for piping into whisper. AudioWorklet would need a separate
-      // worklet module file.
-      const processor = ctx.createScriptProcessor(4096, 1, 1);
-      processorRef.current = processor;
+      const worklet = new AudioWorkletNode(ctx, 'capture-processor', {
+        numberOfInputs: 1,
+        numberOfOutputs: 0,
+        channelCount: 1,
+      });
+      workletRef.current = worklet;
       chunksRef.current = [];
-      processor.onaudioprocess = (ev): void => {
-        const channel = ev.inputBuffer.getChannelData(0);
-        chunksRef.current.push(new Float32Array(channel));
+      worklet.port.onmessage = (ev: MessageEvent<Float32Array>): void => {
+        chunksRef.current.push(ev.data);
       };
-      source.connect(processor);
-      processor.connect(ctx.destination);
+      source.connect(worklet);
 
-      const startResp = await window.opencodex.voice.startRecording(modelRef.current ?? undefined);
+      const startResp = await bridge.voice.startRecording(modelRef.current ?? undefined);
       sessionIdRef.current = startResp.sessionId;
       setState('recording');
     } catch (err) {
@@ -165,9 +203,10 @@ export function VoiceInputButton({ onTranscript, disabled }: VoiceInputButtonPro
 
   const stop = useCallback(async () => {
     if (stateRef.current !== 'recording') return;
+    const bridge = getBridge();
     const sessionId = sessionIdRef.current;
     sessionIdRef.current = null;
-    if (!sessionId) {
+    if (!sessionId || !bridge) {
       await teardownRef.current();
       setState('idle');
       return;
@@ -186,7 +225,7 @@ export function VoiceInputButton({ onTranscript, disabled }: VoiceInputButtonPro
       }
       const pcm16 = downsampleToMono16k(flat, sampleRateRef.current);
       const base64 = int16ToBase64(pcm16);
-      const resp = await window.opencodex.voice.stopRecording({ sessionId, pcm16Base64: base64 });
+      const resp = await bridge.voice.stopRecording({ sessionId, pcm16Base64: base64 });
       if (resp.transcript.trim().length > 0) {
         onTranscriptRef.current(resp.transcript.trim());
       }
@@ -198,7 +237,9 @@ export function VoiceInputButton({ onTranscript, disabled }: VoiceInputButtonPro
   }, []);
 
   useEffect(() => {
-    const off = window.opencodex.voice.onPttEvent((ev) => {
+    const bridge = getBridge();
+    if (!bridge) return;
+    const off = bridge.voice.onPttEvent((ev) => {
       if (ev.kind === 'ptt-press') {
         const s = stateRef.current;
         if (s === 'idle' || s === 'error') {
@@ -252,10 +293,6 @@ export function VoiceInputButton({ onTranscript, disabled }: VoiceInputButtonPro
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onPointerLeave={(e) => {
-          if (state === 'recording') void stop();
-          (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
-        }}
         disabled={disabled || state === 'preparing' || state === 'transcribing'}
         aria-label="Voice input (push to talk)"
         aria-pressed={state === 'recording'}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getBridge } from '../bridge';
 import type { AgentRun } from '../../shared/agent-runs';
 import {
   currentToolName,
@@ -38,7 +39,9 @@ export function ActiveRunCard({ run, now, onSelect }: ActiveRunCardProps): JSX.E
     setAborting(true);
     setAbortErr(null);
     try {
-      const res = await window.opencodex.agent.abortRun(run.id);
+      const bridge = getBridge();
+      if (!bridge) throw new Error('Preload bridge unavailable.');
+      const res = await bridge.agent.abortRun(run.id);
       if (!res.ok) setAbortErr(res.error ?? 'abort failed');
     } catch (err) {
       setAbortErr(err instanceof Error ? err.message : String(err));

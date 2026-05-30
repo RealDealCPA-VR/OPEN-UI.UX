@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HoverHint } from './HoverHint';
 
@@ -23,7 +23,11 @@ function mockMatchMedia(reduced: boolean): void {
 
 describe('HoverHint', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    // Scope fake timers to setTimeout/clearTimeout only so RTL's `waitFor`
+    // (which polls via real `setInterval` and times itself with real `Date`)
+    // doesn't deadlock against frozen wall-clock time. Faking `Date` here
+    // would stop waitFor's elapsed-time check from ever firing.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     mockMatchMedia(false);
   });
 
@@ -41,7 +45,7 @@ describe('HoverHint', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
-  it('opens after the 300ms delay on hover', async () => {
+  it('opens after the 300ms delay on hover', () => {
     render(
       <HoverHint hint="Save changes">
         <button>S</button>
@@ -57,10 +61,14 @@ describe('HoverHint', () => {
     act(() => {
       vi.advanceTimersByTime(1);
     });
-    await waitFor(() => expect(screen.getByRole('tooltip')).toBeTruthy());
+    // `act` already flushed the setOpen + useLayoutEffect — use a sync
+    // assertion instead of `waitFor`, which would deadlock under faked
+    // setTimeout (RTL's wait-for-element loop relies on setTimeout for its
+    // polling step).
+    expect(screen.getByRole('tooltip')).toBeTruthy();
   });
 
-  it('closes 100ms after mouseleave', async () => {
+  it('closes 100ms after mouseleave', () => {
     render(
       <HoverHint hint="Save changes">
         <button>S</button>
@@ -71,7 +79,7 @@ describe('HoverHint', () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    await waitFor(() => expect(screen.getByRole('tooltip')).toBeTruthy());
+    expect(screen.getByRole('tooltip')).toBeTruthy();
     fireEvent.mouseLeave(btn);
     act(() => {
       vi.advanceTimersByTime(99);
@@ -80,10 +88,10 @@ describe('HoverHint', () => {
     act(() => {
       vi.advanceTimersByTime(1);
     });
-    await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
-  it('closes immediately on Escape', async () => {
+  it('closes immediately on Escape', () => {
     render(
       <HoverHint hint="Save changes">
         <button>S</button>
@@ -94,20 +102,24 @@ describe('HoverHint', () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    await waitFor(() => expect(screen.getByRole('tooltip')).toBeTruthy());
-    fireEvent.keyDown(btn, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
+    expect(screen.getByRole('tooltip')).toBeTruthy();
+    act(() => {
+      fireEvent.keyDown(btn, { key: 'Escape' });
+    });
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
-  it('opens instantly on focus', async () => {
+  it('opens instantly on focus', () => {
     render(
       <HoverHint hint="Save changes">
         <button>S</button>
       </HoverHint>,
     );
     const btn = screen.getByRole('button');
-    fireEvent.focus(btn);
-    await waitFor(() => expect(screen.getByRole('tooltip')).toBeTruthy());
+    act(() => {
+      fireEvent.focus(btn);
+    });
+    expect(screen.getByRole('tooltip')).toBeTruthy();
   });
 
   it('attaches no listeners and no aria-describedby when disabled', () => {
@@ -143,19 +155,21 @@ describe('HoverHint', () => {
     expect(calls.length).toBe(1);
   });
 
-  it('honors prefers-reduced-motion (no transition)', async () => {
+  it('honors prefers-reduced-motion (no transition)', () => {
     mockMatchMedia(true);
     render(
       <HoverHint hint="Save changes">
         <button>S</button>
       </HoverHint>,
     );
-    fireEvent.focus(screen.getByRole('button'));
-    const tip = await screen.findByRole('tooltip');
+    act(() => {
+      fireEvent.focus(screen.getByRole('button'));
+    });
+    const tip = screen.getByRole('tooltip');
     expect(tip.style.transition).toBe('none');
   });
 
-  it('auto-flips to bottom when top placement would clip the viewport', async () => {
+  it('auto-flips to bottom when top placement would clip the viewport', () => {
     const origGBCR = Element.prototype.getBoundingClientRect;
     Element.prototype.getBoundingClientRect = function () {
       // Anchor pinned to the top edge so top placement cannot fit.
@@ -191,8 +205,10 @@ describe('HoverHint', () => {
           <button>S</button>
         </HoverHint>,
       );
-      fireEvent.focus(screen.getByRole('button'));
-      const tip = await screen.findByRole('tooltip');
+      act(() => {
+        fireEvent.focus(screen.getByRole('button'));
+      });
+      const tip = screen.getByRole('tooltip');
       expect(tip.getAttribute('data-placement')).toBe('bottom');
     } finally {
       Element.prototype.getBoundingClientRect = origGBCR;

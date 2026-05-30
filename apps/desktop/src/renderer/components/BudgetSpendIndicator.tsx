@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type {
   BudgetExceededEvent,
@@ -7,6 +7,7 @@ import type {
   GetCurrentSpendRequest,
   GetCurrentSpendResponse,
 } from '../../shared/budgets';
+import { getBridge } from '../bridge';
 import { useChat } from '../state/chat-context';
 import { deriveBudgetIndicator } from './budget-spend-derive';
 
@@ -16,12 +17,11 @@ interface BudgetsIndicatorBridge {
   onExceeded(listener: (payload: BudgetExceededEvent) => void): () => void;
 }
 
-type BridgeWithBudgets = Window & {
-  opencodex: Window['opencodex'] & { budgets: BudgetsIndicatorBridge };
-};
-
-function budgetsBridge(): BudgetsIndicatorBridge {
-  return (window as BridgeWithBudgets).opencodex.budgets;
+function budgetsBridge(): BudgetsIndicatorBridge | null {
+  const root = getBridge() as
+    | (typeof window.opencodex & { budgets?: BudgetsIndicatorBridge })
+    | null;
+  return root?.budgets ?? null;
 }
 
 const REFRESH_AFTER_EVENT_DELAY_MS = 250;
@@ -64,22 +64,25 @@ export function BudgetSpendIndicator({
   const { activeId } = useChat();
   const effectiveConvId = conversationId === undefined ? activeId : conversationId;
   const [summaries, setSummaries] = useState<BudgetSpendSummary[]>([]);
-  const [hidden, setHidden] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  const bridge = useMemo(() => budgetsBridge(), []);
 
   useEffect(() => {
+    if (!bridge) return;
     let cancelled = false;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
     const refresh = async (): Promise<void> => {
       try {
-        const res = await budgetsBridge().getCurrentSpend({
+        const res = await bridge.getCurrentSpend({
           conversationId: effectiveConvId,
           providerId: null,
         });
         if (!cancelled) setSummaries(res.summaries);
       } catch {
         // Status-bar pill is advisory — never block the bar on a load error.
-        if (!cancelled) setHidden(true);
+        if (!cancelled) setLoadFailed(true);
       }
     };
 
@@ -92,10 +95,10 @@ export function BudgetSpendIndicator({
       }, REFRESH_AFTER_EVENT_DELAY_MS);
     };
 
-    const offWarning = budgetsBridge().onWarning((_payload: BudgetWarningEvent) => {
+    const offWarning = bridge.onWarning((_payload: BudgetWarningEvent) => {
       scheduleRefresh();
     });
-    const offExceeded = budgetsBridge().onExceeded((_payload: BudgetExceededEvent) => {
+    const offExceeded = bridge.onExceeded((_payload: BudgetExceededEvent) => {
       scheduleRefresh();
     });
 
@@ -105,9 +108,9 @@ export function BudgetSpendIndicator({
       offWarning();
       offExceeded();
     };
-  }, [effectiveConvId]);
+  }, [bridge, effectiveConvId]);
 
-  if (hidden) return null;
+  if (!bridge || loadFailed) return null;
   const state = deriveBudgetIndicator(summaries);
   if (state.primary === null) return null;
 

@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { TransferContext } from '../../shared/transfer-context';
 
 type Listener = () => void;
@@ -63,17 +63,24 @@ export function useTransferPending(): TransferContext | null {
  * Subscribe to transfer events of a particular kind. The handler is called
  * whenever a matching transfer is pushed; the consumer is expected to call
  * `consumeTransfer()` once it has processed the payload.
+ *
+ * The handler is captured in a ref so callers can pass an inline arrow without
+ * causing the effect to re-fire on every render.
  */
 export function useTransferConsumer<K extends TransferContext['kind']>(
   kind: K,
   handler: (ctx: Extract<TransferContext, { kind: K }>) => void,
 ): void {
   const pending = useTransferPending();
+  const handlerRef = useRef(handler);
+  useEffect(() => {
+    handlerRef.current = handler;
+  });
   useEffect(() => {
     if (!pending) return;
     if (pending.kind !== kind) return;
-    handler(pending as Extract<TransferContext, { kind: K }>);
-  }, [pending, kind, handler]);
+    handlerRef.current(pending as Extract<TransferContext, { kind: K }>);
+  }, [pending, kind]);
 }
 
 /** Test-only: reset the singleton. */

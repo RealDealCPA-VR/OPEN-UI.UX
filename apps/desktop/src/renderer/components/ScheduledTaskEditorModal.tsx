@@ -641,7 +641,13 @@ export function ScheduledTaskEditorModal({
           <div className="agent-spawn-row">
             <label className="agent-spawn-field">
               <span>Provider</span>
-              <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+              <select
+                value={providerId}
+                onChange={(e) => {
+                  setProviderId(e.target.value);
+                  setModel('');
+                }}
+              >
                 {providerOptions.length === 0 ? (
                   <option value="">No configured providers</option>
                 ) : (

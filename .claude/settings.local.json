@@ -128,7 +128,14 @@
       "Bash(cat .lintstagedrc*)",
       "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p['lint-staged']||'none',null,2\\)\\)\")",
       "Bash(xargs -n 40 npx eslint --max-warnings 0 --no-warn-ignored)",
-      "Bash(grep -vE '^\\\\s*$')"
+      "Bash(grep -vE '^\\\\s*$')",
+      "Bash(npx eslint *)",
+      "Bash(echo \"exit: $?\")",
+      "PowerShell(Set-Location \"c:\\\\Users\\\\VR\\\\Projects\\\\OPEN UI.UX\"; npx eslint apps/desktop/src/renderer/components/BudgetSpendIndicator.tsx; \"exit: $LASTEXITCODE\")",
+      "Bash(echo \"DONE exit: $?\")",
+      "Bash(echo \"FIX exit: $?\")",
+      "Bash(echo \"VERIFY exit: $?\")",
+      "Bash(echo \"FINAL exit: $?\")"
     ],
     "additionalDirectories": ["c:\\c\\Users\\VR\\Projects\\OPEN UI.UX\\apps\\desktop"]
   }

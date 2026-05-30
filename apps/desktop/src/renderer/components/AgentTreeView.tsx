@@ -22,6 +22,7 @@ interface AgentTreeBridge {
   resumeRun?: (runId: string) => Promise<{ ok: boolean; error?: string }>;
   getWorktreePreview?: (runId: string) => Promise<WorktreePreviewResponse>;
   onPausedChanged?: (listener: (payload: { runId: string; paused: boolean }) => void) => () => void;
+  abortRun?: (runId: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 function bridge(): AgentTreeBridge | null {
@@ -107,8 +108,10 @@ function AgentTreeRow({ node, now, paused, onSelectRun }: AgentTreeRowProps): JS
   const subtree = useMemo(() => aggregateSubtreeCost(node), [node]);
 
   const handleAbort = useCallback(async () => {
+    const b = bridge();
+    if (!b?.abortRun) return;
     try {
-      await window.opencodex.agent.abortRun(node.run.id);
+      await b.abortRun(node.run.id);
     } catch {
       /* surfaced via run status update */
     }

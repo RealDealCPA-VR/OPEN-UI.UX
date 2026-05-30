@@ -145,7 +145,7 @@ export function ReviewView(): JSX.Element {
           overflowY: 'auto',
         }}
       >
-        <h2 style={{ margin: 0, fontSize: 16 }}>Reviewer</h2>
+        <h1 style={{ margin: 0, fontSize: 16 }}>Reviewer</h1>
         <ReviewSourcePicker disabled={stage === 'fetching'} onSubmit={fetchDiff} />
 
         {diff && (

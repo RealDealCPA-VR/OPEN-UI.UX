@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { McpState } from '../../shared/mcp';
 import type { McpRunToolResponse, McpServerToolInfo } from '../../shared/mcp-registry';
+import { getBridge } from '../bridge';
 
 interface RunnerState {
   open: boolean;
@@ -51,10 +52,12 @@ export function McpToolRunner(): JSX.Element | null {
 
   useEffect(() => {
     if (!state.open) return;
+    const bridge = getBridge();
+    if (!bridge) return;
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      void window.opencodex.mcp.list().then((res) => {
+      void bridge.mcp.list().then((res) => {
         if (!cancelled) setMcpState(res);
       });
     });
@@ -76,7 +79,9 @@ export function McpToolRunner(): JSX.Element | null {
         setTools([]);
         return;
       }
-      void window.opencodex.mcp.listServerTools({ serverId: selectedServerId }).then((res) => {
+      const bridge = getBridge();
+      if (!bridge) return;
+      void bridge.mcp.listServerTools({ serverId: selectedServerId }).then((res) => {
         if (!cancelled) setTools(res.tools);
       });
     });
@@ -87,10 +92,12 @@ export function McpToolRunner(): JSX.Element | null {
 
   const onRun = useCallback(async () => {
     if (!selectedServerId || !selectedTool) return;
+    const bridge = getBridge();
+    if (!bridge) return;
     setRunning(true);
     setResult(null);
     try {
-      const res = await window.opencodex.mcp.runTool({
+      const res = await bridge.mcp.runTool({
         serverId: selectedServerId,
         toolName: selectedTool,
         argsJson,

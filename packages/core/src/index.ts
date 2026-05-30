@@ -18,3 +18,8 @@ export * from './routing-provider';
 // node-only code into the Electron renderer bundle even though renderer code
 // only uses pure types from this package. Consumers in main/runner processes
 // must import it directly: `import { treeKill } from '@opencodex/core/process/tree-kill'`.
+
+// Test helpers are exposed both via the main entry (for vitest workspace
+// resolution, which only aliases the root entry) and via the `./test-helpers`
+// subpath for consumers building against the published package.
+export * from './test-helpers';

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import type { editor } from 'monaco-editor';
 import type { CodebaseReadFileResponse } from '../../shared/codebase-search';
+import { getBridge } from '../bridge';
 import { languageFromPath } from './language-from-extension';
 
 const ReadOnlyEditor = lazy(async () => {
@@ -53,10 +54,12 @@ export function CodebasePreviewPane({
 
   useEffect(() => {
     if (!workspaceRoot || !path) return;
+    const bridge = getBridge();
+    if (!bridge) return;
     let cancelled = false;
     const reqRoot = workspaceRoot;
     const reqPath = path;
-    void window.opencodex.codebase
+    void bridge.codebase
       .readFile({ workspaceRoot: reqRoot, path: reqPath })
       .then((res) => {
         if (cancelled) return;
@@ -102,7 +105,9 @@ export function CodebasePreviewPane({
 
   const handleRevealInOs = useCallback(() => {
     if (!workspaceRoot || !path) return;
-    void window.opencodex.shell.showItemInFolder(workspaceRoot, path).catch(() => undefined);
+    const bridge = getBridge();
+    if (!bridge) return;
+    void bridge.shell.showItemInFolder(workspaceRoot, path).catch(() => undefined);
   }, [workspaceRoot, path]);
 
   const current =

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UpdateState, UpdateStatus } from '../../shared/updates';
 
 export interface UpdatesPanelProps {
@@ -32,8 +32,13 @@ export function UpdatesPanel({ onCheckRef }: UpdatesPanelProps = {}): JSX.Elemen
     };
   }, []);
 
-  const handleCheck = async (): Promise<void> => {
-    if (checking) return;
+  const checkingRef = useRef(checking);
+  useEffect(() => {
+    checkingRef.current = checking;
+  }, [checking]);
+
+  const handleCheck = useCallback(async (): Promise<void> => {
+    if (checkingRef.current) return;
     setChecking(true);
     setActionError(null);
     try {
@@ -44,12 +49,11 @@ export function UpdatesPanel({ onCheckRef }: UpdatesPanelProps = {}): JSX.Elemen
     } finally {
       setChecking(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     onCheckRef?.(() => void handleCheck());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onCheckRef, checking]);
+  }, [onCheckRef, handleCheck]);
 
   const handleDownload = async (): Promise<void> => {
     setDownloading(true);

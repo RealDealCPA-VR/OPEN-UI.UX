@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { BudgetSpendSummary, GetCurrentSpendResponse } from '../../shared/budgets';
@@ -96,7 +96,11 @@ function installBridge(initial: BudgetSpendSummary[]): {
 
 describe('BudgetSpendIndicator', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    // Scope fake timers to setTimeout/clearTimeout only so RTL's `waitFor`
+    // (which polls via real `setInterval` and times itself with real `Date`)
+    // doesn't deadlock against frozen wall-clock time. Mirrors the spirit of
+    // the runner-probe.test.ts fix from Phase 15.1.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   });
 
   afterEach(() => {
@@ -126,12 +130,13 @@ describe('BudgetSpendIndicator', () => {
         <BudgetSpendIndicator />
       </MemoryRouter>,
     );
+    // runAllTimersAsync flushes the pending refresh() microtask + the setState
+    // that follows it; with setTimeout faked, `waitFor` would deadlock on its
+    // own polling step, so assert synchronously instead.
     await vi.runAllTimersAsync();
-    await waitFor(() => {
-      const link = screen.getByRole('link');
-      expect(link.getAttribute('href')).toBe('/settings/budgets');
-      expect(link.textContent).toContain('$9.00');
-    });
+    const link = screen.getByRole('link');
+    expect(link.getAttribute('href')).toBe('/settings/budgets');
+    expect(link.textContent).toContain('$9.00');
   });
 
   it('refreshes when budget:warning is emitted', async () => {

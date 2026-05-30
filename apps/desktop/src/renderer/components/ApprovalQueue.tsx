@@ -6,6 +6,7 @@ import type {
   FilePreviewResult,
 } from '../../shared/approvals';
 import { diffLines, type DiffResult } from './line-diff';
+import { getBridge } from '../bridge';
 
 const sessionCommandAllowlist = new Map<string, true>();
 
@@ -28,10 +29,12 @@ export function ApprovalQueue(): JSX.Element | null {
   const [queue, setQueue] = useState<ApprovalRequest[]>([]);
 
   useEffect(() => {
-    return window.opencodex.approvals.onRequest((req) => {
+    const bridge = getBridge();
+    if (!bridge) return;
+    return bridge.approvals.onRequest((req) => {
       const cmd = extractShellCommand(req);
       if (cmd !== null && sessionCommandAllowlist.has(cmd)) {
-        void window.opencodex.approvals.respond({
+        void bridge.approvals.respond({
           requestId: req.requestId,
           decision: 'allow',
           scope: 'session',
@@ -44,8 +47,10 @@ export function ApprovalQueue(): JSX.Element | null {
 
   const respond = useCallback(
     async (request: ApprovalRequest, decision: ApprovalDecision, scope: ApprovalScope) => {
+      const bridge = getBridge();
+      if (!bridge) return;
       try {
-        await window.opencodex.approvals.respond({
+        await bridge.approvals.respond({
           requestId: request.requestId,
           decision,
           scope,
@@ -72,17 +77,14 @@ export function ApprovalQueue(): JSX.Element | null {
 
   useEffect(() => {
     if (!current) return;
+    const root = modalRootRef.current;
+    if (!root) return;
     const onKey = (e: KeyboardEvent): void => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
       const target = e.target as HTMLElement | null;
       if (target) {
         const tag = target.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
-      }
-      const root = modalRootRef.current;
-      const active = document.activeElement;
-      if (root && active && active !== document.body && !root.contains(active)) {
-        return;
       }
       const idx = '123456'.indexOf(e.key);
       if (idx === -1) return;
@@ -92,8 +94,8 @@ export function ApprovalQueue(): JSX.Element | null {
         btn.click();
       }
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    root.addEventListener('keydown', onKey);
+    return () => root.removeEventListener('keydown', onKey);
   }, [current]);
 
   if (!current) return null;
@@ -208,7 +210,9 @@ function WriteFilePreview({ path, content }: { path: string; content: string }):
       setExisting(null);
       setError(null);
       try {
-        const res = await window.opencodex.approvals.readFilePreview({ path });
+        const bridge = getBridge();
+        if (!bridge) throw new Error('Preload bridge unavailable.');
+        const res = await bridge.approvals.readFilePreview({ path });
         if (!cancelled) setExisting(res);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -319,7 +323,9 @@ function EditFileMonacoLauncher({
       setExisting(null);
       setError(null);
       try {
-        const res = await window.opencodex.approvals.readFilePreview({ path });
+        const bridge = getBridge();
+        if (!bridge) throw new Error('Preload bridge unavailable.');
+        const res = await bridge.approvals.readFilePreview({ path });
         if (!cancelled) setExisting(res);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));

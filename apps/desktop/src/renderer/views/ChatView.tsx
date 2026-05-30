@@ -624,10 +624,13 @@ function ChatPane({
     activeWorkspace !== streamWorkspaceRoot;
 
   const [lastAppliedSeed, setLastAppliedSeed] = useState<string | null>(null);
-  if (seededInput && seededInput !== lastAppliedSeed) {
+
+  useEffect(() => {
+    if (!seededInput || seededInput === lastAppliedSeed) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLastAppliedSeed(seededInput);
     setInput(seededInput);
-  }
+  }, [seededInput, lastAppliedSeed]);
 
   useEffect(() => {
     if (!seededInput || seededInput !== lastAppliedSeed) return;
@@ -670,6 +673,7 @@ function ChatPane({
 
   return (
     <div className="chat-pane">
+      <h1 className="sr-only">Chat</h1>
       <header className="chat-header">
         <div className="chat-header-title">{modelName}</div>
         <UsageSummary usage={chat.usage} />

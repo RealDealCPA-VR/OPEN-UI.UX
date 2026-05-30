@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ScheduledTask, ScheduledTaskRun } from '../../shared/scheduled-tasks';
 import type { AgentRun } from '../../shared/agent-runs';
 import { AgentRunRow } from './AgentRunRow';
@@ -25,10 +25,13 @@ export function ScheduledTaskRunsDrawer({
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
 
+  const hasInFlight = useMemo(() => runs.some((r) => r.status === 'running'), [runs]);
+
   useEffect(() => {
+    if (!hasInFlight) return;
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [hasInFlight]);
 
   const loadAgentRuns = useCallback((ids: readonly string[]): void => {
     if (ids.length === 0) return;

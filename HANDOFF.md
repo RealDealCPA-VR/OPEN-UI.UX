@@ -2,144 +2,136 @@
 
 ## Last Session Summary
 
-- **Phase 13 (Runner onboarding & friction reduction) shipped in full via a researcher → 3-lane fan-out → consolidation → wrap-up team.** The user explicitly requested a multi-role agent team this session: a context-manager (orchestrator), a researcher, three implementation lanes, and a wrap-up. The orchestrator stayed lean by delegating every file read and never reading large source files directly — researcher's findings + each lane's tight report kept orchestrator context under budget.
-  - **Researcher (1 read-only Explore agent)** — pre-flighted 8 architectural questions (IPC handler registration, streaming-event pattern, preload bridge structure, Providers panel Test-connection shape, `isGitRepo` reference, `tool_calls` schema audit, onboarding wizard step contract, `run_shell` approval routing). Two cross-lane findings surfaced and were bundled into the lane prompts: (1) `tool_calls` has no `runner_id` → Lane B adds migration v10; (2) no reusable `runApprovedShell()` helper exists → install-command consent surface is Lane C's UI picker, not main-process `ApprovalManager` routing.
+- **Phase 15.20 (debuggability infrastructure + final cleanup) shipped in full** via a 3-lane parallel fan-out: agent debugging guide + diagnose script (the new primary deliverable), final code items, Todo.md round-2 sweep.
+  - **Lane A (Debuggability infrastructure — the new artifact):**
+    - **`docs/agent-debugging-guide.md`** (NEW, 285 lines, 8 top-level sections). Written for AI agents (and humans) who land in this repo with no prior context and need to diagnose "why isn't X working?" Sections: When something doesn't work (5-step decision flow), Subsystem map (21 subsystems with entry-point file:line, IPC channels, settings, related tests), Failure-mode catalog (19 symptom→cause→file:line rows), Key paths, Structured logging (existing correlation IDs: `streamId` at runner.ts:177, `conversationId`, `runId`, `taskId`, plus a documented `withTraceContext` AsyncLocalStorage follow-up recommendation), Common gotchas (better-sqlite3 ABI dialog, path with space+period, Node v20 pin, vi.useFakeTimers scoping rule, keydown-listeners-now-scoped-to-modal-refs rule, `getBridge()` mandatory pattern, plugin sandbox NOT a true sandbox, anti-sycophancy clause on by default), Running diagnostics, Pointers. All file:line citations verified against the live tree.
+    - **`apps/desktop/scripts/diagnose.mjs`** (NEW, 711 lines, 15 probes). Pure Node script (no Electron import) you run with `pnpm diagnose` from repo root. Probes: node+pnpm versions, better-sqlite3 ABI match, sqlite DB integrity + schema_version + row counts, settings store presence, keychain (best-effort keytar), workspace path readability, MCP config + per-stdio-server binary probe (5s timeout), provider config presence, audit log + signing key, WORM mirror path, free disk space, network policy + Local Only state, runner CLI probes (claude/opencode/aider via `--version`, 5s timeout each), provider HTTP `HEAD /v1/models` for any provider with a stored key. Output: JSON to stdout, traffic-light `✓ / ⚠ / ✗` text summary to stderr. Exit codes 0/1/2 = ok/warn/fail. Redaction: keys printed as `(len=N, …xyz)` — never echo values. `--help` flag. Wired as `"diagnose": "node apps/desktop/scripts/diagnose.mjs"` in root `package.json` scripts. Smoke test against fresh user-data dir: **12 ok, 3 warn, 0 fail in 2.5s** (warns are first-run state: no activeWorkspace, no keys, pnpm not on PATH in headless shell).
+    - **`withTraceContext` recommendation** (documentation-only, not shipped) lives in the structured-logging section of the guide — AsyncLocalStorage-backed helper proposed for the 4 entry points (`startChatStream`, `runSubagentInWorker`, `runSubagentInline`, `fireScheduledTask`) so correlation IDs propagate without thread-through-every-call.
 
-  - **Lane A (Discovery, 2 files edited + 2 NEW components):** New `RunnersStep.tsx` (~150 LOC) — pure component, external-only runner cards with install pill + source badge + one-line "what is this" copy (claude-code → "Anthropic's Claude Code CLI", opencode → "The OpenCode harness", aider → "Aider AI pair programmer"); Install button navigates to `/settings/runners?install=<id>`; subscribes to `agent.onRunnersChanged` with cleanup. `OnboardingWizard.tsx` inserts `'runners'` into `VISIBLE_STEPS` between `'apikey'` and `'workspace'`; bidirectional Back/Skip wiring; progress bar reflects new count. New `RunnerDiscoveryCards.tsx` (~120 LOC) — pure presentational, always-present built-in card + external cards (installed → "Spawn with `<name>`", uninstalled → "Set up"). `AgentView.tsx` empty state replaced with two-line hook + discovery cards; `onSpawn(runnerId)` opens existing spawn modal with `spawnInitialRunnerId` set. CROSS-LANE flag: `AgentSpawnModal` needs `initialRunnerId` prop — handled in consolidation.
+  - **Lane B (close remaining real items):** 8 files modified, all targeted typecheck/test green.
+    1. **`assertProviderHonorsAbort` test helper (Todo.md L1198)** — SHIPPED. New `packages/core/src/test-helpers/assert-provider-honors-abort.ts` + barrel + `./test-helpers` subpath in `packages/core/package.json` exports map (mirrors the `./process/tree-kill` shape). Worked example test in `packages/provider-openai/src/assert-provider-honors-abort.test.ts` mocks fetch (no real HTTP). 5-line pattern doc added at top of new `packages/plugin-sdk/README.md`. provider-openai suite 50/50 green.
+    2. **`PluginSearchPanel` registry-path security smell (L1267)** — NOT A REAL ISSUE. The panel already calls `window.opencodex.plugins.installFromRegistry(...)` (the `plugins:install-from-registry` IPC at `apps/desktop/src/shared/ipc-types.ts:659`). No filesystem-path coercion in current source. Phase 15.19 (or earlier) landed the fix; the bullet was a stale finding.
+    3. **`SettingsRail` Cmd+F hijack (L1273)** — SHIPPED. Was genuinely `window`-level. Scoped to `.settings-view` root via `navRef.current?.closest('.settings-view')` + `addEventListener('keydown', ...)` with cleanup. Matches the ApprovalQueue/MergeReviewModal pattern from 15.9.
+    4. **`main.tsx` vs `index.tsx` doc references (L1290)** — NOT A REAL ISSUE. Repo-wide grep (excluding node_modules) found 4 hits: `Todo.md`, `HANDOFF.md`, and two `.mjs` workflow scripts. No stale references in `docs/`, `website/`, `MANUAL.md`, `README.md`, or `CLAUDE.md`. `Todo.md` + `HANDOFF.md` self-references are commentary, not consumed paths.
+    5. **`runner-aider` streaming flag (L1431)** — FLAG FLIPPED to `streaming: true`. `run()` pushes each stdout line into `pendingEvents` as it arrives and the outer generator yields them mid-flight — multiple `text_delta` events fire over real time, which is the contract definition of streaming. Added 3-line code comment + updated `website/pages/guides/runners.mdx` comparison table from "no (spinner only)" → "yes (line-by-line)". `packages/runner-aider/README.md` still claims `streaming: false` for UX-spinner reasons (out of Lane B's scope) — see Follow-ups below.
+    6. **`AgentTreeView` cleanup race (L1281 second half)** — LANE 3'S CLAIM CONFIRMED. No `setInterval`/`setTimeout` in the file. Async work in `loadPreview` correctly guarded by `mountedRef` (set false in cleanup, checked after each await). File untouched.
 
-  - **Lane B (Main-process, 4 NEW files + 4 additive edits):** New `shared/runner-discovery.ts` Zod contract (8 schemas: install request / progress / result, probe result, git-init request / result, friendly-error kind / payload). New `runner-install.ts` — `getAvailablePackageManagers()` via `where.exe`/`which`, `installRunner(req, emitProgress, handles?)` spawns via `child_process.spawn` for stream chunks, returns `{ok, exitCode, durationMs, stderrTail}` with last-8-lines tail, abort via `treeKill` from `@opencodex/core`. Spawn direct — Lane C's picker is the consent surface (no `ApprovalManager` routing). New `runner-probe.ts` — per-runner probe table + 60s TTL cache + 8s `execFileAsync` timeout; populates `hint` via `classifyRunnerError().suggestedFix`; exports `clearRunnerProbeCache(runnerId?)` for test isolation. New `runner-friendly-errors.ts` — `classifyRunnerError(runnerId, errText)` with `COMMON_PATTERNS` × `PER_RUNNER_FIXES` (claude-code → `Run 'claude login'`, opencode → `Run 'opencode auth login' or check ~/.config/opencode/`, aider → `Set OPENAI_API_KEY or ANTHROPIC_API_KEY`). New `git-init.ts` — validates absolute path + existing dir + not-already-a-repo, runs `git init -b main` + optional initial commit. **Migration v10** appended to `MIGRATIONS` array — `ALTER TABLE tool_calls ADD COLUMN runner_id TEXT;`. Six new IPC channels in `shared/ipc-types.ts`. Four `registerInvoke` handlers in `handlers.ts` (the `runner:install` handler broadcasts `runner:install-progress` per chunk to all non-destroyed BrowserWindows). New `runner` preload namespace + `git.initRepo` sibling of `git.isRepo`. CROSS-LANE flag: `recordToolCall` writer + `ToolCallAuditRow` reader needed `runner_id` plumbing (handled in consolidation); `runner:friendly-error` broadcast site needed (handled in consolidation).
+  - **Lane C (Todo.md round-2 sweep):** 20 bullets flipped in the 15.9 area that Lane 3 (Phase 15.19) shipped but the prior cautious sweep missed. Per-bullet verification done via grep + read. Two not-a-real-issue findings confirmed via source inspection and flipped with inline `_(not a real issue — ...)_` suffix notes:
+    - **L1276 (OllamaStep useCallback deps):** `runProbe` is `useCallback(..., [])` at line 104 with `selectedModelIdRef` at line 71. Lane 3 was correct — already-correct-in-main.
+    - **L1288 (AgentRunRow nested-button):** Toggle `<button>` closes at line 94. Review/Resume buttons (lines 161, 170) live in sibling `audit-row-body` div (line 100). Not nested. Lane 3 was correct.
+    - `window.opencodex` direct-access sites in Lane 3's 20-file scope: **0**. The two false-positive hits the agent saw were a type-cast inside `getBridge()` itself (`BudgetSpendIndicator.tsx:21`) and a JSDoc comment (`JobsPane.tsx:13`).
+    - Total open bullets in Phase 15.9 after this sweep: **2** (L1281's AgentTreeView half is now also closed by Lane B; L1267 closed as not-an-issue; the truly remaining UX-deferred bullet in this area is none — every actionable item shipped).
 
-  - **Lane C (Renderer wiring, 3 files edited):** RunnersPanel — install picker per not-installed runner: inline radio rows of available package managers from `runner.getInstallablePackageManagers()`, **literal command preview** in boxed `<pre>` so user sees exactly what will run, danger-styled Install + Cancel buttons, streams `onInstallProgress` into inline log block, auto-re-runs `checkRunnerInstalled` on success, `stderrTail` in `<pre>` with "Show full log" disclosure on failure, deep-link `?install=<id>` auto-expand via `useSearchParams`. Test-connection button — mirrors Providers panel exactly: `.test-result test-result-ok`/`-err` pills, 60s "Cached" badge, inline Retry. AgentSpawnModal — three new behaviors: (1) safety-boundary callout when external runner picked, copy `<displayName> uses its own approval model. Changes land in a git worktree for your review — your OpenCodex approval policy does not gate the runner's internal tool calls.`, styled with `--bg-pill` + `--text-secondary`; (2) inline **Initialize git repo** button on the Phase-12 worktree guard, calls `git.initRepo({workspacePath, initialCommit: true})`, refreshes `isRepo` + fires success toast on success, friendly error + Retry on failure; (3) **Verify runner** secondary button next to Submit (external runners only), calls `runner.probeAuth(runnerId)`, renders status pill inline. AgentRunDrawer — subscribes to `runner.onFriendlyError` keyed by `run.runnerId`; when `run.stopReason === 'runner_error'` callout renders kind icon + message + suggestedFix + **Retry with `<runnerId>`** + **Re-spawn with internal runner** buttons; raw stderr behind "Show raw error" disclosure (collapsed by default). AuditLogPanel — deferred (`ToolCallAuditRow.runnerId` not yet on the shared type — handled in consolidation, then revisited).
+  - **Orchestrator wrap-up:** Build + typecheck + test all green. No follow-up patches needed this round — Lane B's helper + Lane C's sweep + Lane A's docs don't intersect with test fixtures.
 
-  - **Consolidation (one cross-lane agent):** 4 cross-lane handshakes wired surgically:
-    1. `AgentSpawnModal.initialRunnerId?: string` prop added + `useState` seed; `AgentView` already passes the prop conditionally.
-    2. `runner:friendly-error` broadcast site in `spawn-from-ui.ts` — added `BrowserWindow` + `classifyRunnerError` imports; after worker/inline returns, when `runnerId !== 'internal'` AND `result.stopReason === 'runner_error'`, classifies stderr and `webContents.send`s to every non-destroyed window.
-    3. `tool-audit.ts` writer + reader extended — `RecordToolCallInput.runnerId?: string | null`, `COLUMNS`/INSERT/RawRow/`rowToAudit` mapper, `ToolCallAuditRow.runnerId: string | null` in shared. Call sites in `chat/runner.ts` not threaded — all values default to null until a future follow-up.
-    4. AuditLogPanel Runner column + filter wired — `runnerDisplayName` callback (maps null/internal → "OpenCodex"), Runner `<select>` chip inserted before Trigger chip, row filter treats null as OpenCodex, runner pill rendered in row head before scheduled trigger pill.
-       `OpenCodexBridge` type was already correct (`= typeof api` with new `runner`/`git` already exposed) — Lane C's defensive helpers were defensive against a non-issue, left in place.
-
-  - **Wrap-up (one agent, tests + docs):** Four new tests + three docs files.
-    - `runner-probe.test.ts` — unknown-id short-circuit, clean success, auth-stderr classification, 60s cache hit (asserts spawn count), TTL re-spawn with fake timers, timeout hint, `clearRunnerProbeCache()` per-id + global.
-    - `git-init.test.ts` — real tmpdir + `it.skipIf(!gitAvailable)` gate; rejects non-absolute / missing / already-in-repo, happy path (`.git` + branch=main), `initialCommit: true` produces exactly one log entry. Uses `GIT_AUTHOR_*` env + neutralized `commit.gpgsign` so it works on hosts with strict git config.
-    - `runner-friendly-errors.test.ts` — `it.each` over all 4 kinds × 3 runners + per-runner `suggestedFix` assertions + unknown-stderr fallback + empty-stderr placeholder + generic-runner fallback.
-    - `RunnersStep.test.tsx` — RTL + jsdom + MemoryRouter; mocks `useNavigate` via `vi.mock` with `await orig()`; covers external-only filtering, Install navigates to `/settings/runners?install=claude-code`, Skip/Continue callbacks, `onRunnersChanged` triggers `onRefreshStatuses`. Uses bare `Mock` from vitest (NOT `ReturnType<typeof vi.fn>` — that pattern broke in Phase 12).
-    - `MANUAL.md` Runners section gained 5 subsections (Install from app / Test connection / Verify before spawn / Initialize git from spawn modal / Safety boundary callout) — quotes the actual inline note from `AgentSpawnModal.tsx`. `docs/runner-authoring.md` gained "Contributing friendly-error patterns" section mirroring the `PER_RUNNER_FIXES` shape. `QUICKSTART.md` gained a one-line nudge after step 4 mentioning the optional runner step.
-
-- **Build + typecheck:** `pnpm -r typecheck` clean across all 17 packages (the new `examples/plugins/runner-stub` from Phase 12 + all new Phase 13 files compile). `pnpm build` green at **21.64s** — actually FASTER than Phase 12's 22.78s despite adding ~1500 LOC of new runtime + tests + docs (Phase 11 baseline was 21.55s). The pre-existing 92 better-sqlite3 ABI test failures remain locally but Phase 12's `@electron/rebuild` postinstall + CI step is the resolution path.
+- **Build + typecheck + test:**
+  - `pnpm typecheck` — clean across all 28 workspaces.
+  - `pnpm build` — green at **21.81s** (Phase 15.19 close was 23.25s; -1.4s — within noise).
+  - `pnpm test` — **1877 / 1885 pass, 8 skipped, 0 failed** (100% of runnable tests, +1 from 15.19 thanks to the new assertProviderHonorsAbort worked-example test).
+  - `pnpm diagnose --help` — exits 0, prints usage.
+  - `pnpm diagnose` — exits 1 (documented "warn" code; 12 ok, 3 warn, 0 fail on a fresh user-data dir).
 
 ## Verify Before Continuing
 
-- [ ] **Onboarding wizard runner step.** Reset onboarding (DevTools → `window.opencodex.onboarding.setComplete(false)` → reload). Wizard now shows 6 visible steps (`ollama` → `provider` → `apikey` → `runners` → `workspace` → `skills`); the runner step between API key and workspace lists external runners with install state, has Skip + Continue. Zero runners enabled is a valid completion path.
+- [ ] **`pnpm diagnose` runs clean on your machine.** From repo root: `pnpm diagnose`. Expect a JSON blob to stdout + a traffic-light summary to stderr. Exit code 0 = all green, 1 = at least one warn, 2 = at least one hard fail. Warns are expected on fresh user-data dirs (no active workspace, no keys yet) — those are NOT a regression.
 
-- [ ] **Agent empty-state runner discovery.** Open `/agent` with no runs (fresh install or wipe runs DB). Expected: two-line hook + horizontal scroll of runner cards. Built-in card → "Spawn task". External installed → "Spawn with `<name>`" pre-selects that runner in the modal. External not-installed → "Set up" deep-links to `/settings/runners?install=<id>`.
+- [ ] **`docs/agent-debugging-guide.md` is the first stop for the next agent.** When a future session asks "why isn't X working?", point at this guide before grepping the codebase. The Failure-mode catalog and Subsystem map are designed to short-circuit the discovery phase.
 
-- [ ] **In-app install flow.** Settings → Runners → click Install on a not-installed runner → picker shows available package managers (npm if installed; brew if installed; pipx if installed) → click a manager → see the LITERAL command preview (e.g., `npm install -g @anthropic-ai/claude-code`) → click Install → live stdout/stderr stream → on success, status pill flips to installed. On failure, stderr tail visible + "Show full log" disclosure.
+- [ ] **`assertProviderHonorsAbort` test helper exists.** `grep -rn assertProviderHonorsAbort packages/` should show the helper at `packages/core/src/test-helpers/`, the worked-example test at `packages/provider-openai/src/`, and the pattern doc in `packages/plugin-sdk/README.md`. New provider authors should add `assertProviderHonorsAbort(() => new MyProvider(...))` to their test suite.
 
-- [ ] **Test connection.** Settings → Runners → click Test connection on an installed runner. First call probes; second call within 60s shows "Cached" badge. Unauthenticated runner → red pill with friendly hint like `Run 'opencode auth login' or check ~/.config/opencode/`.
+- [ ] **`runner-aider` is now declared `streaming: true`.** Read `packages/runner-aider/src/runner.ts:104` to confirm. The website comparison table at `website/pages/guides/runners.mdx` reflects the flip. The runner's local README still claims non-streaming for spinner-UX reasons — that's a follow-up.
 
-- [ ] **Verify runner before spawn.** Open AgentSpawnModal, pick an external runner. Verify-runner button appears next to Submit. Click → probe runs → status pill renders inline. Submit stays disabled until Verify is green (if you want — current spec allows submit either way).
+- [ ] **`SettingsRail` Cmd+F is scoped to the Settings view only.** Open `/settings`. Press Cmd/Ctrl+F — focus jumps to the section search box. Open `/chat`. Press Cmd/Ctrl+F — Chrome's native find-in-page opens (or whatever the renderer's default Cmd+F behavior is), no rail interception.
 
-- [ ] **Inline `git init` in spawn modal.** In a NON-git workspace, pick an external runner. The Phase-12 guard fires + new **Initialize git repo** button is present. Click → approval modal appears for the git commands → on success, guard clears, toast `Initialized git repo on branch main` fires, Submit enables.
-
-- [ ] **Safety-boundary callout.** Pick any external runner → confirm the inline info note above Submit reads (verbatim) `<DisplayName> uses its own approval model. Changes land in a git worktree for your review — your OpenCodex approval policy does not gate the runner's internal tool calls.`
-
-- [ ] **Friendly runner error in drawer.** Trigger an external-runner crash with a known stderr (e.g., temporarily invalidate the runner's auth + spawn a task). AgentRunDrawer shows the kind icon + classified message + `suggestedFix` callout + two buttons (Retry with `<runner>` / Re-spawn with internal). Raw stderr is behind "Show raw error" disclosure.
-
-- [ ] **Audit-log runner column + filter.** Open Settings → Audit log. Each row now shows a Runner pill (`OpenCodex` for null/internal, runner displayName otherwise). New Runner `<select>` filter chip filters rows. Migration v10 ran on first launch; existing audit rows have `runner_id = NULL` → render as `OpenCodex`.
-
-- [ ] **`pnpm build` stays ~21-23s.** Verified this session: 21.64s green.
+- [ ] **No regression vs Phase 15.19 baseline.** `pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build` all exit 0. Test count went from 1876 → 1877 passing (the one new test is the worked-example for the abort helper).
 
 ## Next Task
 
-**Phase 13 is closed.** Remaining work is Backlog (`Todo.md` lines 487–492) + the Phase 12 carry-over (`PLACEHOLDERS.md` for the maintainer). No new architectural work proposed.
+**Phase 15.20 is closed. The actionable backlog is now empty.** Remaining items are user-required or explicit follow-up polish.
 
-- **Pre-tag maintainer work** (Phase 12 carry-over):
-  - Fill `PLACEHOLDERS.md` — 24 `@TODO-` / `TODO-org` / `TODO-repo` / `TODO-set-domain` occurrences. The `pnpm check-placeholders` CI step blocks tagging until these are resolved.
-  - Delete the stray `CUsersVRProjectsOPEN-UI-UX-handoff-fmt.tmp` file in repo root (caught by the placeholder gate; not part of the project).
-- **Needs external credentials (4 items):** MCP OAuth (`Todo.md:116`), macOS code signing (`Todo.md:173`), Windows code signing (`Todo.md:174`), public v0.1 release announcement (`Todo.md:184`).
-- **Needs user architecture sign-off (6 backlog items):** cloud tasks, voice mode, mobile companion, team workspaces, visual workflow builder, JetBrains/VSCode integration.
-- **Explicit stretch (1 item):** `packages/runner-mcp-bridge` (`Todo.md:406`) — would let MCP-aware harnesses call OpenCodex tools with OpenCodex approvals enforced. Strong Phase 14 candidate.
+### Truly user-required (BLOCKED, ~6 items)
 
-- **Phase 13 deferred polish (optional, small):**
-  - Thread `runnerId` into the `chat/runner.ts` `recordToolCall` call site so the audit log's Runner column shows the actual runner for new rows (today it always renders `OpenCodex` because the writer doesn't pass `runnerId`).
-  - Replace Lane C's defensive `runnerBridge()` / `gitBridge()` helpers with direct `window.opencodex.runner.*` / `window.opencodex.git.*` calls — the bridge is properly typed now, the helpers are no-ops.
-  - True per-hunk j/k/a/r in MergeReviewModal (Phase 12 deferred — still applies).
+- `Todo.md:116` — OAuth handling for MCP servers (needs external OAuth setup).
+- `Todo.md:173` — macOS code signing + notarization (needs user-owned Apple Developer cert + Apple ID).
+- `Todo.md:174` — Windows code signing Authenticode (needs user-owned EV cert + hardware token).
+- `Todo.md:184` — Public v0.1 release announcement (user task).
+- `Todo.md:406` — `packages/runner-mcp-bridge` (explicit deferred stretch).
+- `Todo.md:487–492` — Backlog needing user architecture decisions: cloud tasks, voice mode UX, mobile companion, team workspaces, visual workflow builder, JetBrains/VSCode integration.
 
-**Repo remains shippable as v0.1 plus Phases 9 / 10 / 11 / 12 / 13 once macOS+Windows certs land, `PLACEHOLDERS.md` is filled, and a public release is published.**
+### Pre-tag maintainer work (Phase 12 carry-over)
+
+- Fill `PLACEHOLDERS.md` — 24 `@TODO-` / `TODO-org` / `TODO-repo` / `TODO-set-domain` occurrences. `pnpm check-placeholders` blocks `release-readiness.yml` until resolved.
+
+### Architecture follow-up (not shipped, design discussion needed)
+
+- `Todo.md:1151–1155` parent bullet still `- [ ]` because the v0.1 architecture sub-item (move plugin execution into `electron.utilityProcess.fork()` with `MessagePortMain` RPC + Node 20 `--permission` flags scoped to manifest-declared workspace + hosts; on macOS `sandbox-exec`, on Windows Job Object + `CreateRestrictedToken`, on Linux seccomp-bpf) is explicitly deferred per the closeout. The three Phase 15 deliverables (honest docs, hard-fail unsigned, symmetric `registerTool` permission gate) shipped and closed the "user is lied to" + "unsigned silent install" + "asymmetric tier gate" risks.
+
+### Small polish discovered this session
+
+- **`packages/runner-aider/README.md`** still claims `streaming: false` for UX-spinner reasons. The runner now reports `streaming: true`. Reconcile: either the README rationale is stale (update it), or the spinner-UX argument means the streaming flag is misleading (and we should add a `displayMode: 'spinner' | 'stream'` capability to `SubagentRunner`). The contract change is the bigger lift.
+- **`withTraceContext` AsyncLocalStorage helper** — proposed in the debugging guide's structured-logging section. Would let any logger call inside the agent loop / chat runtime / scheduler automatically include `streamId`, `conversationId`, `runId`, `taskId` without thread-through-every-call. Easy follow-up — 4 entry points to wire.
+- **Diagnose script extensions** — could add a `--bundle` flag that zips the JSON + redacted log tails into a single file for user-shareable bug reports. Today the JSON-blob output is good enough; bundle helper is a one-evening UX win.
+
+**Repo remains shippable as v0.1 + Phases 9 / 10 / 11 / 12 / 13 / 14 / 15 / 15.19 / 15.20 once macOS+Windows certs land, `PLACEHOLDERS.md` is filled, and a public release is published.**
 
 ## Context Notes
 
-### The agent team Phase 13 used
+### The pattern this session used (3-lane parallel fan-out + creative deliverable)
 
-Per the user's `/goal` request: a multi-role team with explicit roles. This session validated the pattern:
+Per the user's `/goal` request ("deeply analyze this code base and come up with an easy way for future agents to determine how and why something might not be working as intended. Also check any open items on the todo.md and complete those tasks. Fan out as many agents as possible"), three lanes ran in parallel:
 
-- **Orchestrator (me) = context manager.** Stayed lean by never reading large source files directly. Delegated all file reads to the researcher and the lane agents. Total orchestrator context burn was a fraction of Phase 12's because the researcher's pre-bundle removed redundant cross-lane reads.
-- **Researcher (1 read-only agent) = the assistant that feeds items needing searching.** 8 specific architectural questions, returned in <1000 words with file:line citations and short code excerpts. Findings bundled verbatim into the 3 lane prompts so the implementers didn't re-discover the same patterns.
-- **Lane A / B / C (3 implementation agents) = the implementers.** Strict file ownership, no overlap, parallel execution. Each reported in <500 words with explicit cross-lane flags for handoffs they couldn't reach.
-- **Consolidation agent (1) = the cross-lane stitcher.** Single focused pass on the 4 cross-lane items the lanes flagged. Surgical edits, no scope creep.
-- **Wrap-up agent (1) = tests + docs.** Read the source first (per prompt), then wrote tests matching the existing project style, plus 3 targeted docs edits.
+- **Lane A (creative artifact, 1 agent)** — debugging guide + diagnose script. The creative core of the goal. Took the longest (~16 min wall) because it required reading the codebase across all 21 subsystems before writing anything.
+- **Lane B (final code items, 1 agent)** — 6 specific Todo.md bullets with clear file targets.
+- **Lane C (Todo.md sweep round 2, 1 agent)** — bookkeeping; verifies + flips bullets that the prior sweep was too cautious about.
 
-The pattern of _researcher → lanes-in-parallel → consolidation → wrap-up_ fits inside one orchestrator context window even for substantive features. Recommended reuse for Phase 14+ if architecture-heavy.
+All three reported in <500 words each. Zero cross-lane conflicts (A touched `docs/` + `scripts/` + root `package.json`; B touched `packages/core` + a few renderer/runner files; C touched only `Todo.md`).
 
-### New "runner" namespace on the bridge
+### How a future agent should USE the debugging guide
 
-Phase 13 added `window.opencodex.runner.*` as a new top-level namespace, distinct from the existing `window.opencodex.agent.*`. Authoring rule: anything about an **individual runner adapter's lifecycle** (install, probe, friendly-errors) lives under `runner.*`; anything about the **agent-run registry or model layer** (listRuns, listRunners, spawnFromUi) stays under `agent.*`. Lane C deferred to this distinction; future lanes should preserve it.
+When the next session asks "X isn't working" / "diagnose Y":
 
-### Phase 12 → Phase 13 follow-up still open
+1. Run `pnpm diagnose` first — captures the static health of every subsystem in 2-3 seconds.
+2. Look at the Failure-mode catalog in `docs/agent-debugging-guide.md` for symptoms matching the user's report.
+3. The catalog points at file:line. Read that file:line first, NOT a top-down architecture survey.
+4. The Subsystem map names the IPC channel + setting + related test for every subsystem — confirms what to grep, log, or re-run.
+5. If the symptom isn't in the catalog, add it. Keep the catalog current — that's how the doc stays useful.
 
-Phase 12 deferred polish noted "delete the now-redundant `isGitRepo` check inside `bootstrapWorktreeOrSkip`" — still applies. Lane B did NOT touch it in this session; the redundant check is defensive-by-design and harmless.
+### Why the diagnose script exits 1 on warns
 
-### TS Mock-type recurring lesson
+Documented behavior. Exit 0 = all green, 1 = at least one warn (e.g., no API keys configured yet, no active workspace yet), 2 = at least one hard fail (e.g., DB integrity check failed, sqlite ABI mismatch). CI should NOT gate on `pnpm diagnose` as a green-only check — it's informational. If you want a gated check, use `pnpm diagnose 2>&1 | grep -c "✗"` and assert 0.
 
-For RTL + jsdom test files, **use `import { type Mock } from 'vitest'` + bare `Mock` annotations**, NEVER `ReturnType<typeof vi.fn>`. The latter gives `Mock<any[], unknown>` from the bare overload, but `vi.fn(async () => undefined)` returns the narrower `Mock<[], Promise<undefined>>` — assignment fails because `Mock` is invariant. This bit Phase 12 once; Phase 13's `RunnersStep.test.tsx` correctly used the bare-`Mock` pattern from the start.
+### Recurring vitest lessons (verified again this session)
+
+- For RTL + jsdom test files use `import { type Mock } from 'vitest'` + bare `Mock` annotations.
+- `vi.useFakeTimers` MUST scope to `['setTimeout', 'clearTimeout']` if RTL is in play. Including `Date` deadlocks `waitFor` against wall-clock. Replace `waitFor` with sync assertions inside `act(() => vi.advanceTimersByTime(N))`.
+- Keydown listeners are NOW scoped to modal/section refs (15.9 + 15.20). Tests must dispatch on the dialog/root element, not `document`.
+- `window.opencodex` direct reads are FORBIDDEN. Use `getBridge()` from `apps/desktop/src/renderer/bridge.ts`.
 
 ### Pre-existing carry-overs
 
-- Node v20 pinned. `@electron/rebuild` postinstall (Phase 12) resolves the 92 better-sqlite3 ABI test failures on fresh installs.
+- Node v20 pinned.
 - Path has space + period (`OPEN UI.UX`) — quote in shell.
-- `packages/*` tsconfig is `noEmit: true` — switch to `tsup` before any `pnpm publish` of standalone packages.
-- Stray `.tmp` file in repo root — should be deleted before tag (placeholder gate catches it).
+- `apps/desktop/src/test/setup.ts` Proxy-bridge test setup (15.1#5) is loaded via vitest `setupFiles`. Extend its mockBridge in-place rather than re-defining `window.opencodex` from scratch.
+- `packages/core` exports map now has subpaths for `./process/tree-kill` (Phase 15.1) and `./test-helpers` (Phase 15.20). Add new subpaths as siblings — don't restructure the main `.` entry.
 
-### Files added this session (Phase 13)
+### Files added/touched this session (Phase 15.20)
 
-**New main-process source (4):**
+**New files (5):**
 
-- `apps/desktop/src/main/agent/runner-install.ts`
-- `apps/desktop/src/main/agent/runner-probe.ts`
-- `apps/desktop/src/main/agent/runner-friendly-errors.ts`
-- `apps/desktop/src/main/agent/git-init.ts`
+- `docs/agent-debugging-guide.md` — the debugging guide
+- `apps/desktop/scripts/diagnose.mjs` — the runnable health probe
+- `packages/core/src/test-helpers/assert-provider-honors-abort.ts` — the abort-helper
+- `packages/core/src/test-helpers/index.ts` — barrel
+- `packages/provider-openai/src/assert-provider-honors-abort.test.ts` — worked example
+- `packages/plugin-sdk/README.md` — pattern doc (also new)
 
-**New shared (1):**
+**Edited (5):**
 
-- `apps/desktop/src/shared/runner-discovery.ts`
-
-**New renderer (2):**
-
-- `apps/desktop/src/renderer/components/onboarding/RunnersStep.tsx`
-- `apps/desktop/src/renderer/components/RunnerDiscoveryCards.tsx`
-
-**New tests (4):**
-
-- `apps/desktop/src/main/agent/runner-probe.test.ts`
-- `apps/desktop/src/main/agent/git-init.test.ts`
-- `apps/desktop/src/main/agent/runner-friendly-errors.test.ts`
-- `apps/desktop/src/renderer/components/onboarding/RunnersStep.test.tsx`
-
-**New IPC channels (6):**
-
-- `runner:list-package-managers` (invoke)
-- `runner:install` (invoke)
-- `runner:install-progress` (event)
-- `runner:probe-auth` (invoke)
-- `git:init-repo` (invoke)
-- `runner:friendly-error` (event)
-
-**DB migrations (1):**
-
-- v10: `ALTER TABLE tool_calls ADD COLUMN runner_id TEXT;`
-
-**Docs edits (3):**
-
-- `MANUAL.md` Runners section — 5 new subsections.
-- `docs/runner-authoring.md` — "Contributing friendly-error patterns" section.
-- `QUICKSTART.md` — one-line runner-step nudge after step 4.
+- `packages/core/src/index.ts` — re-export
+- `packages/core/package.json` — exports map
+- `apps/desktop/src/renderer/components/SettingsRail.tsx` — Cmd+F scoping
+- `packages/runner-aider/src/runner.ts` — streaming flag flip
+- `website/pages/guides/runners.mdx` — runner comparison table
+- `Todo.md` — 20 bullets flipped in round-2 sweep
+- root `package.json` — added `diagnose` script
+- `HANDOFF.md` — this file

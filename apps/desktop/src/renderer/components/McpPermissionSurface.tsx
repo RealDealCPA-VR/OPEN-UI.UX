@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { McpServerGrant } from '../../shared/mcp-registry';
+import { getBridge } from '../bridge';
 
 export function McpPermissionSurface(): JSX.Element {
   const [grants, setGrants] = useState<McpServerGrant[] | null>(null);
@@ -7,8 +8,10 @@ export function McpPermissionSurface(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    const bridge = getBridge();
+    if (!bridge) return;
     try {
-      const res = await window.opencodex.mcp.getPermissions();
+      const res = await bridge.mcp.getPermissions();
       setGrants(res.grants);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -16,10 +19,12 @@ export function McpPermissionSurface(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    const bridge = getBridge();
+    if (!bridge) return;
     queueMicrotask(() => {
       void refresh();
     });
-    const off = window.opencodex.mcp.onChanged(() => {
+    const off = bridge.mcp.onChanged(() => {
       void refresh();
     });
     return off;
@@ -27,10 +32,12 @@ export function McpPermissionSurface(): JSX.Element {
 
   const onRevoke = useCallback(
     async (serverId: string) => {
+      const bridge = getBridge();
+      if (!bridge) return;
       setBusyId(serverId);
       setError(null);
       try {
-        const res = await window.opencodex.mcp.revokePermission({ serverId });
+        const res = await bridge.mcp.revokePermission({ serverId });
         if (!res.ok) setError(res.error ?? 'Failed to revoke');
         await refresh();
       } finally {

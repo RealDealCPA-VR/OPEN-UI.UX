@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import type { RunnerInfo, RunnerInstallCheck } from '../../shared/ipc-types';
 import type { GitInitResult, RunnerProbeResult } from '../../shared/runner-discovery';
+import { getBridge } from '../bridge';
 import { useSelectedModel } from '../state/selected-model-context';
 import { Modal } from './Modal';
 import { useToast } from './Toasts';
@@ -49,9 +50,6 @@ export function AgentSpawnModal({
   );
   const [modelId, setModelId] = useState<string>(selected?.modelId ?? '');
   const [workspaceRoot, setWorkspaceRoot] = useState<string>(initialWorkspaceRoot ?? '');
-  const [lastInitialWorkspaceRoot, setLastInitialWorkspaceRoot] = useState<string | undefined>(
-    initialWorkspaceRoot,
-  );
   const [useWorktree, setUseWorktree] = useState<boolean>(false);
   const [isRepoState, setIsRepoState] = useState<{ root: string; isRepo: boolean | null } | null>(
     null,
@@ -68,16 +66,18 @@ export function AgentSpawnModal({
   const [gitInitError, setGitInitError] = useState<string | null>(null);
   const toast = useToast();
 
-  if (initialWorkspaceRoot !== lastInitialWorkspaceRoot) {
-    setLastInitialWorkspaceRoot(initialWorkspaceRoot);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (initialWorkspaceRoot) setWorkspaceRoot(initialWorkspaceRoot);
-  }
+  }, [initialWorkspaceRoot]);
 
   useEffect(() => {
     if (initialWorkspaceRoot) return;
     if (workspaceRoot) return;
+    const bridge = getBridge();
+    if (!bridge) return;
     let cancelled = false;
-    void window.opencodex.workspace
+    void bridge.workspace
       .get()
       .then((s) => {
         if (!cancelled && s.active) setWorkspaceRoot(s.active);
@@ -90,9 +90,11 @@ export function AgentSpawnModal({
 
   useEffect(() => {
     if (!workspaceRoot) return;
+    const bridge = getBridge();
+    if (!bridge) return;
     let cancelled = false;
     const root = workspaceRoot;
-    void window.opencodex.git
+    void bridge.git
       .isRepo(root)
       .then((r) => {
         if (!cancelled) setIsRepoState({ root, isRepo: r.isRepo });
@@ -106,15 +108,17 @@ export function AgentSpawnModal({
   }, [workspaceRoot]);
 
   useEffect(() => {
+    const bridge = getBridge();
+    if (!bridge) return;
     let cancelled = false;
     const fetchAndCheck = async (): Promise<void> => {
       try {
-        const list = await window.opencodex.agent.listRunners();
+        const list = await bridge.agent.listRunners();
         if (cancelled) return;
         setRunners(list);
         for (const r of list) {
           if (r.source === 'builtin') continue;
-          void window.opencodex.agent
+          void bridge.agent
             .checkRunnerInstalled(r.id)
             .then((status) => {
               if (cancelled) return;
@@ -127,7 +131,7 @@ export function AgentSpawnModal({
       }
     };
     void fetchAndCheck();
-    const off = window.opencodex.agent.onRunnersChanged(() => {
+    const off = bridge.agent.onRunnersChanged(() => {
       void fetchAndCheck();
     });
     return () => {
@@ -147,9 +151,11 @@ export function AgentSpawnModal({
 
   const refreshIsRepo = useCallback(async (): Promise<boolean> => {
     if (!workspaceRoot) return false;
+    const bridge = getBridge();
+    if (!bridge) return false;
     const root = workspaceRoot;
     try {
-      const r = await window.opencodex.git.isRepo(root);
+      const r = await bridge.git.isRepo(root);
       setIsRepoState({ root, isRepo: r.isRepo });
       return r.isRepo;
     } catch {
@@ -231,8 +237,10 @@ export function AgentSpawnModal({
   const effectiveUseWorktree = isExternalRunner ? true : useWorktree && isRepo === true;
 
   const handleBrowse = useCallback(async () => {
+    const bridge = getBridge();
+    if (!bridge) return;
     try {
-      const next = await window.opencodex.workspace.browse();
+      const next = await bridge.workspace.browse();
       if (next.active) setWorkspaceRoot(next.active);
     } catch {
       // dialog cancelled
@@ -255,7 +263,9 @@ export function AgentSpawnModal({
     setFieldErrors({});
     setBusy(true);
     try {
-      const res = await window.opencodex.agent.spawnFromUi({
+      const bridge = getBridge();
+      if (!bridge) throw new Error('Preload bridge unavailable.');
+      const res = await bridge.agent.spawnFromUi({
         task: task.trim(),
         providerId,
         modelId: effectiveModelId,

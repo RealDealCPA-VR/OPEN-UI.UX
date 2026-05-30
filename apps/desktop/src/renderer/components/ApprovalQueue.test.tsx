@@ -75,9 +75,9 @@ describe('ApprovalQueue', () => {
     act(() => {
       bridge.emit(makeRequest());
     });
-    await waitFor(() => screen.getByRole('dialog'));
+    const dialog = await waitFor(() => screen.getByRole('dialog'));
     act(() => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      dialog.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
     });
     await waitFor(() =>
       expect(bridge.respond).toHaveBeenCalledWith({
@@ -93,9 +93,9 @@ describe('ApprovalQueue', () => {
     act(() => {
       bridge.emit(makeRequest());
     });
-    await waitFor(() => screen.getByRole('dialog'));
+    const dialog = await waitFor(() => screen.getByRole('dialog'));
     act(() => {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(bridge.respond).not.toHaveBeenCalled();
   });

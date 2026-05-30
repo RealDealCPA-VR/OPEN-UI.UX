@@ -2,7 +2,7 @@
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AgentSpawnModal } from './AgentSpawnModal';
+import type * as AgentSpawnModalModule from './AgentSpawnModal';
 
 interface Runner {
   id: string;
@@ -45,6 +45,15 @@ function mockOpencodexBridge(opts: { runners: Runner[]; isRepo: boolean }): void
   } as unknown as Window['opencodex'];
 }
 
+// `vi.doMock` (used by `mockSelectedModel`) does NOT hoist above static
+// imports, so the component must be imported dynamically AFTER the doMock
+// runs. `vi.resetModules()` in afterEach ensures each test gets a fresh
+// module graph that picks up that test's mock.
+async function importComponent(): Promise<typeof AgentSpawnModalModule.AgentSpawnModal> {
+  const mod = await import('./AgentSpawnModal');
+  return mod.AgentSpawnModal;
+}
+
 const builtinRunner: Runner = {
   id: 'internal',
   displayName: 'Built-in',
@@ -59,6 +68,7 @@ const externalRunner: Runner = {
 
 describe('AgentSpawnModal', () => {
   beforeEach(() => {
+    vi.resetModules();
     mockSelectedModel([{ id: 'openai', models: ['gpt-4o', 'gpt-4o-mini'] }]);
   });
 
@@ -71,6 +81,7 @@ describe('AgentSpawnModal', () => {
 
   it('shows provider + model controls when the internal runner is selected', async () => {
     mockOpencodexBridge({ runners: [builtinRunner, externalRunner], isRepo: true });
+    const AgentSpawnModal = await importComponent();
     render(
       <AgentSpawnModal
         initialTask="do the thing"
@@ -85,6 +96,7 @@ describe('AgentSpawnModal', () => {
 
   it('hides provider + model selects and forces useWorktree on when an external runner is selected', async () => {
     mockOpencodexBridge({ runners: [builtinRunner, externalRunner], isRepo: true });
+    const AgentSpawnModal = await importComponent();
     render(
       <AgentSpawnModal
         initialTask="do x"
@@ -100,8 +112,11 @@ describe('AgentSpawnModal', () => {
       fireEvent.change(runnerSelect, { target: { value: 'claude-code' } });
     });
 
-    expect(screen.queryByText(/Provider/i)).toBeNull();
-    expect(screen.queryByText(/Model/i)).toBeNull();
+    // Match the field labels exactly — the helper text under an external
+    // runner mentions "approval model", which would (and used to) collide
+    // with a loose /Model/i regex.
+    expect(screen.queryByText(/^Provider$/)).toBeNull();
+    expect(screen.queryByText(/^Model$/)).toBeNull();
 
     const worktreeCheckbox = screen.getByRole('checkbox') as HTMLInputElement;
     expect(worktreeCheckbox.checked).toBe(true);
@@ -110,6 +125,7 @@ describe('AgentSpawnModal', () => {
 
   it('restores provider + model and unlocks worktree when switching back to internal', async () => {
     mockOpencodexBridge({ runners: [builtinRunner, externalRunner], isRepo: true });
+    const AgentSpawnModal = await importComponent();
     render(
       <AgentSpawnModal
         initialTask="x"
@@ -132,8 +148,12 @@ describe('AgentSpawnModal', () => {
   });
 
   it('keeps the submit button enabled with an external runner even if provider/model are unset', async () => {
-    mockSelectedModel([]); // no providers configured
+    // Re-mock with zero configured providers — must reset modules first so the
+    // fresh `doMock` is what the dynamic import picks up.
+    vi.resetModules();
+    mockSelectedModel([]);
     mockOpencodexBridge({ runners: [builtinRunner, externalRunner], isRepo: true });
+    const AgentSpawnModal = await importComponent();
     render(
       <AgentSpawnModal
         initialTask="do x"

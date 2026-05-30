@@ -14,6 +14,10 @@
     "./process/tree-kill": {
       "types": "./dist/process/tree-kill.d.ts",
       "import": "./dist/process/tree-kill.js"
+    },
+    "./test-helpers": {
+      "types": "./dist/test-helpers/index.d.ts",
+      "import": "./dist/test-helpers/index.js"
     }
   },
   "files": [

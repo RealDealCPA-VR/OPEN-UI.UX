@@ -38,15 +38,22 @@ export function FanoutConsentModal({ request, onResolved }: FanoutConsentModalPr
   });
 
   useEffect(() => {
-    if (remainingMs === null) return;
+    if (!request.autoAllowDelayMs) return;
+    let cancelled = false;
     const id = window.setInterval(() => {
+      if (cancelled) return;
       const elapsed = Date.now() - request.requestedAt;
       const remaining = Math.max(0, (request.autoAllowDelayMs ?? 0) - elapsed);
       setRemainingMs(remaining);
-      if (remaining <= 0) window.clearInterval(id);
+      if (remaining <= 0) {
+        window.clearInterval(id);
+      }
     }, 250);
-    return () => window.clearInterval(id);
-  }, [request.autoAllowDelayMs, request.requestedAt, remainingMs]);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [request.autoAllowDelayMs, request.requestedAt]);
 
   const submit = async (decision: FanoutConsentDecision): Promise<void> => {
     const b = bridge();
