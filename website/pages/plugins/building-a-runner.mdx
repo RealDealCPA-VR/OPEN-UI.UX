@@ -3,7 +3,10 @@ import { Callout } from 'nextra/components';
 # Building a Runner
 
 <Callout type="info">
-  Mirrored from [`docs/runner-authoring.md`](https://github.com/RealDealCPA-VR/OPEN-UI.UX/blob/main/docs/runner-authoring.md). See also the user-facing [Agent runners guide](../guides/runners/) and the [SDK API reference](./api/).
+  Mirrored from
+  [`docs/runner-authoring.md`](https://github.com/RealDealCPA-VR/OPEN-UI.UX/blob/main/docs/runner-authoring.md).
+  See also the user-facing [Agent runners guide](../guides/runners/) and the [SDK API
+  reference](./api/).
 </Callout>
 
 A "runner" in OpenCodex is anything that implements `SubagentRunner`. The built-in runner runs in-process through whichever `LLMProvider` you have configured; first-party adapters wrap Claude Code, OpenCode, and Aider; third parties ship their own through the plugin SDK.
@@ -18,9 +21,9 @@ In short: providers stream tokens; runners run tasks.
 
 ```ts
 interface SubagentRunner {
-  readonly id: string;          // unique across all runners
+  readonly id: string; // unique across all runners
   readonly displayName: string; // shown in the picker
-  readonly streaming: boolean;  // false → UI shows a spinner only
+  readonly streaming: boolean; // false → UI shows a spinner only
   checkInstalled(): Promise<{
     installed: boolean;
     version?: string;
@@ -37,13 +40,13 @@ interface SubagentRunner {
 
 Whatever the underlying CLI streams (NDJSON, SSE, plain stdout), the agent loop only understands `ChatEvent`. The required terminal event is `done`. Conventionally, `usage` is emitted just before `done` so the cost meter has a final tally before the run is marked complete.
 
-| Event | Semantics |
-|---|---|
-| `text_delta` | Incremental assistant text. Yield as bytes arrive — do not buffer the whole turn. |
-| `tool_call` | A complete tool invocation: `{ id, name, input }`. `id` must be unique within the run. |
-| `tool_result` | The CLI's observation of a tool call: `{ id, output, isError? }`. |
-| `usage` | `{ inputTokens, outputTokens, cachedInputTokens? }`. Recommended once near the end. |
-| `done` | **Required** terminal event. `stopReason` is one of `stop`, `tool_use`, `max_tokens`, `cancelled`, `runner_error`, `runner_not_installed`. |
+| Event         | Semantics                                                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `text_delta`  | Incremental assistant text. Yield as bytes arrive — do not buffer the whole turn.                                                          |
+| `tool_call`   | A complete tool invocation: `{ id, name, input }`. `id` must be unique within the run.                                                     |
+| `tool_result` | The CLI's observation of a tool call: `{ id, output, isError? }`.                                                                          |
+| `usage`       | `{ inputTokens, outputTokens, cachedInputTokens? }`. Recommended once near the end.                                                        |
+| `done`        | **Required** terminal event. `stopReason` is one of `stop`, `tool_use`, `max_tokens`, `cancelled`, `runner_error`, `runner_not_installed`. |
 
 <Callout type="warning">
   Don't throw out of the iterator on CLI failure — the loop translates a throw into a generic error and loses your streamed events. Yield `{ type: 'done', stopReason: 'runner_error', error: '<message>' }` instead.
@@ -138,7 +141,8 @@ Without the `agent.runner` permission, `host.registerRunner` throws at activatio
 ## Worktree caveat
 
 <Callout type="warning">
-  External runners always run inside a git worktree. If the workspace is not a git repo, OpenCodex refuses to start the run and emits `done` with `stopReason: 'runner_error'`. There is no fallback.
+  External runners always run inside a git worktree. If the workspace is not a git repo, OpenCodex
+  refuses to start the run and emits `done` with `stopReason: 'runner_error'`. There is no fallback.
 </Callout>
 
 OpenCodex creates a fresh worktree under `<workspace>/.opencodex/worktrees/<run-id>` on branch `opencodex/subagent/<run-id>`, sets it as the CLI's `cwd`, and queues the resulting diff for review when the run finishes. Design your adapter assuming `cwd` is always a throwaway branch.

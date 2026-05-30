@@ -3,7 +3,9 @@ import { Callout } from 'nextra/components';
 # Plugin SDK API Reference
 
 <Callout type="info">
-  Generated from [`packages/plugin-sdk/src/`](https://github.com/RealDealCPA-VR/OPEN-UI.UX/tree/main/packages/plugin-sdk/src). Keep this page in sync when SDK shapes change.
+  Generated from
+  [`packages/plugin-sdk/src/`](https://github.com/RealDealCPA-VR/OPEN-UI.UX/tree/main/packages/plugin-sdk/src).
+  Keep this page in sync when SDK shapes change.
 </Callout>
 
 The `@opencodex/plugin-sdk` package is the public surface for plugin authors. Everything below is exported from the package root.
@@ -46,8 +48,8 @@ const ManifestSchema = z.object({
   author: z.string().optional(),
   license: z.string().optional(),
   homepage: z.string().url().optional(),
-  entry: z.string(),                              // relative path to the JS entry
-  engines: z.object({ opencodex: z.string() }),   // semver range
+  entry: z.string(), // relative path to the JS entry
+  engines: z.object({ opencodex: z.string() }), // semver range
   permissions: z.array(PermissionSchema).default([]),
   contributions: ContributionSchema.default({}),
 });
@@ -57,19 +59,19 @@ type PluginManifest = z.infer<typeof ManifestSchema>;
 
 ### Field reference
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `name` | `string` (min 1) | Unique plugin id within the install. Lowercase + hyphens. |
-| `version` | `string` (min 1) | Semver. |
-| `displayName` | `string` (min 1) | Shown in the Plugins panel. |
-| `description` | `string?` | One-line summary. |
-| `author` | `string?` | Free-form. |
-| `license` | `string?` | SPDX id (e.g. `MIT`). |
-| `homepage` | `url?` | Validated as a URL if present. |
-| `entry` | `string` | Path relative to plugin root pointing at the module that default-exports a `Plugin`. |
-| `engines.opencodex` | `string` | Semver range of OpenCodex versions this plugin supports. |
-| `permissions` | `Permission[]` | Defaults to `[]`. |
-| `contributions` | `Contribution` | Defaults to `{}`. |
+| Field               | Type             | Notes                                                                                |
+| ------------------- | ---------------- | ------------------------------------------------------------------------------------ |
+| `name`              | `string` (min 1) | Unique plugin id within the install. Lowercase + hyphens.                            |
+| `version`           | `string` (min 1) | Semver.                                                                              |
+| `displayName`       | `string` (min 1) | Shown in the Plugins panel.                                                          |
+| `description`       | `string?`        | One-line summary.                                                                    |
+| `author`            | `string?`        | Free-form.                                                                           |
+| `license`           | `string?`        | SPDX id (e.g. `MIT`).                                                                |
+| `homepage`          | `url?`           | Validated as a URL if present.                                                       |
+| `entry`             | `string`         | Path relative to plugin root pointing at the module that default-exports a `Plugin`. |
+| `engines.opencodex` | `string`         | Semver range of OpenCodex versions this plugin supports.                             |
+| `permissions`       | `Permission[]`   | Defaults to `[]`.                                                                    |
+| `contributions`     | `Contribution`   | Defaults to `{}`.                                                                    |
 
 ---
 
@@ -86,15 +88,15 @@ type Permission =
   | 'ui.panel';
 ```
 
-| Permission | What it unlocks |
-| --- | --- |
-| `workspace.read` | Register `permissionTier: 'read'` tools. |
-| `workspace.write` | Register `permissionTier: 'write'` tools. |
-| `shell.execute` | Register `permissionTier: 'execute'` tools. |
-| `network.fetch` | Register `permissionTier: 'network'` tools. |
-| `settings.read` | `host.getSetting(key)` returns values. |
-| `settings.write` | `host.setSetting(key, value)` persists. |
-| `ui.panel` | Manifest may declare `contributions.panels[]`. |
+| Permission        | What it unlocks                                |
+| ----------------- | ---------------------------------------------- |
+| `workspace.read`  | Register `permissionTier: 'read'` tools.       |
+| `workspace.write` | Register `permissionTier: 'write'` tools.      |
+| `shell.execute`   | Register `permissionTier: 'execute'` tools.    |
+| `network.fetch`   | Register `permissionTier: 'network'` tools.    |
+| `settings.read`   | `host.getSetting(key)` returns values.         |
+| `settings.write`  | `host.setSetting(key, value)` persists.        |
+| `ui.panel`        | Manifest may declare `contributions.panels[]`. |
 
 ---
 
@@ -104,24 +106,32 @@ type Permission =
 const ContributionSchema = z.object({
   tools: z.array(z.string()).optional(),
   providers: z.array(z.string()).optional(),
-  panels: z.array(z.object({
-    id: z.string(),
-    title: z.string(),
-    entry: z.string(),
-  })).optional(),
-  slashCommands: z.array(z.object({
-    name: z.string(),
-    entry: z.string(),
-  })).optional(),
+  panels: z
+    .array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        entry: z.string(),
+      }),
+    )
+    .optional(),
+  slashCommands: z
+    .array(
+      z.object({
+        name: z.string(),
+        entry: z.string(),
+      }),
+    )
+    .optional(),
 });
 ```
 
-| Field | Element shape | Notes |
-| --- | --- | --- |
-| `tools` | `string` | Names of tools this plugin registers via `host.registerTool()`. Must match the registered `Tool.name`. |
-| `providers` | `string` | Names of `ProviderFactory.id`s this plugin registers. |
-| `panels` | `{ id, title, entry }` | `entry` is the HTML file (relative to plugin root). Loaded into a sandboxed iframe. |
-| `slashCommands` | `{ name, entry }` | `entry` resolves a handler — surfaced as `/<name>` in the chat composer. |
+| Field           | Element shape          | Notes                                                                                                  |
+| --------------- | ---------------------- | ------------------------------------------------------------------------------------------------------ |
+| `tools`         | `string`               | Names of tools this plugin registers via `host.registerTool()`. Must match the registered `Tool.name`. |
+| `providers`     | `string`               | Names of `ProviderFactory.id`s this plugin registers.                                                  |
+| `panels`        | `{ id, title, entry }` | `entry` is the HTML file (relative to plugin root). Loaded into a sandboxed iframe.                    |
+| `slashCommands` | `{ name, entry }`      | `entry` resolves a handler — surfaced as `/<name>` in the chat composer.                               |
 
 ---
 
@@ -141,15 +151,15 @@ interface PluginHost {
 }
 ```
 
-| Member | Description |
-| --- | --- |
-| `pluginId` | Echoes `manifest.name`. Useful for namespacing keys. |
-| `logger` | Pino-shaped: `info(msg, meta?)`, `warn(...)`, `error(...)`. Output goes to the host's log file. |
-| `registerTool(tool)` | Adds a `Tool` to the shared `ToolRegistry` as `plugin__<id>__<name>`. Unregistered on `deactivate()` or uninstall. |
-| `registerProvider(provider)` | Adds a `ProviderFactory` to the host registry. |
-| `registerSlashCommand(name, handler)` | Surface a `/`-command in the chat composer. |
-| `getSetting(key)` | Reads from the plugin's namespaced settings bucket. Requires `settings.read`. Returns `undefined` if unset. |
-| `setSetting(key, value)` | Persists into the plugin's namespaced settings bucket. Requires `settings.write`. |
+| Member                                | Description                                                                                                        |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `pluginId`                            | Echoes `manifest.name`. Useful for namespacing keys.                                                               |
+| `logger`                              | Pino-shaped: `info(msg, meta?)`, `warn(...)`, `error(...)`. Output goes to the host's log file.                    |
+| `registerTool(tool)`                  | Adds a `Tool` to the shared `ToolRegistry` as `plugin__<id>__<name>`. Unregistered on `deactivate()` or uninstall. |
+| `registerProvider(provider)`          | Adds a `ProviderFactory` to the host registry.                                                                     |
+| `registerSlashCommand(name, handler)` | Surface a `/`-command in the chat composer.                                                                        |
+| `getSetting(key)`                     | Reads from the plugin's namespaced settings bucket. Requires `settings.read`. Returns `undefined` if unset.        |
+| `setSetting(key, value)`              | Persists into the plugin's namespaced settings bucket. Requires `settings.write`.                                  |
 
 ---
 
@@ -182,7 +192,7 @@ interface Plugin {
 ## `definePlugin(plugin)`
 
 ```ts
-function definePlugin(plugin: Plugin): Plugin
+function definePlugin(plugin: Plugin): Plugin;
 ```
 
 Identity function with the type narrowed. Always use this for the default export so the TypeScript shape is checked at build time:
@@ -191,7 +201,9 @@ Identity function with the type narrowed. Always use this for the default export
 import { definePlugin } from '@opencodex/plugin-sdk';
 
 export default definePlugin({
-  async activate(host) { /* ... */ },
+  async activate(host) {
+    /* ... */
+  },
 });
 ```
 
@@ -204,7 +216,7 @@ These are exported for the host to load plugins from disk. Plugin authors rarely
 ### `readManifest(pluginPath)`
 
 ```ts
-function readManifest(pluginPath: string): Promise<PluginManifest>
+function readManifest(pluginPath: string): Promise<PluginManifest>;
 ```
 
 Reads `<pluginPath>/opencodex.plugin.json`, JSON.parses, and runs `ManifestSchema.safeParse()`. Throws `PluginLoadError` on any failure.
@@ -212,7 +224,7 @@ Reads `<pluginPath>/opencodex.plugin.json`, JSON.parses, and runs `ManifestSchem
 ### `loadPluginModule(pluginPath, manifest)`
 
 ```ts
-function loadPluginModule(pluginPath: string, manifest: PluginManifest): Promise<Plugin>
+function loadPluginModule(pluginPath: string, manifest: PluginManifest): Promise<Plugin>;
 ```
 
 Dynamically imports the entry module, locates the default `Plugin` export, validates it has an `activate` function. Throws `PluginLoadError` on failure.
@@ -273,8 +285,12 @@ host.registerRunner({
   id: 'my-runner',
   displayName: 'My Runner',
   streaming: true,
-  async checkInstalled() { /* ... */ },
-  async *run(options) { /* yield ChatEvents */ },
+  async checkInstalled() {
+    /* ... */
+  },
+  async *run(options) {
+    /* yield ChatEvents */
+  },
 });
 ```
 
@@ -292,13 +308,13 @@ interface SubagentRunner {
 }
 ```
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | `string` | Unique across all runners. Used as the dropdown value and persisted in scheduled tasks. Convention: lowercase + hyphens (e.g. `claude-code`). |
-| `displayName` | `string` | Shown in the runner picker and Settings → Runners list. |
-| `streaming` | `boolean` | `false` makes the UI show a spinner instead of a live text bubble. Set `false` for runners that only report on exit (Aider). |
-| `checkInstalled()` | `Promise<RunnerInstallStatus>` | Probed by Settings and at the start of every run. Keep under ~3 seconds. |
-| `run(options)` | `AsyncIterable<ChatEvent>` | Must yield exactly one terminal `done` event. Honor `options.signal`. |
+| Field              | Type                           | Notes                                                                                                                                         |
+| ------------------ | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | `string`                       | Unique across all runners. Used as the dropdown value and persisted in scheduled tasks. Convention: lowercase + hyphens (e.g. `claude-code`). |
+| `displayName`      | `string`                       | Shown in the runner picker and Settings → Runners list.                                                                                       |
+| `streaming`        | `boolean`                      | `false` makes the UI show a spinner instead of a live text bubble. Set `false` for runners that only report on exit (Aider).                  |
+| `checkInstalled()` | `Promise<RunnerInstallStatus>` | Probed by Settings and at the start of every run. Keep under ~3 seconds.                                                                      |
+| `run(options)`     | `AsyncIterable<ChatEvent>`     | Must yield exactly one terminal `done` event. Honor `options.signal`.                                                                         |
 
 ---
 
@@ -317,16 +333,16 @@ interface SubagentRunOptions {
 }
 ```
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `runId` | `string` | Stable id for this run. Use as the prefix in your log filename. |
-| `prompt` | `string` | The user's prompt (or, for scheduled tasks, the cron task's prompt body). |
-| `cwd` | `string` | Always a git worktree path for external runners; the workspace root for the `internal` runner. |
-| `model` | `string?` | Provider model id when the runner cares (Claude Code, OpenCode). `undefined` for runners that use their own selector. |
+| Field          | Type                 | Notes                                                                                                                        |
+| -------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `runId`        | `string`             | Stable id for this run. Use as the prefix in your log filename.                                                              |
+| `prompt`       | `string`             | The user's prompt (or, for scheduled tasks, the cron task's prompt body).                                                    |
+| `cwd`          | `string`             | Always a git worktree path for external runners; the workspace root for the `internal` runner.                               |
+| `model`        | `string?`            | Provider model id when the runner cares (Claude Code, OpenCode). `undefined` for runners that use their own selector.        |
 | `allowedTools` | `readonly string[]?` | Tool-name whitelist from the scheduled task or chat session. Pass through to your CLI if it accepts one; otherwise advisory. |
-| `signal` | `AbortSignal` | Aborts on cancel + on host shutdown. Wire to `treeKill(child.pid)`. |
-| `logger` | `PluginLogger` | Scoped to this run. Output lands in `runner-<id>-<runId>.log`. |
-| `cliPath` | `string?` | The user's override from Settings → Runners. Fall back to your default (typically `id`) when unset. |
+| `signal`       | `AbortSignal`        | Aborts on cancel + on host shutdown. Wire to `treeKill(child.pid)`.                                                          |
+| `logger`       | `PluginLogger`       | Scoped to this run. Output lands in `runner-<id>-<runId>.log`.                                                               |
+| `cliPath`      | `string?`            | The user's override from Settings → Runners. Fall back to your default (typically `id`) when unset.                          |
 
 ---
 
@@ -388,13 +404,13 @@ class RunnerRegistry {
 }
 ```
 
-| Method | Description |
-| --- | --- |
+| Method             | Description                                                                     |
+| ------------------ | ------------------------------------------------------------------------------- |
 | `register(runner)` | Adds the runner. Throws `RunnerAlreadyRegisteredError` if `runner.id` collides. |
-| `unregister(id)` | Removes a runner by id. Returns `true` if something was removed. |
-| `get(id)` | Look up a single runner. |
-| `list()` | All currently registered runners, in insertion order. |
-| `has(id)` | Cheap existence check used by the scheduled-task validator. |
+| `unregister(id)`   | Removes a runner by id. Returns `true` if something was removed.                |
+| `get(id)`          | Look up a single runner.                                                        |
+| `list()`           | All currently registered runners, in insertion order.                           |
+| `has(id)`          | Cheap existence check used by the scheduled-task validator.                     |
 
 ---
 

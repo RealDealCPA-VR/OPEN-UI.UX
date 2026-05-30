@@ -44,11 +44,11 @@ Pick `internal` when you want:
 
 ## First-party adapters
 
-| Runner | Package | CLI it spawns | Streaming |
-|---|---|---|---|
-| Claude Code | `@opencodex/runner-claude-code` | `claude` | yes |
-| OpenCode | `@opencodex/runner-opencode` | `opencode` | yes |
-| Aider | `@opencodex/runner-aider` | `aider` | yes (line-by-line) |
+| Runner      | Package                         | CLI it spawns | Streaming          |
+| ----------- | ------------------------------- | ------------- | ------------------ |
+| Claude Code | `@opencodex/runner-claude-code` | `claude`      | yes                |
+| OpenCode    | `@opencodex/runner-opencode`    | `opencode`    | yes                |
+| Aider       | `@opencodex/runner-aider`       | `aider`       | yes (line-by-line) |
 
 Each adapter is a thin wrapper that spawns the CLI as a child process,
 parses its stdout, and yields normalized `ChatEvent`s. None of them ship a
@@ -101,10 +101,10 @@ diff, not the per-call decisions.
 Consequences:
 
 - The OpenCodex per-tool approval policy (`always ask` / `auto-approve
-  reads` / etc.) has no effect on external runs.
+reads` / etc.) has no effect on external runs.
 - The `Allowed tools` whitelist on a scheduled task is not enforced
   per-call when an external runner runs the task. It still gates which
-  tools the runner *receives in its prompt context*, but enforcement is
+  tools the runner _receives in its prompt context_, but enforcement is
   the CLI's responsibility.
 - The audit log records the run start, the run end, and the resulting
   diff — not the individual tool calls the CLI made internally.
@@ -144,6 +144,6 @@ updates the Settings status pill in place.
   as fast as they arrive.
 
 <Callout type="info">
-  Want to ship your own runner? See [Building a runner adapter](../plugins/authoring/#building-a-runner-adapter)
-  in the plugin authoring guide.
+  Want to ship your own runner? See [Building a runner
+  adapter](../plugins/authoring/#building-a-runner-adapter) in the plugin authoring guide.
 </Callout>

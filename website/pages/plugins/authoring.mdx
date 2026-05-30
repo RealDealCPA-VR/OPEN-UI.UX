@@ -3,21 +3,23 @@ import { Callout } from 'nextra/components';
 # Plugin Authoring Guide
 
 <Callout type="info">
-  Mirrored from [`docs/plugin-authoring.md`](https://github.com/RealDealCPA-VR/OPEN-UI.UX/blob/main/docs/plugin-authoring.md). See also [SDK API reference](./api/).
+  Mirrored from
+  [`docs/plugin-authoring.md`](https://github.com/RealDealCPA-VR/OPEN-UI.UX/blob/main/docs/plugin-authoring.md).
+  See also [SDK API reference](./api/).
 </Callout>
 
 OpenCodex plugins are npm packages that extend the host with tools, providers, slash commands, and UI panels. The same registries that hold built-in code accept plugin contributions, so a plugin tool is indistinguishable from a built-in tool at the agent layer.
 
 ## What plugins can contribute
 
-| Contribution    | Status      | Where it lands |
-| --------------- | ----------- | -------------- |
+| Contribution    | Status      | Where it lands                                                  |
+| --------------- | ----------- | --------------------------------------------------------------- |
 | Tools           | wired       | `ToolRegistry` (same registry as `@opencodex/tools` built-ins). |
-| Providers       | wired       | `ProviderRegistry` for `LLMProvider` factories. |
-| Runners         | wired       | `RunnerRegistry` for `SubagentRunner` adapters. |
-| Slash commands  | host method | `PluginHost.registerSlashCommand`. |
-| UI panels       | wired       | sandboxed iframe with `postMessage` bridge. |
-| Settings access | wired       | `PluginHost.getSetting` / `setSetting`. |
+| Providers       | wired       | `ProviderRegistry` for `LLMProvider` factories.                 |
+| Runners         | wired       | `RunnerRegistry` for `SubagentRunner` adapters.                 |
+| Slash commands  | host method | `PluginHost.registerSlashCommand`.                              |
+| UI panels       | wired       | sandboxed iframe with `postMessage` bridge.                     |
+| Settings access | wired       | `PluginHost.getSetting` / `setSetting`.                         |
 
 ## Manifest
 
@@ -41,12 +43,12 @@ Permissions enum:
 
 ```ts
 'workspace.read' |
-'workspace.write' |
-'shell.execute' |
-'network.fetch' |
-'settings.read' |
-'settings.write' |
-'ui.panel'
+  'workspace.write' |
+  'shell.execute' |
+  'network.fetch' |
+  'settings.read' |
+  'settings.write' |
+  'ui.panel';
 ```
 
 `ContributionSchema` lets you declare which named tools / providers / panels / slash commands your plugin owns:
@@ -107,7 +109,8 @@ first-party `claude-code` / `opencode` / `aider` adapters. See the
 [Agent runners guide](../guides/runners/) for the user-facing perspective.
 
 <Callout type="info">
-  For a worked example, see [Building a runner](./building-a-runner/) and the [runner-stub example plugin](https://github.com/RealDealCPA-VR/OPEN-UI.UX/tree/main/examples/plugins/runner-stub).
+  For a worked example, see [Building a runner](./building-a-runner/) and the [runner-stub example
+  plugin](https://github.com/RealDealCPA-VR/OPEN-UI.UX/tree/main/examples/plugins/runner-stub).
 </Callout>
 
 ### Permission
@@ -127,13 +130,13 @@ Without it, `host.registerRunner(...)` throws at activation time.
 
 ```ts
 interface SubagentRunner {
-  readonly id: string;                 // unique across all runners
-  readonly displayName: string;        // shown in the picker
-  readonly streaming: boolean;         // false → UI shows a spinner only
+  readonly id: string; // unique across all runners
+  readonly displayName: string; // shown in the picker
+  readonly streaming: boolean; // false → UI shows a spinner only
   checkInstalled(): Promise<{
     installed: boolean;
     version?: string;
-    detail?: string;                   // shown when installed=false
+    detail?: string; // shown when installed=false
   }>;
   run(options: SubagentRunOptions): AsyncIterable<ChatEvent>;
 }
@@ -148,14 +151,14 @@ The full type — including `SubagentRunOptions`, `ChatEvent`, and the
 Whatever your CLI streams (NDJSON lines, SSE frames, plain stdout chunks),
 the agent loop only understands `ChatEvent`. Map them like this:
 
-| CLI signal | Emit as | Notes |
-|---|---|---|
-| Token / text chunk | `{ type: 'text_delta', delta: '...' }` | Yield as soon as bytes arrive; the renderer reflects partial deltas live. |
-| Tool invocation start | `{ type: 'tool_call', id, name, input }` | `id` must be unique within the run; reuse it on the corresponding `tool_result`. |
-| Tool result / observation | `{ type: 'tool_result', id, output, isError }` | Mirror the CLI's success/failure flag into `isError`. |
-| Run finished cleanly | `{ type: 'done', stopReason: 'stop' \| 'tool_use' \| 'max_tokens' \| 'cancelled' \| 'runner_error' \| 'runner_not_installed' }` | Always emit exactly one terminal event. |
-| Token usage report | `{ type: 'usage', inputTokens, outputTokens, cachedInputTokens? }` | Optional but recommended — feeds the cost meter. |
-| CLI crash / parse failure | `{ type: 'done', stopReason: 'runner_error', error: '<message>' }` | Don't throw out of the iterator; the loop translates a throw into an unhelpful generic error. |
+| CLI signal                | Emit as                                                                                                                         | Notes                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Token / text chunk        | `{ type: 'text_delta', delta: '...' }`                                                                                          | Yield as soon as bytes arrive; the renderer reflects partial deltas live.                     |
+| Tool invocation start     | `{ type: 'tool_call', id, name, input }`                                                                                        | `id` must be unique within the run; reuse it on the corresponding `tool_result`.              |
+| Tool result / observation | `{ type: 'tool_result', id, output, isError }`                                                                                  | Mirror the CLI's success/failure flag into `isError`.                                         |
+| Run finished cleanly      | `{ type: 'done', stopReason: 'stop' \| 'tool_use' \| 'max_tokens' \| 'cancelled' \| 'runner_error' \| 'runner_not_installed' }` | Always emit exactly one terminal event.                                                       |
+| Token usage report        | `{ type: 'usage', inputTokens, outputTokens, cachedInputTokens? }`                                                              | Optional but recommended — feeds the cost meter.                                              |
+| CLI crash / parse failure | `{ type: 'done', stopReason: 'runner_error', error: '<message>' }`                                                              | Don't throw out of the iterator; the loop translates a throw into an unhelpful generic error. |
 
 If your CLI doesn't surface tool calls separately (Aider, for example,
 just writes diffs to disk), skip `tool_call` / `tool_result` entirely and

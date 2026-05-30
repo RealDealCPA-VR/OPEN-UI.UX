@@ -79,9 +79,9 @@ with `stopReason: 'unauthorized_tool'` and lands in the failed-runs list.
 The tool is never executed.
 
 <Callout type="warning">
-  When a scheduled task uses an **external runner** (Claude Code, OpenCode,
-  Aider, plugin), this whitelist is **advisory** — enforcement is the
-  runner's responsibility, not OpenCodex's. See "Picking a runner" below.
+  When a scheduled task uses an **external runner** (Claude Code, OpenCode, Aider, plugin), this
+  whitelist is **advisory** — enforcement is the runner's responsibility, not OpenCodex's. See
+  "Picking a runner" below.
 </Callout>
 
 ## Picking a runner
@@ -96,12 +96,12 @@ how to install and configure them.
 
 When to pick which:
 
-| Runner | Best for | Trade-off |
-|---|---|---|
-| `internal` | Tight host integration; per-call approval; full audit log; rich `ChatEvent` streaming. | Limited to the providers + tools OpenCodex itself supports. |
-| `claude-code` | Long-horizon tasks that benefit from Claude Code's planning loop and its built-in tool surface. | Tool calls are out-of-process; OpenCodex approval modals don't fire — Claude Code's own approval system is authoritative. |
-| `opencode` | Multi-model orchestration; tasks where you want OpenCode's own agent shape rather than OpenCodex's. | Same out-of-process caveat as `claude-code`. |
-| `aider` | Pair-programming-style refactors; tasks that are mostly edit-loops with `git`. | Non-streaming — the UI shows a spinner until the run completes; tool calls aren't itemized. |
+| Runner        | Best for                                                                                            | Trade-off                                                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `internal`    | Tight host integration; per-call approval; full audit log; rich `ChatEvent` streaming.              | Limited to the providers + tools OpenCodex itself supports.                                                               |
+| `claude-code` | Long-horizon tasks that benefit from Claude Code's planning loop and its built-in tool surface.     | Tool calls are out-of-process; OpenCodex approval modals don't fire — Claude Code's own approval system is authoritative. |
+| `opencode`    | Multi-model orchestration; tasks where you want OpenCode's own agent shape rather than OpenCodex's. | Same out-of-process caveat as `claude-code`.                                                                              |
+| `aider`       | Pair-programming-style refactors; tasks that are mostly edit-loops with `git`.                      | Non-streaming — the UI shows a spinner until the run completes; tool calls aren't itemized.                               |
 
 **External-runner tasks always run inside a worktree.** This is enforced —
 OpenCodex creates a fresh worktree under
@@ -135,17 +135,17 @@ For automation from other parts of the codebase (e.g. a future
 "Schedule this skill" button), the renderer-side bridge is
 `window.opencodex.scheduler.*`:
 
-| Method | Description |
-|---|---|
-| `listTasks()` | Read all scheduled tasks. |
-| `createTask(req)` | Create a new task. Throws if the cron expression is invalid. |
-| `updateTask(req)` | Patch fields on an existing task. |
-| `deleteTask(id)` | Remove a task (cascades to its run history). |
-| `runNow(id)` | Fire the task immediately, regardless of its trigger. |
-| `listRuns({ taskId, limit, beforeId })` | Cursor-paginated run history. |
-| `getRun(id)` | Look up a single run row. |
-| `onTasksChanged(listener)` | Subscribe to task-table changes. |
-| `onRunCompleted(listener)` | Fires when a scheduled run finishes. |
+| Method                                  | Description                                                  |
+| --------------------------------------- | ------------------------------------------------------------ |
+| `listTasks()`                           | Read all scheduled tasks.                                    |
+| `createTask(req)`                       | Create a new task. Throws if the cron expression is invalid. |
+| `updateTask(req)`                       | Patch fields on an existing task.                            |
+| `deleteTask(id)`                        | Remove a task (cascades to its run history).                 |
+| `runNow(id)`                            | Fire the task immediately, regardless of its trigger.        |
+| `listRuns({ taskId, limit, beforeId })` | Cursor-paginated run history.                                |
+| `getRun(id)`                            | Look up a single run row.                                    |
+| `onTasksChanged(listener)`              | Subscribe to task-table changes.                             |
+| `onRunCompleted(listener)`              | Fires when a scheduled run finishes.                         |
 
 Every payload is Zod-validated at both the renderer and main boundary;
 invalid cron expressions are rejected at save time, not at tick time.

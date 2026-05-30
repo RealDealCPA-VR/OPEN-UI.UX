@@ -32,22 +32,21 @@ arguments:
     required: false
 cron: 0 9 * * 1-5
 ---
-
 You are producing a daily-standup summary for `{{workspace}}` on {{date}}.
 Run `git log --since={{since}}` and group the work into shipped/in-progress/blockers.
 ```
 
 ### Frontmatter fields
 
-| Field | Type | Notes |
-|---|---|---|
-| `name` | string (kebab-case) | Must match the directory name. Used as `/skill:<name>`. |
-| `description` | string | Shown in the slash dropdown and Settings → Skills list. |
-| `triggers` | string[] | Optional. Substrings that trigger the inline "Try /skill:foo" chip. |
-| `tools` | string[] | Optional. Allowlist of tool names. When set, the chat run for this skill is scoped to those tools only — every other tool is unavailable for that turn. |
-| `arguments` | array | Optional. Each item has `{name, description, required}`. The composer pre-fills `arg=<placeholder>` slots when you pick the skill. |
-| `cron` | string | Optional. When set, OpenCodex auto-registers a scheduled task pointing at this skill (see "Scheduling a skill" below). |
-| `runner` | string | Optional. `runnerId` for the auto-registered scheduled task — `internal` (default), `claude-code`, `opencode`, `aider`, or any plugin-registered runner id. **Applies only when `cron` is set** — chat-invoked skills always use the chat provider path. See the [Agent runners guide](./runners/). |
+| Field         | Type                | Notes                                                                                                                                                                                                                                                                                               |
+| ------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | string (kebab-case) | Must match the directory name. Used as `/skill:<name>`.                                                                                                                                                                                                                                             |
+| `description` | string              | Shown in the slash dropdown and Settings → Skills list.                                                                                                                                                                                                                                             |
+| `triggers`    | string[]            | Optional. Substrings that trigger the inline "Try /skill:foo" chip.                                                                                                                                                                                                                                 |
+| `tools`       | string[]            | Optional. Allowlist of tool names. When set, the chat run for this skill is scoped to those tools only — every other tool is unavailable for that turn.                                                                                                                                             |
+| `arguments`   | array               | Optional. Each item has `{name, description, required}`. The composer pre-fills `arg=<placeholder>` slots when you pick the skill.                                                                                                                                                                  |
+| `cron`        | string              | Optional. When set, OpenCodex auto-registers a scheduled task pointing at this skill (see "Scheduling a skill" below).                                                                                                                                                                              |
+| `runner`      | string              | Optional. `runnerId` for the auto-registered scheduled task — `internal` (default), `claude-code`, `opencode`, `aider`, or any plugin-registered runner id. **Applies only when `cron` is set** — chat-invoked skills always use the chat provider path. See the [Agent runners guide](./runners/). |
 
 ## Argument substitution
 
@@ -107,13 +106,12 @@ source of truth for interactive runs. (Implementation: `chat/runner.ts:93-106`.)
 ---
 name: daily-summary
 description: Generate daily summary of changes
-cron: "0 9 * * *"
+cron: '0 9 * * *'
 runner: claude-code
 tools:
   - read_file
   - glob
 ---
-
 You are producing a one-page daily summary for `{{workspace}}` on {{date}}.
 
 Walk the repo with `glob` + `read_file`, pick the three most interesting
