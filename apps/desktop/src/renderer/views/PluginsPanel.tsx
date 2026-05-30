@@ -181,7 +181,14 @@ export function PluginsPanel(): JSX.Element {
         </span>
       </div>
       {plugins.length === 0 ? (
-        <p className="settings-section-desc">No plugins installed.</p>
+        <div className="audit-empty-state" role="status">
+          <p className="audit-empty">No plugins installed.</p>
+          <p className="audit-empty-sub">
+            Plugins can contribute new tools, providers, runners, slash commands, or UI panels.
+            Click <strong>Install from folder</strong> to load one from disk, or switch to the{' '}
+            <strong>Registry</strong> tab to browse signed entries.
+          </p>
+        </div>
       ) : (
         <ul className="plugin-list">
           {plugins.map((item) => (

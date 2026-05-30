@@ -2,7 +2,15 @@ import type { ConversationSearchHit } from '../../shared/conversation-search';
 import type { CodebaseSearchHit } from '../../shared/codebase-search';
 import type { Skill } from '../../shared/skills';
 
-export type PaletteCategory = 'message' | 'file' | 'skill' | 'mcp-tool';
+export type PaletteCategory = 'action' | 'message' | 'file' | 'skill' | 'mcp-tool';
+
+export interface PaletteAction {
+  id: string;
+  title: string;
+  subtitle: string;
+  keywords: string[];
+  perform: () => void;
+}
 
 export interface PaletteMcpTool {
   serverId: string;
@@ -22,6 +30,7 @@ export interface PaletteEntry {
   file?: CodebaseSearchHit;
   skill?: Skill;
   mcpTool?: PaletteMcpTool;
+  action?: PaletteAction;
 }
 
 interface MergeOptions {
@@ -35,10 +44,26 @@ export function mergePaletteResults(
   fileHits: ReadonlyArray<CodebaseSearchHit>,
   skillHits: ReadonlyArray<Skill>,
   query: string,
-  options: MergeOptions & { mcpTools?: ReadonlyArray<PaletteMcpTool> } = {},
+  options: MergeOptions & {
+    mcpTools?: ReadonlyArray<PaletteMcpTool>;
+    actions?: ReadonlyArray<PaletteAction>;
+  } = {},
 ): PaletteEntry[] {
   const limit = options.perCategoryLimit ?? DEFAULT_PER_CATEGORY;
   const normalizedQuery = query.trim().toLowerCase();
+
+  const actionEntries: PaletteEntry[] = (options.actions ?? [])
+    .filter((a) => matchesAction(a, normalizedQuery))
+    .slice(0, limit)
+    .map((action, idx) => ({
+      id: `action:${action.id}`,
+      category: 'action',
+      title: action.title,
+      subtitle: action.subtitle,
+      detail: null,
+      rank: idx,
+      action,
+    }));
 
   const messageEntries: PaletteEntry[] = messageHits.slice(0, limit).map((hit, idx) => ({
     id: `message:${hit.messageId}`,
@@ -86,7 +111,13 @@ export function mergePaletteResults(
       mcpTool: tool,
     }));
 
-  return [...messageEntries, ...fileEntries, ...skillEntries, ...mcpToolEntries];
+  return [...actionEntries, ...messageEntries, ...fileEntries, ...skillEntries, ...mcpToolEntries];
+}
+
+function matchesAction(action: PaletteAction, normalizedQuery: string): boolean {
+  if (!normalizedQuery) return true;
+  const haystack = `${action.title} ${action.subtitle} ${action.keywords.join(' ')}`.toLowerCase();
+  return haystack.includes(normalizedQuery);
 }
 
 function matchesSkill(skill: Skill, normalizedQuery: string): boolean {
@@ -126,6 +157,7 @@ export function groupByCategory(
   entries: ReadonlyArray<PaletteEntry>,
 ): Record<PaletteCategory, PaletteEntry[]> {
   return {
+    action: entries.filter((e) => e.category === 'action'),
     message: entries.filter((e) => e.category === 'message'),
     file: entries.filter((e) => e.category === 'file'),
     skill: entries.filter((e) => e.category === 'skill'),
@@ -135,5 +167,11 @@ export function groupByCategory(
 
 export function flattenForKeyboardNav(entries: ReadonlyArray<PaletteEntry>): PaletteEntry[] {
   const groups = groupByCategory(entries);
-  return [...groups.message, ...groups.file, ...groups.skill, ...groups['mcp-tool']];
+  return [
+    ...groups.action,
+    ...groups.message,
+    ...groups.file,
+    ...groups.skill,
+    ...groups['mcp-tool'],
+  ];
 }

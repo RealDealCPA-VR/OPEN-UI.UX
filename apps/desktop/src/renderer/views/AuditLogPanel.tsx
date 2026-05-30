@@ -621,10 +621,19 @@ export function AuditLogPanel(): JSX.Element {
       {!data && !loadError && <p className="approvals-loading">Loading…</p>}
 
       {data && data.rows.length === 0 && !loadError && (
-        <p className="audit-empty">
-          No tool calls match these filters
-          {total === 0 && page === 0 ? '. The audit log is empty so far.' : '.'}
-        </p>
+        <div className="audit-empty-state" role="status">
+          {total === 0 && page === 0 ? (
+            <>
+              <p className="audit-empty">No tool calls recorded yet.</p>
+              <p className="audit-empty-sub">
+                Every approved tool call the agent makes — file reads/writes, shell commands, web
+                fetches — is logged here. Start a chat and run a tool to see entries appear.
+              </p>
+            </>
+          ) : (
+            <p className="audit-empty">No tool calls match these filters.</p>
+          )}
+        </div>
       )}
 
       {data && data.rows.length > 0 && (

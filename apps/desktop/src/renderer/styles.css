@@ -185,9 +185,11 @@
 
   /* Text */
   --text-primary: #1d1d1f;
-  --text-secondary: #515154;
-  /* AA contrast against light --bg-base — both >= 4.5:1 vs #ffffff:
-   *   #595c62 ≈ 7.0:1, #76787e ≈ 4.6:1 */
+  /* AA contrast vs light --bg-base #f5f5f7 and panel #ffffff:
+   *   #48484a ≈ 8.2:1, #595c62 ≈ 7.0:1, #76787e ≈ 4.6:1
+   * --text-secondary darkened from #515154 (≈5:1) → #48484a so body
+   * secondary text meets WCAG AA on both surface backgrounds. */
+  --text-secondary: #48484a;
   --text-muted: #595c62;
   --text-faint: #76787e;
   --text-label: #1d1d1f;
@@ -2717,6 +2719,52 @@ body {
   color: var(--text-secondary);
   font-size: 13px;
   padding: 12px 0;
+}
+
+/* Contextual empty-state container: bigger surface that explains the feature
+ * instead of just "nothing here". Used by Audit log, Skills, Plugins. */
+.audit-empty-state {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  margin: 8px 0;
+}
+
+.audit-empty-state .audit-empty {
+  padding: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.audit-empty-sub {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.audit-empty-sub code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-base);
+  color: var(--text-pre);
+}
+
+/* Inline keyboard chip used in ChatView empty state. */
+.chat-empty-kbd {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong-alt);
+  border-radius: var(--radius-xs);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  vertical-align: baseline;
 }
 
 .audit-list {
@@ -6534,8 +6582,11 @@ mark {
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
+  font-family: inherit;
   text-decoration: none;
   margin-right: auto;
+  cursor: pointer;
+  padding: 0;
 }
 .sidebar-help-link:hover {
   background: var(--bg-btn-hover);
@@ -7389,4 +7440,258 @@ mark {
   background: var(--accent-bg);
   padding: 1px 5px;
   border-radius: var(--radius-xs);
+}
+
+/* =========================================================================
+ * Phase 16 — UX polish additions
+ * Keyboard shortcuts modal, status pill iconography, motion guards.
+ * ========================================================================= */
+
+/* Streaming tool-name pulse — moved off inline style to honor reduced-motion. */
+.statusbar-tool-name-streaming {
+  animation: statusbar-pulse 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .statusbar-dot-streaming,
+  .statusbar-tool-name-streaming {
+    animation: none !important;
+  }
+}
+
+/* Keyboard shortcuts cheatsheet modal */
+.kb-shortcuts-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--shadow-overlay);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+.kb-shortcuts-modal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  width: 720px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-modal);
+  overflow: hidden;
+}
+
+.kb-shortcuts-header {
+  padding: 22px 26px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.kb-shortcuts-title {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.kb-shortcuts-desc {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.kb-shortcuts-desc kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong-alt);
+  border-radius: var(--radius-xs);
+  background: var(--bg-base);
+  color: var(--text-primary);
+}
+
+.kb-shortcuts-search {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong-alt);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+.kb-shortcuts-search:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow-soft);
+}
+
+.kb-shortcuts-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 26px 8px;
+}
+
+.kb-shortcuts-empty {
+  padding: 32px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.kb-shortcuts-group {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border-row-divider);
+}
+
+.kb-shortcuts-group:last-child {
+  border-bottom: none;
+}
+
+.kb-shortcuts-group-head {
+  margin-bottom: 8px;
+}
+
+.kb-shortcuts-group-title {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-label);
+}
+
+.kb-shortcuts-group-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.kb-shortcuts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kb-shortcuts-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  gap: 16px;
+  font-size: 13px;
+}
+
+.kb-shortcuts-row-label {
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.kb-shortcuts-row-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.kb-shortcuts-row-key-token {
+  display: inline-flex;
+  align-items: center;
+}
+
+.kb-shortcuts-row-key-token kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 7px;
+  border: 1px solid var(--border-strong-alt);
+  border-radius: var(--radius-xs);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  min-width: 18px;
+  text-align: center;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+}
+
+.kb-shortcuts-row-sep {
+  color: var(--text-faint);
+  font-size: 11px;
+  padding: 0 2px;
+}
+
+.kb-shortcuts-footer {
+  padding: 12px 26px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kb-shortcuts-footer-note {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.kb-shortcuts-footer-note a {
+  color: var(--accent-text);
+  text-decoration: none;
+}
+
+.kb-shortcuts-footer-note a:hover {
+  text-decoration: underline;
+}
+
+.kb-shortcuts-close-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong-alt);
+  background: var(--bg-btn);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.kb-shortcuts-close-btn:hover {
+  background: var(--bg-btn-hover);
+  border-color: var(--border-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kb-shortcuts-backdrop {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* Status pill icon prefix (a11y: status legible without color).
+ * The existing .pill / .pill-ok / .pill-warn / .pill-danger / .pill-local rules
+ * are untouched. This adds an inline <span class="pill-icon"> child only.
+ * Pill aliases (pill-failed, pill-running) consolidate inline styles previously
+ * set on AgentRunRow/ActiveRunCard. */
+.pill-icon {
+  display: inline-block;
+  margin-right: 3px;
+  font-size: 10px;
+  line-height: 1;
+  vertical-align: baseline;
+  font-family: var(--font-mono);
+}
+
+.pill-failed {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+.pill-running {
+  background: var(--accent-soft-bg);
+  border-color: var(--accent-soft-border);
+  color: var(--accent-text);
 }

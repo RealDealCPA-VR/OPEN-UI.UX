@@ -243,10 +243,15 @@ export function SkillsPanel(): JSX.Element {
       {skills === null ? (
         <p className="audit-empty">Loading…</p>
       ) : skills.length === 0 ? (
-        <p className="audit-empty">
-          No skills installed yet. Click <strong>New skill from template</strong> above, or import
-          one from a URL.
-        </p>
+        <div className="audit-empty-state" role="status">
+          <p className="audit-empty">No skills installed yet.</p>
+          <p className="audit-empty-sub">
+            Skills are reusable markdown prompt templates. They appear in the chat composer as{' '}
+            <code>/skill:&lt;name&gt;</code>, can declare an allowed-tools whitelist, and can
+            auto-schedule themselves on a cron. Start with <strong>New skill from template</strong>{' '}
+            above, or import one from the registry below.
+          </p>
+        </div>
       ) : (
         <ul className="audit-list">
           {skills.map((skill) => (

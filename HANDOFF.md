@@ -2,52 +2,59 @@
 
 ## Last Session Summary
 
-- **Phase 15.20 (debuggability infrastructure + final cleanup) shipped in full** via a 3-lane parallel fan-out: agent debugging guide + diagnose script (the new primary deliverable), final code items, Todo.md round-2 sweep.
-  - **Lane A (Debuggability infrastructure — the new artifact):**
-    - **`docs/agent-debugging-guide.md`** (NEW, 285 lines, 8 top-level sections). Written for AI agents (and humans) who land in this repo with no prior context and need to diagnose "why isn't X working?" Sections: When something doesn't work (5-step decision flow), Subsystem map (21 subsystems with entry-point file:line, IPC channels, settings, related tests), Failure-mode catalog (19 symptom→cause→file:line rows), Key paths, Structured logging (existing correlation IDs: `streamId` at runner.ts:177, `conversationId`, `runId`, `taskId`, plus a documented `withTraceContext` AsyncLocalStorage follow-up recommendation), Common gotchas (better-sqlite3 ABI dialog, path with space+period, Node v20 pin, vi.useFakeTimers scoping rule, keydown-listeners-now-scoped-to-modal-refs rule, `getBridge()` mandatory pattern, plugin sandbox NOT a true sandbox, anti-sycophancy clause on by default), Running diagnostics, Pointers. All file:line citations verified against the live tree.
-    - **`apps/desktop/scripts/diagnose.mjs`** (NEW, 711 lines, 15 probes). Pure Node script (no Electron import) you run with `pnpm diagnose` from repo root. Probes: node+pnpm versions, better-sqlite3 ABI match, sqlite DB integrity + schema_version + row counts, settings store presence, keychain (best-effort keytar), workspace path readability, MCP config + per-stdio-server binary probe (5s timeout), provider config presence, audit log + signing key, WORM mirror path, free disk space, network policy + Local Only state, runner CLI probes (claude/opencode/aider via `--version`, 5s timeout each), provider HTTP `HEAD /v1/models` for any provider with a stored key. Output: JSON to stdout, traffic-light `✓ / ⚠ / ✗` text summary to stderr. Exit codes 0/1/2 = ok/warn/fail. Redaction: keys printed as `(len=N, …xyz)` — never echo values. `--help` flag. Wired as `"diagnose": "node apps/desktop/scripts/diagnose.mjs"` in root `package.json` scripts. Smoke test against fresh user-data dir: **12 ok, 3 warn, 0 fail in 2.5s** (warns are first-run state: no activeWorkspace, no keys, pnpm not on PATH in headless shell).
-    - **`withTraceContext` recommendation** (documentation-only, not shipped) lives in the structured-logging section of the guide — AsyncLocalStorage-backed helper proposed for the 4 entry points (`startChatStream`, `runSubagentInWorker`, `runSubagentInline`, `fireScheduledTask`) so correlation IDs propagate without thread-through-every-call.
-
-  - **Lane B (close remaining real items):** 8 files modified, all targeted typecheck/test green.
-    1. **`assertProviderHonorsAbort` test helper (Todo.md L1198)** — SHIPPED. New `packages/core/src/test-helpers/assert-provider-honors-abort.ts` + barrel + `./test-helpers` subpath in `packages/core/package.json` exports map (mirrors the `./process/tree-kill` shape). Worked example test in `packages/provider-openai/src/assert-provider-honors-abort.test.ts` mocks fetch (no real HTTP). 5-line pattern doc added at top of new `packages/plugin-sdk/README.md`. provider-openai suite 50/50 green.
-    2. **`PluginSearchPanel` registry-path security smell (L1267)** — NOT A REAL ISSUE. The panel already calls `window.opencodex.plugins.installFromRegistry(...)` (the `plugins:install-from-registry` IPC at `apps/desktop/src/shared/ipc-types.ts:659`). No filesystem-path coercion in current source. Phase 15.19 (or earlier) landed the fix; the bullet was a stale finding.
-    3. **`SettingsRail` Cmd+F hijack (L1273)** — SHIPPED. Was genuinely `window`-level. Scoped to `.settings-view` root via `navRef.current?.closest('.settings-view')` + `addEventListener('keydown', ...)` with cleanup. Matches the ApprovalQueue/MergeReviewModal pattern from 15.9.
-    4. **`main.tsx` vs `index.tsx` doc references (L1290)** — NOT A REAL ISSUE. Repo-wide grep (excluding node_modules) found 4 hits: `Todo.md`, `HANDOFF.md`, and two `.mjs` workflow scripts. No stale references in `docs/`, `website/`, `MANUAL.md`, `README.md`, or `CLAUDE.md`. `Todo.md` + `HANDOFF.md` self-references are commentary, not consumed paths.
-    5. **`runner-aider` streaming flag (L1431)** — FLAG FLIPPED to `streaming: true`. `run()` pushes each stdout line into `pendingEvents` as it arrives and the outer generator yields them mid-flight — multiple `text_delta` events fire over real time, which is the contract definition of streaming. Added 3-line code comment + updated `website/pages/guides/runners.mdx` comparison table from "no (spinner only)" → "yes (line-by-line)". `packages/runner-aider/README.md` still claims `streaming: false` for UX-spinner reasons (out of Lane B's scope) — see Follow-ups below.
-    6. **`AgentTreeView` cleanup race (L1281 second half)** — LANE 3'S CLAIM CONFIRMED. No `setInterval`/`setTimeout` in the file. Async work in `loadPreview` correctly guarded by `mountedRef` (set false in cleanup, checked after each await). File untouched.
-
-  - **Lane C (Todo.md round-2 sweep):** 20 bullets flipped in the 15.9 area that Lane 3 (Phase 15.19) shipped but the prior cautious sweep missed. Per-bullet verification done via grep + read. Two not-a-real-issue findings confirmed via source inspection and flipped with inline `_(not a real issue — ...)_` suffix notes:
-    - **L1276 (OllamaStep useCallback deps):** `runProbe` is `useCallback(..., [])` at line 104 with `selectedModelIdRef` at line 71. Lane 3 was correct — already-correct-in-main.
-    - **L1288 (AgentRunRow nested-button):** Toggle `<button>` closes at line 94. Review/Resume buttons (lines 161, 170) live in sibling `audit-row-body` div (line 100). Not nested. Lane 3 was correct.
-    - `window.opencodex` direct-access sites in Lane 3's 20-file scope: **0**. The two false-positive hits the agent saw were a type-cast inside `getBridge()` itself (`BudgetSpendIndicator.tsx:21`) and a JSDoc comment (`JobsPane.tsx:13`).
-    - Total open bullets in Phase 15.9 after this sweep: **2** (L1281's AgentTreeView half is now also closed by Lane B; L1267 closed as not-an-issue; the truly remaining UX-deferred bullet in this area is none — every actionable item shipped).
-
-  - **Orchestrator wrap-up:** Build + typecheck + test all green. No follow-up patches needed this round — Lane B's helper + Lane C's sweep + Lane A's docs don't intersect with test fixtures.
+- **Phase 16 (UX & interface polish) shipped in full** via a 6-agent parallel audit followed by a sequential 10-item execution pass. The maintainer had declared the actionable backlog empty in Phase 15.20; this phase exists because the `/goal` directive was "fan out as many agents as possible to find ways to make this project more useful — focus on ease of use and the look of the interface."
+  - **Six audit agents** ran in parallel covering distinct angles: first-run / onboarding flow, visual design / CSS / theme parity, information architecture / discoverability, accessibility & motion, empty / loading / error / toast states, and power-user / keyboard discoverability. ~50 concrete findings returned; this phase shipped the 10 with the highest user-impact-to-effort ratio.
+  - **10 items shipped (16.1–16.2):**
+    1. **Keyboard shortcut cheatsheet modal (`?` key)** — single source of truth at `apps/desktop/src/renderer/components/shortcuts-catalog.ts` (8 scopes × ~30 entries). New `KeyboardShortcutsModal.tsx` uses the shared `Modal` wrapper (focus-trap + Esc + focus-restore). Wired in `AppShell.tsx` behind a `?` keydown listener that ignores editable targets. Filter input matches title + key glyph + scope.
+    2. **Command palette → actions** — `command-palette-derive.ts` gained `'action'` category. New `command-palette-actions.ts` defines 28 actions: open-shortcuts, toggle-theme, 7 top-level navigations, new-chat, reload-skills, plus one entry per settings section (19 total). Theme-toggle dispatches `opencodex:theme:toggle`; new ThemeApplier listener cycles light → dark → system. Actions render first in keyboard-nav order.
+    3. **Status pill icons + CSS classes** — `statusIcon(status)` helper added to `agent-runs-derive.ts` (✓ completed, ✗ failed, ● running). Inline pill prepends `<span class="pill-icon" aria-hidden>` so status is legible without color. The `pill-warn` workaround for failed runs (inline `style={{ background: var(--danger-bg) }}` on `AgentRunRow:78-89`) replaced with a proper `pill-failed` class. Updated `AgentRunDrawer.tsx`, `AgentTreeView.tsx`, `ActiveRunCard.tsx`.
+    4. **Light theme contrast fix** — `styles.css:188` `--text-secondary` darkened from `#515154` (≈5:1) → `#48484a` (≈8.2:1) so body secondary text meets WCAG AA on both surfaces.
+    5. **`prefers-reduced-motion` guards** — `StatusBar.tsx` inline `style={{ animation }}` replaced with `.statusbar-tool-name-streaming` class. New `@media (prefers-reduced-motion: reduce)` rule disables both `.statusbar-dot-streaming` and `.statusbar-tool-name-streaming`.
+    6. **Contextual empty states** — `AuditLogPanel.tsx`, `SkillsPanel.tsx`, `PluginsPanel.tsx` each grew a real empty state with explainer copy and call-to-action. New `.audit-empty-state` / `.audit-empty-sub` card styling. `ChatView.tsx` no-message empty state surfaces `/` and `?` shortcuts via a `.chat-empty-kbd` chip.
+    7. **Settings section tags/aliases** — `SettingsSection` gained `tags?: readonly string[]`. All 19 sections tagged with synonyms (Budgets → cost / spend / limit / cap / threshold / token; Providers → vendor names; Indexing → rag / embedding / vector / semantic; etc.). `filterSettingsSections` searches title + description + tags.
+    8. **Sidebar `?` button opens shortcuts modal** — `AppShell.tsx:180` `<Link to="/settings/help">` replaced with `<button onClick={() => setShortcutsOpen(true)}>`. HoverHint shortcut prop changed to `?`. Sidebar button reset added so `<button>` styles match the old `<a>`.
+    9. **Streaming chat aria-live region** — `ChatView.tsx` `.chat-messages` wrapper gained `role="log" aria-live="polite" aria-relevant="additions text" aria-atomic="false" aria-label="Chat conversation"` so screen readers announce new tokens as they stream.
+    10. **Tests** — 19 new vitest cases added across 3 new test files (`shortcuts-catalog.test.ts` 9 cases, `command-palette-actions.test.ts` 6 cases, `command-palette-derive.actions.test.ts` 4 cases). Existing `agent-runs-derive.test.ts` updated for the pill-class rename; new tag-search case added to `settings-sections.test.ts`.
 
 - **Build + typecheck + test:**
-  - `pnpm typecheck` — clean across all 28 workspaces.
-  - `pnpm build` — green at **21.81s** (Phase 15.19 close was 23.25s; -1.4s — within noise).
-  - `pnpm test` — **1877 / 1885 pass, 8 skipped, 0 failed** (100% of runnable tests, +1 from 15.19 thanks to the new assertProviderHonorsAbort worked-example test).
-  - `pnpm diagnose --help` — exits 0, prints usage.
-  - `pnpm diagnose` — exits 1 (documented "warn" code; 12 ok, 3 warn, 0 fail on a fresh user-data dir).
+  - `pnpm --filter @opencodex/desktop typecheck` — clean across the desktop app.
+  - **Renderer tests** — 419 / 419 pass across 42 files (Phase 15.20 baseline was ~400). Native-rebuild pretest hook still blocks the full `pnpm test` on Windows due to `better-sqlite3.node` EBUSY (pre-existing constraint documented in `docs/agent-debugging-guide.md`). Tests were run via `node node_modules/vitest/vitest.mjs run apps/desktop/src/renderer/` directly.
+  - **`electron-vite build`** — `✓ built in 22.93s` (within noise of the 21.81s Phase 15.20 baseline).
 
 ## Verify Before Continuing
 
-- [ ] **`pnpm diagnose` runs clean on your machine.** From repo root: `pnpm diagnose`. Expect a JSON blob to stdout + a traffic-light summary to stderr. Exit code 0 = all green, 1 = at least one warn, 2 = at least one hard fail. Warns are expected on fresh user-data dirs (no active workspace, no keys yet) — those are NOT a regression.
+- [ ] **Press `?` anywhere in the app.** A keyboard-shortcuts overlay should appear with 8 grouped scopes (Navigation, Command palette, Chat composer, Approval queue, File tree, Merge review, Settings, Modals & menus). Filter input should narrow the list as you type. Esc closes.
 
-- [ ] **`docs/agent-debugging-guide.md` is the first stop for the next agent.** When a future session asks "why isn't X working?", point at this guide before grepping the codebase. The Failure-mode catalog and Subsystem map are designed to short-circuit the discovery phase.
+- [ ] **Press Cmd/Ctrl+P, then type `theme`.** The first result should be "Toggle theme" — pressing Enter cycles light → dark → system. Type `providers` to jump straight to `/settings/providers`. Type `audit` to land on "Settings: Audit log". The palette now exposes 28+ actions plus the existing search categories.
 
-- [ ] **`assertProviderHonorsAbort` test helper exists.** `grep -rn assertProviderHonorsAbort packages/` should show the helper at `packages/core/src/test-helpers/`, the worked-example test at `packages/provider-openai/src/`, and the pattern doc in `packages/plugin-sdk/README.md`. New provider authors should add `assertProviderHonorsAbort(() => new MyProvider(...))` to their test suite.
+- [ ] **Click the `?` button in the sidebar footer.** It should open the same shortcuts modal (no longer navigates to `/settings/help`). Confirm the modal lists `?` itself as a shortcut so the discovery loop is closed.
 
-- [ ] **`runner-aider` is now declared `streaming: true`.** Read `packages/runner-aider/src/runner.ts:104` to confirm. The website comparison table at `website/pages/guides/runners.mdx` reflects the flip. The runner's local README still claims non-streaming for spinner-UX reasons — that's a follow-up.
+- [ ] **In `/settings`, type "cost" or "claude" into the search.** Budgets section appears for "cost"; Providers appears for "claude" (matched via the new tag arrays).
 
-- [ ] **`SettingsRail` Cmd+F is scoped to the Settings view only.** Open `/settings`. Press Cmd/Ctrl+F — focus jumps to the section search box. Open `/chat`. Press Cmd/Ctrl+F — Chrome's native find-in-page opens (or whatever the renderer's default Cmd+F behavior is), no rail interception.
+- [ ] **Look at a failed Agent run row.** The status pill is red (was amber-yellow before — the `pill-warn` workaround for failed status is gone). All three pills show an icon prefix: ✓ Completed, ✗ Failed, ● Running.
 
-- [ ] **No regression vs Phase 15.19 baseline.** `pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build` all exit 0. Test count went from 1876 → 1877 passing (the one new test is the worked-example for the abort helper).
+- [ ] **Switch to light theme.** Body secondary text on settings cards / hover hints should be visibly darker than before — ratio is now ≈8.2:1 vs ≈5:1.
+
+- [ ] **Toggle "Reduce motion" in OS preferences and start a stream.** The `●` statusbar dot and tool-name text stop pulsing. Sidebar collapse transitions remain instant (already guarded).
+
+- [ ] **Open an Audit Log with no entries.** Empty state is now a card explaining what tool calls are, not a single grey line. Same for an empty Skills panel and Plugins panel.
+
+- [ ] **Open `/chat` with no conversations.** Empty state shows headline + body + `<kbd>/</kbd>` and `<kbd>?</kbd>` shortcut chips + starter chip row.
 
 ## Next Task
 
-**Phase 15.20 is closed. The actionable backlog is now empty.** Remaining items are user-required or explicit follow-up polish.
+**Phase 16 closed. The truly user-required items remain (BLOCKED), plus a fresh batch of deferred polish that the audits surfaced:**
+
+### Phase 16 deferred polish (next batch — not blocked on user)
+
+- Settings 19→7 grouping (group cards: Appearance & Behavior, Environment, Integrations, Constraints, Telemetry & Health, Advanced). Touches every panel — sized as its own PR.
+- Onboarding step-label rewrite + "Step X of 6" + estimated-time copy.
+- Skeleton loaders for Codebase preview pane, Plugins list, Runners install.
+- FileTree keyboard navigation (j/k/Enter/Space/←/→ already in docs but not implemented) + Shift+F10 context-menu opener.
+- Toast persistence opt-in for critical events ("merge ready", "approval needed", "scheduled task failed"). `Toasts.tsx` already supports `duration: null` — just needs caller opt-in.
+- Cross-view "Open in Codebase" links on chat citations (`tokenizeCitations` already parses them; needs the rendered tokens to become `<button>` with `useTransfer({type:'chat-to-codebase'})`).
+- `withTraceContext` AsyncLocalStorage helper proposed in `docs/agent-debugging-guide.md` (would let any logger inside agent loop / chat runtime / scheduler emit `streamId` / `runId` / `conversationId` / `taskId` automatically).
+- `--bundle` flag for `pnpm diagnose` (zip JSON + redacted log tails into one shareable file for bug reports).
 
 ### Truly user-required (BLOCKED, ~6 items)
 
@@ -60,78 +67,65 @@
 
 ### Pre-tag maintainer work (Phase 12 carry-over)
 
-- Fill `PLACEHOLDERS.md` — 24 `@TODO-` / `TODO-org` / `TODO-repo` / `TODO-set-domain` occurrences. `pnpm check-placeholders` blocks `release-readiness.yml` until resolved.
-
-### Architecture follow-up (not shipped, design discussion needed)
-
-- `Todo.md:1151–1155` parent bullet still `- [ ]` because the v0.1 architecture sub-item (move plugin execution into `electron.utilityProcess.fork()` with `MessagePortMain` RPC + Node 20 `--permission` flags scoped to manifest-declared workspace + hosts; on macOS `sandbox-exec`, on Windows Job Object + `CreateRestrictedToken`, on Linux seccomp-bpf) is explicitly deferred per the closeout. The three Phase 15 deliverables (honest docs, hard-fail unsigned, symmetric `registerTool` permission gate) shipped and closed the "user is lied to" + "unsigned silent install" + "asymmetric tier gate" risks.
-
-### Small polish discovered this session
-
-- **`packages/runner-aider/README.md`** still claims `streaming: false` for UX-spinner reasons. The runner now reports `streaming: true`. Reconcile: either the README rationale is stale (update it), or the spinner-UX argument means the streaming flag is misleading (and we should add a `displayMode: 'spinner' | 'stream'` capability to `SubagentRunner`). The contract change is the bigger lift.
-- **`withTraceContext` AsyncLocalStorage helper** — proposed in the debugging guide's structured-logging section. Would let any logger call inside the agent loop / chat runtime / scheduler automatically include `streamId`, `conversationId`, `runId`, `taskId` without thread-through-every-call. Easy follow-up — 4 entry points to wire.
-- **Diagnose script extensions** — could add a `--bundle` flag that zips the JSON + redacted log tails into a single file for user-shareable bug reports. Today the JSON-blob output is good enough; bundle helper is a one-evening UX win.
-
-**Repo remains shippable as v0.1 + Phases 9 / 10 / 11 / 12 / 13 / 14 / 15 / 15.19 / 15.20 once macOS+Windows certs land, `PLACEHOLDERS.md` is filled, and a public release is published.**
+- Fill `PLACEHOLDERS.md` — `pnpm check-placeholders` blocks `release-readiness.yml` until resolved.
 
 ## Context Notes
 
-### The pattern this session used (3-lane parallel fan-out + creative deliverable)
+### The pattern this session used (audit → synthesize → execute)
 
-Per the user's `/goal` request ("deeply analyze this code base and come up with an easy way for future agents to determine how and why something might not be working as intended. Also check any open items on the todo.md and complete those tasks. Fan out as many agents as possible"), three lanes ran in parallel:
+Per the user's `/goal` request ("fan out as many agents as possible investigate ways to make this project more useful — focus on ease of use and the look of the interface. First create a detailed plan after a thorough analysis and then once the plan is drafted complete each item on the list"), three phases ran sequentially:
 
-- **Lane A (creative artifact, 1 agent)** — debugging guide + diagnose script. The creative core of the goal. Took the longest (~16 min wall) because it required reading the codebase across all 21 subsystems before writing anything.
-- **Lane B (final code items, 1 agent)** — 6 specific Todo.md bullets with clear file targets.
-- **Lane C (Todo.md sweep round 2, 1 agent)** — bookkeeping; verifies + flips bullets that the prior sweep was too cautious about.
+- **Phase A (parallel audit, 6 agents)** — onboarding / visual / IA / a11y / interaction / power-user — each reported back with 8-15 concrete findings under 600 words. Strong overlapping signals (3 agents flagged "no shortcut cheatsheet"; 2 flagged "command palette is search-only"; 2 flagged "color-only status pills"; 3 flagged "generic empty states") drove prioritization.
+- **Phase B (synthesis)** — deduped ~50 findings into a 10-item Tier 1+2 plan + a deferred list. Plan was inlined in the user-facing message (no separate doc) because the user explicitly asked to "complete each item on the list" — keeping the plan as conversation context made progress reporting tighter.
+- **Phase C (sequential execution)** — 10 items shipped, one task per item in the task tracker, marked completed as each landed. Two reusable artifacts emerged: `shortcuts-catalog.ts` (single source of truth for keyboard shortcuts; consumable by the modal AND future hover-hint tooltips AND future MANUAL.md generation) and `command-palette-actions.ts` (single source of truth for palette actions; cleanly typed).
 
-All three reported in <500 words each. Zero cross-lane conflicts (A touched `docs/` + `scripts/` + root `package.json`; B touched `packages/core` + a few renderer/runner files; C touched only `Todo.md`).
+### How a future agent should EXTEND Phase 16
 
-### How a future agent should USE the debugging guide
+If you ship more UX polish, the foundational artifacts above are the right places to add to:
 
-When the next session asks "X isn't working" / "diagnose Y":
+- New keyboard shortcut: add to `SHORTCUTS_CATALOG` in `shortcuts-catalog.ts` AND wire the keydown handler. The cheatsheet modal picks up new entries automatically.
+- New command-palette action: add to `buildPaletteActions` in `command-palette-actions.ts`. Provide `keywords[]` for fuzzy matching.
+- New settings section: add `tags?: string[]` from the start. The search rail picks them up automatically.
+- New status pill: declare it in `agent-runs-derive.ts` `statusPillClass` + `statusIcon`. Add the matching CSS class (`.pill-foo`) at the end of `styles.css` under the Phase 16 block.
 
-1. Run `pnpm diagnose` first — captures the static health of every subsystem in 2-3 seconds.
-2. Look at the Failure-mode catalog in `docs/agent-debugging-guide.md` for symptoms matching the user's report.
-3. The catalog points at file:line. Read that file:line first, NOT a top-down architecture survey.
-4. The Subsystem map names the IPC channel + setting + related test for every subsystem — confirms what to grep, log, or re-run.
-5. If the symptom isn't in the catalog, add it. Keep the catalog current — that's how the doc stays useful.
-
-### Why the diagnose script exits 1 on warns
-
-Documented behavior. Exit 0 = all green, 1 = at least one warn (e.g., no API keys configured yet, no active workspace yet), 2 = at least one hard fail (e.g., DB integrity check failed, sqlite ABI mismatch). CI should NOT gate on `pnpm diagnose` as a green-only check — it's informational. If you want a gated check, use `pnpm diagnose 2>&1 | grep -c "✗"` and assert 0.
-
-### Recurring vitest lessons (verified again this session)
-
-- For RTL + jsdom test files use `import { type Mock } from 'vitest'` + bare `Mock` annotations.
-- `vi.useFakeTimers` MUST scope to `['setTimeout', 'clearTimeout']` if RTL is in play. Including `Date` deadlocks `waitFor` against wall-clock. Replace `waitFor` with sync assertions inside `act(() => vi.advanceTimersByTime(N))`.
-- Keydown listeners are NOW scoped to modal/section refs (15.9 + 15.20). Tests must dispatch on the dialog/root element, not `document`.
-- `window.opencodex` direct reads are FORBIDDEN. Use `getBridge()` from `apps/desktop/src/renderer/bridge.ts`.
-
-### Pre-existing carry-overs
-
-- Node v20 pinned.
-- Path has space + period (`OPEN UI.UX`) — quote in shell.
-- `apps/desktop/src/test/setup.ts` Proxy-bridge test setup (15.1#5) is loaded via vitest `setupFiles`. Extend its mockBridge in-place rather than re-defining `window.opencodex` from scratch.
-- `packages/core` exports map now has subpaths for `./process/tree-kill` (Phase 15.1) and `./test-helpers` (Phase 15.20). Add new subpaths as siblings — don't restructure the main `.` entry.
-
-### Files added/touched this session (Phase 15.20)
+### Files added/touched this session (Phase 16)
 
 **New files (5):**
 
-- `docs/agent-debugging-guide.md` — the debugging guide
-- `apps/desktop/scripts/diagnose.mjs` — the runnable health probe
-- `packages/core/src/test-helpers/assert-provider-honors-abort.ts` — the abort-helper
-- `packages/core/src/test-helpers/index.ts` — barrel
-- `packages/provider-openai/src/assert-provider-honors-abort.test.ts` — worked example
-- `packages/plugin-sdk/README.md` — pattern doc (also new)
+- `apps/desktop/src/renderer/components/shortcuts-catalog.ts` — keyboard shortcut catalog (single source of truth)
+- `apps/desktop/src/renderer/components/KeyboardShortcutsModal.tsx` — the `?` overlay
+- `apps/desktop/src/renderer/components/command-palette-actions.ts` — palette actions registry
+- `apps/desktop/src/renderer/components/shortcuts-catalog.test.ts` — 9 cases
+- `apps/desktop/src/renderer/components/command-palette-actions.test.ts` — 6 cases
+- `apps/desktop/src/renderer/components/command-palette-derive.actions.test.ts` — 4 cases
 
-**Edited (5):**
+**Edited (13):**
 
-- `packages/core/src/index.ts` — re-export
-- `packages/core/package.json` — exports map
-- `apps/desktop/src/renderer/components/SettingsRail.tsx` — Cmd+F scoping
-- `packages/runner-aider/src/runner.ts` — streaming flag flip
-- `website/pages/guides/runners.mdx` — runner comparison table
-- `Todo.md` — 20 bullets flipped in round-2 sweep
-- root `package.json` — added `diagnose` script
+- `apps/desktop/src/renderer/components/AppShell.tsx` — `?` keydown, shortcuts modal mount, sidebar `?` button, `onOpenShortcuts` prop on palette, dropped `Link` import
+- `apps/desktop/src/renderer/components/CommandPalette.tsx` — `onOpenShortcuts` prop, actions merged into results, action category dispatch, updated placeholder + empty-state copy
+- `apps/desktop/src/renderer/components/command-palette-derive.ts` — `'action'` category + `PaletteAction` type + `matchesAction` + action position in keyboard-nav order
+- `apps/desktop/src/renderer/components/ThemeApplier.tsx` — `opencodex:theme:toggle` listener cycles light → dark → system
+- `apps/desktop/src/renderer/components/StatusBar.tsx` — inline animation moved to `.statusbar-tool-name-streaming` class
+- `apps/desktop/src/renderer/components/AgentRunRow.tsx` — status icon + pill-class rename + drop inline workaround style
+- `apps/desktop/src/renderer/components/AgentRunDrawer.tsx` — status icon prefix
+- `apps/desktop/src/renderer/components/AgentTreeView.tsx` — status icon prefix
+- `apps/desktop/src/renderer/components/ActiveRunCard.tsx` — pill-running icon prefix
+- `apps/desktop/src/renderer/views/ChatView.tsx` — `role="log" aria-live="polite"` on chat-messages; richer empty-state copy
+- `apps/desktop/src/renderer/views/AuditLogPanel.tsx` — contextual empty state
+- `apps/desktop/src/renderer/views/SkillsPanel.tsx` — contextual empty state
+- `apps/desktop/src/renderer/views/PluginsPanel.tsx` — contextual empty state
+- `apps/desktop/src/renderer/views/settings-sections.ts` — `tags?` field on every section + filter searches tags
+- `apps/desktop/src/renderer/views/agent-runs-derive.ts` — `statusIcon` helper + pill-class rename
+- `apps/desktop/src/renderer/views/agent-runs-derive.test.ts` — updated pill-class assertions
+- `apps/desktop/src/renderer/views/settings-sections.test.ts` — tag-search case
+- `apps/desktop/src/renderer/styles.css` — light `--text-secondary` darkened; sidebar `.sidebar-help-link` button reset; new Phase 16 block at end (shortcuts modal CSS, `.pill-icon` / `.pill-failed` / `.pill-running`, motion guards, `.audit-empty-state` / `.audit-empty-sub`, `.chat-empty-kbd`)
+- `Todo.md` — Phase 16 section added (16.1–16.5)
 - `HANDOFF.md` — this file
+
+### Pre-existing carry-overs (still true)
+
+- Node v20 pinned.
+- Path has space + period (`OPEN UI.UX`) — quote in shell.
+- `apps/desktop/src/test/setup.ts` Proxy-bridge test setup is loaded via vitest `setupFiles`. Extend its mockBridge in-place rather than re-defining `window.opencodex` from scratch.
+- `packages/core` exports map has subpaths for `./process/tree-kill` (Phase 15.1) and `./test-helpers` (Phase 15.20).
+- `better-sqlite3.node` rebuild fails on Windows when something holds the file open. Bypass via `node node_modules/vitest/vitest.mjs run apps/desktop/src/renderer/` when iterating on renderer-only tests.

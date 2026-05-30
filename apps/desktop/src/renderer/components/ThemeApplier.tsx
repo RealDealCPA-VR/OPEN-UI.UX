@@ -7,6 +7,12 @@ function apply(preference: ThemePreference): void {
   document.documentElement.setAttribute('data-theme', effective);
 }
 
+function nextPreference(current: ThemePreference): ThemePreference {
+  if (current === 'light') return 'dark';
+  if (current === 'dark') return 'system';
+  return 'light';
+}
+
 export function ThemeApplier(): null {
   useEffect(() => {
     let current: ThemePreference = window.opencodex.theme.getInitialPreference();
@@ -32,8 +38,16 @@ export function ThemeApplier(): null {
       media.addListener(onMediaChange);
     }
 
+    // Listen for the command-palette "Toggle theme" action.
+    const onToggle = (): void => {
+      const next = nextPreference(current);
+      void window.opencodex.theme.set({ preference: next }).catch(() => undefined);
+    };
+    window.addEventListener('opencodex:theme:toggle', onToggle);
+
     return () => {
       unsubscribe();
+      window.removeEventListener('opencodex:theme:toggle', onToggle);
       if (typeof media.removeEventListener === 'function') {
         media.removeEventListener('change', onMediaChange);
       } else {

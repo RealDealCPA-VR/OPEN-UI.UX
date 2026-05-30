@@ -764,7 +764,22 @@ function ChatPane({
               margin: '0 auto',
             }}
           >
-            <p style={{ margin: 0, color: 'var(--text-secondary)' }}>What can I help you build?</p>
+            <p
+              style={{
+                margin: 0,
+                color: 'var(--text-primary)',
+                fontSize: 18,
+                fontWeight: 600,
+                letterSpacing: '-0.01em',
+              }}
+            >
+              What can I help you build?
+            </p>
+            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 13 }}>
+              Pick a starter below, or type your own question. Use{' '}
+              <kbd className="chat-empty-kbd">/</kbd> to insert a skill or MCP prompt, and{' '}
+              <kbd className="chat-empty-kbd">?</kbd> to see every shortcut.
+            </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {STARTER_CHIPS.map((chip) => (
                 <button
@@ -788,7 +803,14 @@ function ChatPane({
             </div>
           </div>
         ) : (
-          <div className="chat-messages">
+          <div
+            className="chat-messages"
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions text"
+            aria-atomic="false"
+            aria-label="Chat conversation"
+          >
             {visibleMessages.map((m) => (
               <MessageBubble key={m.id} message={m} onRerun={handleRerun} />
             ))}

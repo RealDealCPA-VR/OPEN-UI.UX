@@ -1479,3 +1479,50 @@ Sections 15.3–15.16 (with 15.5 sequenced first so providers/runners could pick
 These are tracked for a focused **15.19 — renderer cleanup follow-up PR** along with the items 15.9 listed in its `itemsDeferred` (the 13-site bridge migration, VoiceInputButton AudioWorklet, AppShell layout-animation refactor, appendDeltaBlock batching, the remaining per-component cleanups). Per-item evidence and the deferred-with-reason list is in the workflow output JSON.
 
 **Workflow output (source-of-truth for per-item evidence):** `C:\Users\VR\AppData\Local\Temp\claude\C--Users-VR\c264b828-eb04-4d32-9ce0-c6d8d6164eaf\tasks\wlhfdms31.output` — per-section `itemsCompleted` / `itemsDeferred` / `filesModified` / `testsAdded` / `lintTypecheckOk` with notes.
+
+---
+
+## Phase 16 — UX & interface polish (2026-05-29)
+
+Driven by a 6-agent parallel audit (first-run flow / visual design / information architecture / a11y & motion / interaction states / power-user discoverability). The audits flagged 50+ findings; this phase shipped the 10 highest-impact items that don't require a refactor. The deferred items (settings 19→7 grouping, full skeleton-loader pass, onboarding step-label rewrite, FileTree keyboard nav) are intentionally held back so this phase stays reviewable.
+
+### 16.1 — Foundational wins
+
+- [x] **Keyboard shortcut cheatsheet modal (`?` key)** — New `apps/desktop/src/renderer/components/shortcuts-catalog.ts` (single source of truth: 8 scopes × ~30 entries) + `KeyboardShortcutsModal.tsx` (uses the shared `Modal` wrapper with focus-trap + Escape + focus-restore). Wired in `AppShell.tsx` behind a `?` listener that ignores editable targets. Filter input matches title, key glyph, and scope name. Includes its own entry (`?` → open this overlay).
+- [x] **Command palette → actions** — Extended `command-palette-derive.ts` to add an `'action'` category. New `command-palette-actions.ts` defines 28 actions: open-shortcuts, toggle-theme, 7 top-level navigations, new-chat, reload-skills, plus one entry per settings section (19 total). Theme-toggle dispatches `opencodex:theme:toggle`; new ThemeApplier listener cycles light → dark → system. Actions render first in keyboard-nav order. Palette placeholder updated to advertise commands.
+- [x] **Status pill icons + CSS classes** — `statusIcon(status)` helper added to `agent-runs-derive.ts` (✓ completed, ✗ failed, ● running). Inline pill prepends `<span class="pill-icon" aria-hidden>` so status is legible without color (helps colorblind users + screen readers). Inline `style={{ background: var(--danger-bg), ... }}` on `AgentRunRow:78-89` (the workaround for `pill-warn`-applied-to-failed) deleted; replaced with proper `pill-failed` class. `pill-warn` for failed → `pill-failed` (red). Same icon prefix applied in `AgentRunDrawer.tsx`, `AgentTreeView.tsx`, `ActiveRunCard.tsx`.
+- [x] **Light theme contrast fix** — `styles.css:188` `--text-secondary` darkened from `#515154` (≈5:1 vs `#ffffff`) → `#48484a` (≈8.2:1). Body secondary text now meets WCAG AA on both `--bg-base` and panel surfaces. Comment updated with the actual ratios.
+- [x] **`prefers-reduced-motion` guards** — `StatusBar.tsx` inline `style={{ animation: 'statusbar-pulse ...' }}` replaced with a `.statusbar-tool-name-streaming` class. New `@media (prefers-reduced-motion: reduce)` rule disables both `.statusbar-dot-streaming` and `.statusbar-tool-name-streaming`. Sidebar grid-template-columns transition was already guarded.
+
+### 16.2 — Polish wins
+
+- [x] **Contextual empty states** — `AuditLogPanel.tsx`, `SkillsPanel.tsx`, `PluginsPanel.tsx` each grew a real empty state with explainer copy and call-to-action. New `.audit-empty-state` / `.audit-empty-sub` styling: card-style surface, body type explains what the section is for. `ChatView.tsx` no-message empty state grew an `<h2>`-equivalent headline, a body line that surfaces `/` and `?` shortcuts, and a `.chat-empty-kbd` chip style.
+- [x] **Settings section tags/aliases for search** — `SettingsSection` gained `tags?: readonly string[]`. All 19 sections tagged with synonyms (`Budgets` → `cost / spend / limit / cap / threshold / money / token / usd`; `Providers` → vendor names; `Indexing` → `rag / embedding / vector / semantic`; etc.). `filterSettingsSections` searches title + description + tags. Users typing "cost" or "claude" now land on the right section instead of getting zero results.
+- [x] **Sidebar `?` button opens shortcuts modal** — `AppShell.tsx:180` `<Link to="/settings/help">` replaced with a `<button onClick={() => setShortcutsOpen(true)}>`. HoverHint shortcut prop changed to `?`. Sidebar button reset added (`font-family: inherit; cursor: pointer; padding: 0`) so `<button>` styles match the old `<a>`. `/settings/help` route still reachable from the modal footer and the command palette ("Settings: Help").
+- [x] **Streaming chat aria-live region** — `ChatView.tsx` `.chat-messages` wrapper gained `role="log" aria-live="polite" aria-relevant="additions text" aria-atomic="false" aria-label="Chat conversation"`. Screen readers announce new tokens as they stream.
+
+### 16.3 — Tests
+
+- [x] `apps/desktop/src/renderer/components/shortcuts-catalog.test.ts` — 9 cases (catalog non-empty, group invariants, unique ids, `?` entry present, filter behavior, no-mutation).
+- [x] `apps/desktop/src/renderer/components/command-palette-actions.test.ts` — 6 cases (action count, field invariants, unique ids, open-shortcuts callback fires, settings actions route to right slug, goto actions navigate correctly).
+- [x] `apps/desktop/src/renderer/components/command-palette-derive.actions.test.ts` — 4 cases (no actions provided, all actions on empty query, query-filtering against title/subtitle/keywords, actions first in keyboard-nav order).
+- [x] `apps/desktop/src/renderer/views/settings-sections.test.ts` — 1 new case for tag-based matching (existing 16 cases still pass).
+- [x] `apps/desktop/src/renderer/views/agent-runs-derive.test.ts` — updated pill-class assertions (`pill-warn` → `pill-failed`, `pill-local` → `pill-running`); 37 cases all green.
+
+### 16.4 — Verification
+
+- **`pnpm typecheck`** — clean.
+- **Renderer tests** — 419 / 419 pass across 42 files (+19 vs the Phase 15.20 baseline). No regressions.
+- **`electron-vite build`** — `✓ built in 22.93s` (within noise of the 21.81s Phase 15.20 baseline).
+- **Native-rebuild pretest hook** — still blocks `pnpm test` on Windows due to `better-sqlite3.node` EBUSY (pre-existing, documented in `docs/agent-debugging-guide.md`). Tests were run via `node node_modules/vitest/vitest.mjs run apps/desktop/src/renderer/` directly.
+
+### 16.5 — Deferred (next pass)
+
+- Settings 19→7 grouping (cross-cutting; would touch every Settings panel)
+- Onboarding step-label rewrite + "Step X of 6" progress + estimated-time copy
+- Skeleton loaders for Codebase preview, Plugins list, Runners install
+- FileTree keyboard navigation + Shift+F10 context-menu opener
+- Toast persistence opt-in for "merge ready" / "approval needed" / "scheduled task failed"
+- Cross-view "Open in Codebase" links on chat citations (already supported via transfer-context; needs the tokenized citations to render as `<button>`)
+- `withTraceContext` AsyncLocalStorage helper (proposed in `docs/agent-debugging-guide.md`)
+- `--bundle` flag for `pnpm diagnose` (zip JSON + redacted log tails into one shareable file)

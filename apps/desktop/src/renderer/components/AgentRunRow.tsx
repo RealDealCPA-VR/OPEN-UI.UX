@@ -6,6 +6,7 @@ import {
   formatDurationMs,
   formatTokens,
   runDurationMs,
+  statusIcon,
   statusLabel,
   statusPillClass,
   stopReasonLabel,
@@ -73,18 +74,10 @@ export function AgentRunRow({
               {run.runnerId}
             </span>
           )}
-          <span
-            className={statusPillClass(run.status)}
-            style={
-              run.status === 'failed'
-                ? {
-                    background: 'var(--danger-bg)',
-                    borderColor: 'var(--danger-border)',
-                    color: 'var(--danger)',
-                  }
-                : undefined
-            }
-          >
+          <span className={statusPillClass(run.status)}>
+            <span className="pill-icon" aria-hidden="true">
+              {statusIcon(run.status)}
+            </span>
             {statusLabel(run.status)}
           </span>
           <span className="audit-row-duration">

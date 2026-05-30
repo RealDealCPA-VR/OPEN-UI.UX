@@ -58,6 +58,22 @@ describe('filterSettingsSections', () => {
     filterSettingsSections(input, 'memory');
     expect(input).toEqual(sections);
   });
+
+  it('matches against tags (synonyms)', () => {
+    const tagged: SettingsSection[] = [
+      {
+        slug: 'budgets',
+        title: 'Budgets',
+        description: 'Per-conversation spending caps.',
+        tags: ['cost', 'spend', 'limit', 'cap'],
+      },
+    ];
+    expect(filterSettingsSections(tagged, 'spend')).toHaveLength(1);
+    expect(filterSettingsSections(tagged, 'cost')).toHaveLength(1);
+    expect(filterSettingsSections(tagged, 'limit')).toHaveLength(1);
+    // Not in title, description, or tags
+    expect(filterSettingsSections(tagged, 'foobar')).toHaveLength(0);
+  });
 });
 
 describe('findSectionBySlug', () => {

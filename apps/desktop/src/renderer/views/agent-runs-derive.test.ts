@@ -105,9 +105,9 @@ describe('statusLabel + statusPillClass', () => {
     expect(statusLabel('failed')).toBe('Failed');
   });
   it('maps every status to a pill class', () => {
-    expect(statusPillClass('running')).toContain('pill');
+    expect(statusPillClass('running')).toContain('pill-running');
     expect(statusPillClass('completed')).toContain('pill-ok');
-    expect(statusPillClass('failed')).toContain('pill-warn');
+    expect(statusPillClass('failed')).toContain('pill-failed');
   });
 });
 

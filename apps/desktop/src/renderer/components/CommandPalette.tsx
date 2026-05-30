@@ -5,6 +5,7 @@ import type { ConversationSearchHit } from '../../shared/conversation-search';
 import type { CodebaseSearchHit } from '../../shared/codebase-search';
 import type { Skill } from '../../shared/skills';
 import { getBridge } from '../bridge';
+import { buildPaletteActions } from './command-palette-actions';
 import {
   flattenForKeyboardNav,
   groupByCategory,
@@ -17,12 +18,14 @@ import {
 export interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
+  onOpenShortcuts?: () => void;
 }
 
 const DEBOUNCE_MS = 140;
 const SEARCH_LIMIT = 20;
 
 const CATEGORY_LABELS: Record<PaletteCategory, string> = {
+  action: 'Actions',
   message: 'Messages',
   file: 'Files',
   skill: 'Skills',
@@ -48,8 +51,20 @@ function conversationsSearchBridge(): Bridge | null {
   return fn ? { search: fn } : null;
 }
 
-export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Element | null {
+export function CommandPalette({
+  open,
+  onClose,
+  onOpenShortcuts,
+}: CommandPaletteProps): JSX.Element | null {
   const navigate = useNavigate();
+  const actions = useMemo(
+    () =>
+      buildPaletteActions({
+        navigate,
+        openShortcuts: onOpenShortcuts ?? (() => undefined),
+      }),
+    [navigate, onOpenShortcuts],
+  );
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [messageHits, setMessageHits] = useState<ConversationSearchHit[]>([]);
@@ -212,8 +227,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
   }, [debouncedQuery, workspaceRoot, open]);
 
   const entries = useMemo(
-    () => mergePaletteResults(messageHits, fileHits, skills, debouncedQuery, { mcpTools }),
-    [messageHits, fileHits, skills, debouncedQuery, mcpTools],
+    () =>
+      mergePaletteResults(messageHits, fileHits, skills, debouncedQuery, {
+        mcpTools,
+        actions,
+      }),
+    [messageHits, fileHits, skills, debouncedQuery, mcpTools, actions],
   );
 
   const navEntries = useMemo(() => flattenForKeyboardNav(entries), [entries]);
@@ -255,6 +274,12 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
           }),
         );
         onClose();
+        return;
+      }
+      if (entry.action) {
+        // Close first so navigation/state changes happen on a clean stack.
+        onClose();
+        entry.action.perform();
         return;
       }
     },
@@ -315,7 +340,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
             className="command-palette-input"
             type="text"
             value={query}
-            placeholder="Search messages, files, skills…"
+            placeholder="Search messages, files, skills — or type a command (try “theme”, “settings”, “?”)"
             aria-label="Search query"
             onChange={(e) => setQuery(e.target.value)}
             spellCheck={false}
@@ -326,7 +351,9 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps): JSX.Elem
         <div className="command-palette-results" role="listbox" aria-label="Search results">
           {totalCount === 0 ? (
             <div className="command-palette-empty">
-              {debouncedQuery ? 'No results.' : 'Type to search messages, files, and skills.'}
+              {debouncedQuery
+                ? 'No results.'
+                : 'Type to search messages, files, skills — or run a command.'}
             </div>
           ) : (
             (Object.keys(grouped) as PaletteCategory[]).map((cat) => {

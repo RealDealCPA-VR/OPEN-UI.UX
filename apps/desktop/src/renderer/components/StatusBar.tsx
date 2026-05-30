@@ -87,9 +87,10 @@ export function StatusBar(): JSX.Element {
               ›
             </span>
             <code
-              className="statusbar-tool-name"
-              style={
-                streaming ? { animation: 'statusbar-pulse 1.2s ease-in-out infinite' } : undefined
+              className={
+                streaming
+                  ? 'statusbar-tool-name statusbar-tool-name-streaming'
+                  : 'statusbar-tool-name'
               }
             >
               {runningTool}

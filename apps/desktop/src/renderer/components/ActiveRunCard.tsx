@@ -65,7 +65,12 @@ export function ActiveRunCard({ run, now, onSelect }: ActiveRunCardProps): JSX.E
       }}
     >
       <header className="active-run-card-head">
-        <span className="pill pill-local">Running</span>
+        <span className="pill pill-running">
+          <span className="pill-icon" aria-hidden="true">
+            ●
+          </span>
+          Running
+        </span>
         {run.triggerSource === 'scheduled' && (
           <span className="pill" title="Fired by a scheduled task">
             scheduled

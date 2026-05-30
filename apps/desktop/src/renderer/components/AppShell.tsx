@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { AgentResumePrompt } from './AgentResumePrompt';
 import { CommandPalette } from './CommandPalette';
 import { HoverHint } from './HoverHint';
+import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import {
   LeftColumnContextPane,
   routeFromPathname,
@@ -67,6 +68,7 @@ export function AppShell(): JSX.Element {
   const [version, setVersion] = useState<string>('?');
   const [collapsed, toggleCollapsed] = useCollapseState('left-column', false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const activeRoute = useMemo(() => routeFromPathname(location.pathname), [location.pathname]);
@@ -78,7 +80,21 @@ export function AppShell(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (target.isContentEditable) return true;
+      return false;
+    };
     const onKey = (e: KeyboardEvent): void => {
+      // '?' opens the shortcuts cheatsheet (when not typing in a field).
+      // Shift+/ produces '?' on US layouts; other layouts may produce '?' without shift.
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditableTarget(e.target)) {
+        e.preventDefault();
+        setShortcutsOpen((v) => !v);
+        return;
+      }
       const mod = e.ctrlKey || e.metaKey;
       if (!mod || e.shiftKey || e.altKey) return;
       // Lane 3 — global command palette
@@ -177,10 +193,15 @@ export function AppShell(): JSX.Element {
           </div>
         ) : null}
         <div className="sidebar-footer">
-          <HoverHint hint="Open user manual" placement="right">
-            <Link to="/settings/help" className="sidebar-help-link" aria-label="Help">
+          <HoverHint hint="Keyboard shortcuts" shortcut="?" placement="right">
+            <button
+              type="button"
+              className="sidebar-help-link"
+              aria-label="Show keyboard shortcuts"
+              onClick={() => setShortcutsOpen(true)}
+            >
               ?
-            </Link>
+            </button>
           </HoverHint>
           <span className="sidebar-version">v{version}</span>
         </div>
@@ -206,7 +227,12 @@ export function AppShell(): JSX.Element {
         </main>
         <StatusBar />
       </div>
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+      />
+      <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <AgentResumePrompt />
       <McpToolRunner />
     </div>

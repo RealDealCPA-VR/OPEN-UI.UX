@@ -36,12 +36,22 @@ export function statusLabel(status: AgentRunStatus): string {
 export function statusPillClass(status: AgentRunStatus): string {
   switch (status) {
     case 'running':
-      return 'pill pill-local';
+      return 'pill pill-running';
     case 'completed':
       return 'pill pill-ok';
     case 'failed':
-      return 'pill pill-warn';
+      return 'pill pill-failed';
   }
+}
+
+const STATUS_ICON: Record<AgentRunStatus, string> = {
+  running: '●',
+  completed: '✓',
+  failed: '✗',
+};
+
+export function statusIcon(status: AgentRunStatus): string {
+  return STATUS_ICON[status];
 }
 
 const STOP_REASON_LABEL: Record<AgentRunStopReason, string> = {

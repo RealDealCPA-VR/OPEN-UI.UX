@@ -10,6 +10,7 @@ import {
   formatTokens,
   hasUnresolvedWorktree,
   runDurationMs,
+  statusIcon,
   statusLabel,
   statusPillClass,
   stopReasonLabel,
@@ -265,7 +266,12 @@ export function AgentRunDrawer({
             ×
           </button>
           <div className="agent-run-drawer-title">
-            <span className={statusPillClass(run.status)}>{statusLabel(run.status)}</span>
+            <span className={statusPillClass(run.status)}>
+              <span className="pill-icon" aria-hidden="true">
+                {statusIcon(run.status)}
+              </span>
+              {statusLabel(run.status)}
+            </span>
             <h2>{run.task}</h2>
           </div>
           <div className="agent-run-drawer-meta">

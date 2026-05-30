@@ -6,6 +6,7 @@ import {
   formatTokens,
   runBudget,
   runProgressFraction,
+  statusIcon,
   statusPillClass,
   statusLabel,
   truncate,
@@ -191,6 +192,9 @@ function AgentTreeRow({ node, now, paused, onSelectRun }: AgentTreeRowProps): JS
           {hasChildren ? (expanded ? '▾' : '▸') : '·'}
         </button>
         <span className={statusPillClass(run.status)} aria-label={statusLabel(run.status)}>
+          <span className="pill-icon" aria-hidden="true">
+            {statusIcon(run.status)}
+          </span>
           {statusLabel(run.status)}
         </span>
         {isPaused && (
