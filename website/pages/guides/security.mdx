@@ -3,7 +3,7 @@ import { Callout } from 'nextra/components';
 # Security Model
 
 <Callout type="info">
-  Mirrored from [`docs/security-model.md`](https://github.com/TODO-org/TODO-repo/blob/main/docs/security-model.md). The repo file is the source of truth — keep this page synced when you change either.
+  Mirrored from [`docs/security-model.md`](https://github.com/RealDealCPA-VR/opencodex/blob/main/docs/security-model.md). The repo file is the source of truth — keep this page synced when you change either.
 </Callout>
 
 OpenCodex runs untrusted model output in a privileged context (your machine, your repo, your API keys). The security model is defense-in-depth: Electron sandbox at the OS layer, Zod validation at every IPC boundary, permission tiers + approval prompts at the tool layer, scrubbed shell environment for execution, OS keychain for secrets.

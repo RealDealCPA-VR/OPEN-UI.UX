@@ -5,9 +5,9 @@ import type { DocsThemeConfig } from 'nextra-theme-docs';
 const config: DocsThemeConfig = {
   logo: <span style={{ fontWeight: 600 }}>opencodex-docs</span>,
   project: {
-    link: 'https://github.com/TODO-org/TODO-repo',
+    link: 'https://github.com/RealDealCPA-VR/opencodex',
   },
-  docsRepositoryBase: 'https://github.com/TODO-org/TODO-repo/blob/main/website',
+  docsRepositoryBase: 'https://github.com/RealDealCPA-VR/opencodex/blob/main/website',
   footer: {
     text: 'opencodex-docs — MIT-licensed open-source desktop coding agent.',
   },

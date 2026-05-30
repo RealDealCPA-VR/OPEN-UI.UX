@@ -7,14 +7,14 @@
 # Order matters: later patterns take precedence over earlier ones.
 
 # Default owner for everything in the repo
-* @TODO-set-github-handle
+* @RealDealCPA-VR
 
 # Architectural contracts — changes here are breaking-change-grade
-/packages/core/             @TODO-set-github-handle
-/packages/plugin-sdk/       @TODO-set-github-handle
+/packages/core/             @RealDealCPA-VR
+/packages/plugin-sdk/       @RealDealCPA-VR
 
 # CI + repo infrastructure
-/.github/                   @TODO-set-github-handle
-/CLAUDE.md                  @TODO-set-github-handle
-/HANDOFF.md                 @TODO-set-github-handle
-/Todo.md                    @TODO-set-github-handle
+/.github/                   @RealDealCPA-VR
+/CLAUDE.md                  @RealDealCPA-VR
+/HANDOFF.md                 @RealDealCPA-VR
+/Todo.md                    @RealDealCPA-VR

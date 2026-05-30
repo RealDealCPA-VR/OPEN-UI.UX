@@ -26,6 +26,7 @@ const IGNORE = new Set([
   '.next',
   '.turbo',
   'coverage',
+  '.claude',
 ]);
 const ALLOWLIST = new Set([
   'PLACEHOLDERS.md',

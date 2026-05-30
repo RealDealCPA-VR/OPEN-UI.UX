@@ -85,4 +85,4 @@ Thanks to everyone who shipped this release:
 
 ---
 
-OpenCodex is MIT-licensed. Full documentation: <https://TODO-set-domain> (the maintainer must replace this with the real docs URL before tagging; tracked in [PLACEHOLDERS.md](./PLACEHOLDERS.md)).
+OpenCodex is MIT-licensed. Full documentation: <https://realdealcpa-vr.github.io/opencodex>.

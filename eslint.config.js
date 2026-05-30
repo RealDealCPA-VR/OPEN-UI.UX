@@ -23,12 +23,6 @@ export default tseslint.config(
       '**/coverage/**',
       '**/*.config.js',
       '**/*.config.mjs',
-      // Workflow-tool scratch scripts kept in the repo for reference. They run
-      // inside the Workflow runtime (phase/agent/parallel/log are injected
-      // globals, not Node), so they cannot lint as standalone modules.
-      '.audit-workflow.mjs',
-      '.phase-14-workflow.mjs',
-      '.phase-15-workflow.mjs',
       // Stray tsc emit artifacts that occasionally land in src/ (e.g. if
       // someone runs `tsc` without `-p tsconfig.json`). Source is always
       // .ts / .tsx; .js / .d.ts in src/ are never authored.

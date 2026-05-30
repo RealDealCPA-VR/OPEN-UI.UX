@@ -9,7 +9,7 @@ OpenCodex is a local-first coding agent that executes tools, runs shell commands
 Report privately via either:
 
 - GitHub's [Private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability) (preferred — go to the repo's Security tab → Report a vulnerability).
-- Email: `security@TODO-set-domain` — **the maintainer must replace this with a real contact address before publishing v0.1.** Tracked in [PLACEHOLDERS.md](./PLACEHOLDERS.md); CI fails on this sentinel until it's filled.
+- Email: `vr@realdealcpa.ai`
 
 Please include:
 
