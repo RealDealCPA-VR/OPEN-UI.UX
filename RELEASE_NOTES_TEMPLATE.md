@@ -85,4 +85,4 @@ Thanks to everyone who shipped this release:
 
 ---
 
-OpenCodex is MIT-licensed. Full documentation: <https://realdealcpa-vr.github.io/opencodex>.
+OpenCodex is MIT-licensed. Full documentation: <https://realdealcpa-vr.github.io/OPEN-UI.UX>.

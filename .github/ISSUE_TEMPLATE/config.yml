@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/RealDealCPA-VR/opencodex/security/advisories/new
+    url: https://github.com/RealDealCPA-VR/OPEN-UI.UX/security/advisories/new
     about: Report a security issue privately via GitHub Security Advisories. Do not open a public issue.
   - name: Question or discussion
-    url: https://github.com/RealDealCPA-VR/opencodex/discussions
+    url: https://github.com/RealDealCPA-VR/OPEN-UI.UX/discussions
     about: Ask a question, share an idea, or start a general discussion.

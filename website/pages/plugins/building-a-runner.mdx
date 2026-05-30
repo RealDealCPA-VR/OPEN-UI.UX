@@ -3,7 +3,7 @@ import { Callout } from 'nextra/components';
 # Building a Runner
 
 <Callout type="info">
-  Mirrored from [`docs/runner-authoring.md`](https://github.com/RealDealCPA-VR/opencodex/blob/main/docs/runner-authoring.md). See also the user-facing [Agent runners guide](../guides/runners/) and the [SDK API reference](./api/).
+  Mirrored from [`docs/runner-authoring.md`](https://github.com/RealDealCPA-VR/OPEN-UI.UX/blob/main/docs/runner-authoring.md). See also the user-facing [Agent runners guide](../guides/runners/) and the [SDK API reference](./api/).
 </Callout>
 
 A "runner" in OpenCodex is anything that implements `SubagentRunner`. The built-in runner runs in-process through whichever `LLMProvider` you have configured; first-party adapters wrap Claude Code, OpenCode, and Aider; third parties ship their own through the plugin SDK.
@@ -145,7 +145,7 @@ OpenCodex creates a fresh worktree under `<workspace>/.opencodex/worktrees/<run-
 
 ## Example
 
-See [`examples/plugins/runner-stub/`](https://github.com/RealDealCPA-VR/opencodex/tree/main/examples/plugins/runner-stub) for a minimal end-to-end runner plugin — manifest, `checkInstalled`, an NDJSON parser, abort wiring, and a passing test.
+See [`examples/plugins/runner-stub/`](https://github.com/RealDealCPA-VR/OPEN-UI.UX/tree/main/examples/plugins/runner-stub) for a minimal end-to-end runner plugin — manifest, `checkInstalled`, an NDJSON parser, abort wiring, and a passing test.
 
 ## Where to ask for help
 
