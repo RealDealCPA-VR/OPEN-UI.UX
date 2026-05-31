@@ -9,6 +9,7 @@ import type { ModelCapabilities, ProviderConfig, ProviderFactory } from '@openco
 import type { ProviderExtraField, ProviderInfo } from '../../shared/provider-config';
 import { getProviderEntry } from '../storage/settings';
 import { getSecret } from '../storage/secrets';
+import { loadOllamaModels } from '../ollama/ollama-probe';
 
 export interface PingInput {
   apiKey: string | undefined;
@@ -32,6 +33,9 @@ export interface CatalogEntry {
   factory: ProviderFactory;
   loadModels(config: ProviderConfig): Promise<ModelCapabilities[]>;
   buildPingSpec(input: PingInput): PingSpec;
+  /** When true, model info is never cached (re-fetched on every list) so a
+   *  local daemon like Ollama always reflects its currently-pulled models. */
+  dynamicModels?: boolean;
 }
 
 /*
@@ -202,13 +206,17 @@ export const catalog: CatalogEntry[] = [
       },
     ],
     factory: ollamaProvider,
-    // TODO(v0.1): swap this for the live `/api/tags` list returned by the local
-    // Ollama daemon (see ollama-probe.ts) so the model picker reflects what the
-    // user has actually pulled. We currently fall back to the static curated
-    // list because (a) the daemon may not be running, and (b) /api/tags lacks
-    // the capability metadata (context window, supports tools) we need.
-    loadModels: (config) =>
-      ollamaProvider.create(ollamaProvider.configSchema.parse(config)).listModels(),
+    dynamicModels: true,
+    // Reflect what the local Ollama daemon has actually pulled (`/api/tags`).
+    // The curated `listModels()` list is the fallback used when the daemon is
+    // unreachable; live tags are matched back to curated families for their
+    // capability metadata. See ollama-models.ts.
+    loadModels: async (config) => {
+      const staticModels = await ollamaProvider
+        .create(ollamaProvider.configSchema.parse(config))
+        .listModels();
+      return loadOllamaModels(staticModels);
+    },
     buildPingSpec: ({ baseUrl }) => ({
       url: `${stripSlash(baseUrl ?? OLLAMA_BASE)}/api/tags`,
       method: 'GET',
@@ -284,10 +292,12 @@ async function resolveStoredConfig(entry: CatalogEntry): Promise<ProviderConfig>
 }
 
 export async function getProviderInfo(id: string): Promise<ProviderInfo | undefined> {
-  const cached = infoCache.get(id);
-  if (cached) return cached;
   const entry = catalogById.get(id);
   if (!entry) return undefined;
+  if (!entry.dynamicModels) {
+    const cached = infoCache.get(id);
+    if (cached) return cached;
+  }
   const config = await resolveStoredConfig(entry);
   const info: ProviderInfo = {
     id: entry.id,
@@ -297,7 +307,7 @@ export async function getProviderInfo(id: string): Promise<ProviderInfo | undefi
     extraFields: entry.extraFields,
     models: await entry.loadModels(config),
   };
-  infoCache.set(id, info);
+  if (!entry.dynamicModels) infoCache.set(id, info);
   return info;
 }
 

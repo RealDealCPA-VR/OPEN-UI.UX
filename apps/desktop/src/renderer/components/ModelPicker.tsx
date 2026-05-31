@@ -4,14 +4,23 @@ import type { ModelCapabilities } from '@opencodex/core';
 import { CostComparisonTooltip } from './CostComparisonTooltip';
 import { useSelectedModel } from '../state/selected-model-context';
 
-const TOP_N = 4;
 const RECENTS_KEY = 'opencodex.model-picker.recents';
 const RECENTS_MAX = 3;
+// Above this many models the flat list gets unwieldy, so surface a search box.
+const SEARCH_THRESHOLD = 8;
 
 interface FlatModel {
   providerId: string;
   providerName: string;
+  local: boolean;
   model: ModelCapabilities;
+}
+
+interface ProviderGroup {
+  providerId: string;
+  providerName: string;
+  local: boolean;
+  models: FlatModel[];
 }
 
 interface RecentEntry {
@@ -56,6 +65,15 @@ function pushRecent(prev: RecentEntry[], entry: RecentEntry): RecentEntry[] {
   return [entry, ...filtered].slice(0, RECENTS_MAX);
 }
 
+function matchesQuery(m: FlatModel, q: string): boolean {
+  if (q.length === 0) return true;
+  return (
+    m.model.displayName.toLowerCase().includes(q) ||
+    m.model.id.toLowerCase().includes(q) ||
+    m.providerName.toLowerCase().includes(q)
+  );
+}
+
 export interface ModelPickerProps {
   conversationId?: string | null;
 }
@@ -65,8 +83,8 @@ export function ModelPicker({ conversationId = null }: ModelPickerProps = {}): J
     useSelectedModel();
   const [hovered, setHovered] = useState(false);
   const [open, setOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [recents, setRecents] = useState<RecentEntry[]>(() => readRecents());
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -81,14 +99,21 @@ export function ModelPicker({ conversationId = null }: ModelPickerProps = {}): J
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  // Reset the search when the panel closes.
   useEffect(() => {
-    if (!open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMoreOpen(false);
-
-      setQuery('');
-    }
+    if (open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQuery('');
   }, [open]);
+
+  // Each time the panel opens, expand the provider that owns the current
+  // selection so the user lands on their active model; everything else stays
+  // collapsed until its provider name is clicked.
+  useEffect(() => {
+    if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setExpanded(selected ? new Set([selected.providerId]) : new Set<string>());
+  }, [open, selected]);
 
   const selectedProvider = useMemo(
     () => configuredProviders.find((p) => p.info.id === selected?.providerId) ?? null,
@@ -100,7 +125,12 @@ export function ModelPicker({ conversationId = null }: ModelPickerProps = {}): J
     for (const p of configuredProviders) {
       for (const model of p.info.models) {
         if (model.embeddings) continue;
-        out.push({ providerId: p.info.id, providerName: p.info.displayName, model });
+        out.push({
+          providerId: p.info.id,
+          providerName: p.info.displayName,
+          local: !p.info.requiresApiKey,
+          model,
+        });
       }
     }
     return out;
@@ -117,45 +147,38 @@ export function ModelPicker({ conversationId = null }: ModelPickerProps = {}): J
     return out;
   }, [flatModels, recents]);
 
-  const recentKeys = useMemo(
-    () => new Set(recentModels.map((m) => `${m.providerId}:${m.model.id}`)),
-    [recentModels],
+  const normalizedQuery = query.trim().toLowerCase();
+  const searching = normalizedQuery.length > 0;
+
+  // One group per CONFIGURED provider (built straight from the providers list,
+  // not from whatever models happen to exist) so every provider the user set
+  // up in Settings always surfaces here — even if its model catalog is empty.
+  const providerGroups = useMemo<ProviderGroup[]>(
+    () =>
+      configuredProviders.map((p) => {
+        const models = p.info.models
+          .filter((m) => !m.embeddings)
+          .map<FlatModel>((model) => ({
+            providerId: p.info.id,
+            providerName: p.info.displayName,
+            local: !p.info.requiresApiKey,
+            model,
+          }))
+          .filter((m) => matchesQuery(m, normalizedQuery));
+        return {
+          providerId: p.info.id,
+          providerName: p.info.displayName,
+          local: !p.info.requiresApiKey,
+          models,
+        };
+      }),
+    [configuredProviders, normalizedQuery],
   );
 
-  const nonRecentModels = useMemo(
-    () => flatModels.filter((m) => !recentKeys.has(`${m.providerId}:${m.model.id}`)),
-    [flatModels, recentKeys],
-  );
+  const matchCount = providerGroups.reduce((acc, g) => acc + g.models.length, 0);
 
-  const topModels = nonRecentModels.slice(0, TOP_N);
-  const restModels = nonRecentModels.slice(TOP_N);
-
-  const groupedRest = useMemo(() => {
-    const groups = new Map<string, { providerName: string; models: FlatModel[] }>();
-    const q = query.trim().toLowerCase();
-    const filtered =
-      q.length === 0
-        ? restModels
-        : restModels.filter(
-            (m) =>
-              m.model.displayName.toLowerCase().includes(q) ||
-              m.model.id.toLowerCase().includes(q) ||
-              m.providerName.toLowerCase().includes(q),
-          );
-    for (const m of filtered) {
-      const g = groups.get(m.providerId);
-      if (g) g.models.push(m);
-      else groups.set(m.providerId, { providerName: m.providerName, models: [m] });
-    }
-    return Array.from(groups.entries()).map(([providerId, v]) => ({ providerId, ...v }));
-  }, [restModels, query]);
-
-  const totalFilteredRest = useMemo(
-    () => groupedRest.reduce((acc, g) => acc + g.models.length, 0),
-    [groupedRest],
-  );
-
-  const hasOptions = flatModels.length > 0;
+  const hasOptions = configuredProviders.length > 0;
+  const showSearch = flatModels.length > SEARCH_THRESHOLD;
 
   const buttonLabel = (() => {
     if (loading) return 'Loading…';
@@ -175,6 +198,15 @@ export function ModelPicker({ conversationId = null }: ModelPickerProps = {}): J
       return next;
     });
     setOpen(false);
+  };
+
+  const toggleProvider = (providerId: string): void => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(providerId)) next.delete(providerId);
+      else next.add(providerId);
+      return next;
+    });
   };
 
   return (
@@ -213,88 +245,87 @@ export function ModelPicker({ conversationId = null }: ModelPickerProps = {}): J
             </div>
           ) : (
             <>
-              {recentModels.length > 0 ? (
-                <div className="model-picker-group">
-                  <div className="model-picker-group-head">Recent</div>
-                  {recentModels.map((m) => (
-                    <ModelRow
-                      key={`recent:${m.providerId}:${m.model.id}`}
-                      providerId={m.providerId}
-                      providerName={m.providerName}
-                      model={m.model}
-                      selected={selected}
-                      onPick={(sel) => handlePick(sel.providerId, sel.modelId)}
-                    />
-                  ))}
-                </div>
+              {showSearch ? (
+                <input
+                  type="search"
+                  className="model-picker-search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search models or providers…"
+                  aria-label="Search models"
+                  autoFocus
+                />
               ) : null}
-              {topModels.length > 0 ? (
-                <div className="model-picker-group">
-                  {recentModels.length > 0 ? (
-                    <div className="model-picker-group-head">Suggested</div>
-                  ) : null}
-                  {topModels.map((m) => (
-                    <ModelRow
-                      key={`${m.providerId}:${m.model.id}`}
-                      providerId={m.providerId}
-                      providerName={m.providerName}
-                      model={m.model}
-                      selected={selected}
-                      onPick={(sel) => handlePick(sel.providerId, sel.modelId)}
-                    />
-                  ))}
-                </div>
-              ) : null}
-              {restModels.length > 0 ? (
-                <div className={moreOpen ? 'model-picker-more open' : 'model-picker-more'}>
-                  <button
-                    type="button"
-                    className="model-picker-more-head"
-                    onClick={() => setMoreOpen((v) => !v)}
-                    aria-expanded={moreOpen}
-                  >
-                    <span className="model-picker-more-caret" aria-hidden="true">
-                      {moreOpen ? '▾' : '▸'}
-                    </span>
-                    <span className="model-picker-more-title">More models</span>
-                    <span className="model-picker-count">{restModels.length}</span>
-                  </button>
-                  {moreOpen ? (
-                    <div className="model-picker-more-body">
-                      <input
-                        type="search"
-                        className="model-picker-search"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Search models…"
-                        aria-label="Search models"
-                        autoFocus
-                      />
-                      <div className="model-picker-more-list">
-                        {totalFilteredRest === 0 ? (
-                          <div className="model-picker-empty">No matches</div>
-                        ) : (
-                          groupedRest.map((group) => (
-                            <div key={group.providerId} className="model-picker-provider-group">
-                              <div className="model-picker-group-head">{group.providerName}</div>
-                              {group.models.map((m) => (
+              <div className="model-picker-scroll">
+                {searching && matchCount === 0 ? (
+                  <div className="model-picker-empty">No models match your search.</div>
+                ) : (
+                  <>
+                    {!searching && recentModels.length > 0 ? (
+                      <div className="model-picker-group">
+                        <div className="model-picker-group-head">Recent</div>
+                        {recentModels.map((m) => (
+                          <ModelRow
+                            key={`recent:${m.providerId}:${m.model.id}`}
+                            providerId={m.providerId}
+                            providerName={m.providerName}
+                            model={m.model}
+                            selected={selected}
+                            showProvider
+                            onPick={(sel) => handlePick(sel.providerId, sel.modelId)}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                    {providerGroups.map((group) => {
+                      // While searching, hide providers with no matches; otherwise
+                      // every configured provider is listed (collapsed) by name.
+                      if (searching && group.models.length === 0) return null;
+                      const isExpanded = searching || expanded.has(group.providerId);
+                      return (
+                        <div key={group.providerId} className="model-picker-group">
+                          <button
+                            type="button"
+                            className="model-picker-provider-head"
+                            onClick={() => toggleProvider(group.providerId)}
+                            aria-expanded={isExpanded}
+                          >
+                            <span className="model-picker-provider-caret" aria-hidden="true">
+                              {isExpanded ? '▾' : '▸'}
+                            </span>
+                            <span className="model-picker-provider-name">{group.providerName}</span>
+                            {group.local ? (
+                              <span className="model-picker-local-tag">local</span>
+                            ) : null}
+                            <span className="model-picker-provider-count">
+                              {group.models.length}
+                            </span>
+                          </button>
+                          {isExpanded ? (
+                            group.models.length > 0 ? (
+                              group.models.map((m) => (
                                 <ModelRow
                                   key={`${m.providerId}:${m.model.id}`}
                                   providerId={m.providerId}
                                   providerName={m.providerName}
                                   model={m.model}
                                   selected={selected}
+                                  showProvider={false}
                                   onPick={(sel) => handlePick(sel.providerId, sel.modelId)}
                                 />
-                              ))}
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+                              ))
+                            ) : (
+                              <div className="model-picker-empty-hint">
+                                No models available — check this provider in Settings.
+                              </div>
+                            )
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -308,6 +339,7 @@ interface ModelRowProps {
   providerName?: string;
   model: ModelCapabilities;
   selected: { providerId: string; modelId: string } | null;
+  showProvider?: boolean;
   onPick: (sel: { providerId: string; modelId: string }) => void;
 }
 
@@ -316,6 +348,7 @@ function ModelRow({
   providerName,
   model,
   selected,
+  showProvider = true,
   onPick,
 }: ModelRowProps): JSX.Element {
   const isSelected =
@@ -338,7 +371,9 @@ function ModelRow({
             </span>
           ) : null}
         </span>
-        {providerName ? <span className="model-picker-row-provider">{providerName}</span> : null}
+        {showProvider && providerName ? (
+          <span className="model-picker-row-provider">{providerName}</span>
+        ) : null}
         <ModelChips model={model} />
       </span>
       <ModelBadges model={model} />

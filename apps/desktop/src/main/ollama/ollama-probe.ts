@@ -1,5 +1,7 @@
+import type { ModelCapabilities } from '@opencodex/core';
 import type { OllamaModelEntry, OllamaProbeResult } from '../../shared/ollama';
 import { getProviderEntry } from '../storage/settings';
+import { buildOllamaModelCapabilities } from './ollama-models';
 
 const DEFAULT_BASE = 'http://127.0.0.1:11434';
 const LOCALHOST_FALLBACK_BASE = 'http://127.0.0.1:11434';
@@ -121,4 +123,25 @@ export async function probeOllama(
     }
     return { running: false, models: [], error: message };
   }
+}
+
+const MODEL_LIST_TIMEOUT_MS = 1_500;
+
+/**
+ * Load the models the local Ollama daemon actually has pulled (`/api/tags`),
+ * matched back to curated capability metadata. Falls back to `staticModels`
+ * when the daemon is unreachable or reports nothing, so the picker is never
+ * empty just because Ollama isn't running.
+ */
+export async function loadOllamaModels(
+  staticModels: ModelCapabilities[],
+): Promise<ModelCapabilities[]> {
+  const probe = await probeOllama(AbortSignal.timeout(MODEL_LIST_TIMEOUT_MS));
+  if (!probe.running || probe.models.length === 0) {
+    return staticModels;
+  }
+  return buildOllamaModelCapabilities(
+    probe.models.map((m) => m.id),
+    staticModels,
+  );
 }
