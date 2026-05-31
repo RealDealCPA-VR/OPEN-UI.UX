@@ -45,7 +45,20 @@ export function registerPluginHandlers(): void {
         );
       }
       try {
-        return { plugins: await installPluginFromPath(installPath) };
+        // Bundled presets ship inside the app's own resources (packaged) or the
+        // in-repo packages/ dir (dev), and presetId is validated against the
+        // PLUGIN_PRESETS allowlist above — the path is as trusted as the app
+        // binary itself. They are not signed (build:plugins emits no .sig), so
+        // installing them is first-party consent, not third-party trust. Grant
+        // their declared permissions in the same step so the contributed runner
+        // registers immediately and shows up in the Runners panel — no detour to
+        // Plugins → grant permissions.
+        return {
+          plugins: await installPluginFromPath(installPath, {
+            acceptUnsigned: true,
+            autoGrantPermissions: true,
+          }),
+        };
       } catch (err) {
         throw toFriendlyError(err);
       }

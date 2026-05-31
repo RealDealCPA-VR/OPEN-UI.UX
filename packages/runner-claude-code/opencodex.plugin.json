@@ -5,7 +5,7 @@
   "description": "Run OpenCodex subagents via the Claude Code CLI.",
   "entry": "./dist/index.js",
   "engines": { "opencodex": ">=0.1.0" },
-  "permissions": ["agent.runner"],
+  "permissions": ["agent.runner", "settings.read"],
   "contributions": {
     "runners": [{ "id": "claude-code", "displayName": "Claude Code" }]
   }

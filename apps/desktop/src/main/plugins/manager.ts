@@ -23,6 +23,7 @@ import { runnerRegistry } from '../agent/runner-registry-instance';
 import { logger } from '../logger';
 import {
   appendPluginConsent,
+  getRunnerCliPath,
   getStoredPlugins,
   getTrustedPublisherKeys,
   setStoredPlugins,
@@ -219,8 +220,23 @@ function buildHost(id: string): PluginHost {
         'plugin slash command registered (tracked, dispatcher wiring is a planned follow-up)',
       );
     },
-    async getSetting(_key) {
+    async getSetting(key) {
       checkPermission(id, 'settings.read');
+      // The only host-backed setting a v1 runner plugin reads is its CLI path
+      // override, which the Runners panel persists per exposed runner id (e.g.
+      // `claude-code`). The plugin asks for it under a conventional `*CliPath`
+      // key, so map that onto the plugin's contributed runner. Without this the
+      // override the user types in the UI never reaches the runner.
+      if (typeof key === 'string' && key.endsWith('CliPath')) {
+        const r = runtime.get(id);
+        const wrapped = r?.registeredRunners[0];
+        if (wrapped) {
+          const sep = wrapped.lastIndexOf('__');
+          const bareId = sep >= 0 ? wrapped.slice(sep + 2) : wrapped;
+          const cliPath = getRunnerCliPath(bareId);
+          return (cliPath ?? undefined) as never;
+        }
+      }
       return undefined;
     },
     async setSetting(_key, _value) {
@@ -328,6 +344,13 @@ export interface InstallPluginOptions {
   // Plugin sandbox), this flag is the operator's last line of defense against
   // running arbitrary code with full main-process privileges.
   acceptUnsigned?: boolean;
+  // Grant the manifest's declared permissions immediately and activate the
+  // plugin in one step, instead of parking it in `pending-permissions` until
+  // the user grants them from the Plugins panel. Reserved for first-party
+  // bundled presets — they ship inside the app, so the install click IS the
+  // consent. Third-party installs leave this unset and keep the review-then-
+  // grant flow described in security-model.md.
+  autoGrantPermissions?: boolean;
 }
 
 export class UnsignedPluginRefusedError extends Error {
@@ -384,11 +407,12 @@ export async function installPluginFromPath(
     userAcceptedUnsigned: !signed,
   });
   const id = `${manifest.name}-${randomUUID()}`;
+  const autoGrant = options.autoGrantPermissions === true;
   runtime.set(id, {
     manifest,
     installPath,
     enabled: true,
-    grantedPermissions: manifest.permissions.length === 0 ? [...manifest.permissions] : [],
+    grantedPermissions: autoGrant ? [...manifest.permissions] : [],
     status: 'pending-permissions',
     registeredTools: [],
     registeredProviders: [],
@@ -396,7 +420,7 @@ export async function installPluginFromPath(
     registeredRunners: [],
   });
   persist();
-  if (manifest.permissions.length === 0) await activatePlugin(id);
+  if (autoGrant || manifest.permissions.length === 0) await activatePlugin(id);
   emit();
   return snapshot();
 }

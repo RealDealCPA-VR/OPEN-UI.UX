@@ -34,7 +34,7 @@ const harness = vi.hoisted(() => {
     args: readonly string[],
   ): Promise<{ stdout: string; stderr: string }> => {
     state.calls.push({ cmd, args });
-    return new Promise((resolve, reject) => {
+    const promise = new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
       setImmediate(() => {
         if (state.next.err) {
           const e = state.next.err;
@@ -46,6 +46,10 @@ const harness = vi.hoisted(() => {
         }
       });
     });
+    // Real promisify(execFile) returns a PromiseWithChild; the probe closes
+    // child.stdin to avoid the CLI's stdin wait. Mirror that shape here.
+    (promise as unknown as { child: unknown }).child = { stdin: { end: () => {} } };
+    return promise;
   };
 
   return { execFileMock, state };

@@ -8,7 +8,9 @@ const execFileAsync = promisify(execFile);
 type ProbeCommand = readonly [string, ...string[]];
 
 const PROBES: Record<string, ProbeCommand> = {
-  'claude-code': ['claude', '--print', 'echo', '--output-format', 'stream-json'],
+  // `--output-format=stream-json` with `--print` requires `--verbose` on the
+  // Claude Code CLI (>=2.x), otherwise it errors out before producing output.
+  'claude-code': ['claude', '--print', 'echo', '--output-format', 'stream-json', '--verbose'],
   opencode: ['opencode', '--headless', '--message', 'echo'],
   aider: ['aider', '--yes', '--message', 'echo', '--map-tokens', '0'],
 };
@@ -64,11 +66,16 @@ export async function probeRunnerAuth(runnerId: string): Promise<RunnerProbeResu
   let ranOk = true;
 
   try {
-    const res = await execFileAsync(cmd, args, {
+    const exec = execFileAsync(cmd, args, {
       timeout: PROBE_TIMEOUT_MS,
       windowsHide: true,
       maxBuffer: 4 * 1024 * 1024,
     });
+    // These CLIs read a prompt from stdin when one isn't supplied; with the pipe
+    // left open they block for several seconds ("no stdin data received in 3s")
+    // before proceeding. Close it immediately — the prompt is passed as an arg.
+    exec.child.stdin?.end();
+    const res = await exec;
     stdout = res.stdout ?? '';
     stderr = res.stderr ?? '';
   } catch (err) {

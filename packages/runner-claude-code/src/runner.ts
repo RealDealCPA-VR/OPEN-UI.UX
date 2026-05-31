@@ -112,14 +112,21 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
       host.logger.info('claude-code: spawning', { cliPath, cwd: opts.workspaceRoot });
 
       const useShell = needsShell(cliPath);
-      const child = spawn(cliPath, ['--output-format', 'stream-json', '--print', opts.task], {
-        cwd: opts.workspaceRoot,
-        env,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: true,
-        detached: process.platform !== 'win32',
-        shell: useShell,
-      });
+      // `--print --output-format=stream-json` requires `--verbose` on the
+      // Claude Code CLI (>=2.x); without it the CLI exits with an error before
+      // emitting any JSON.
+      const child = spawn(
+        cliPath,
+        ['--output-format', 'stream-json', '--verbose', '--print', opts.task],
+        {
+          cwd: opts.workspaceRoot,
+          env,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          windowsHide: true,
+          detached: process.platform !== 'win32',
+          shell: useShell,
+        },
+      );
       const childStdout = child.stdout;
       const childStderr = child.stderr;
       const childStdin = child.stdin;

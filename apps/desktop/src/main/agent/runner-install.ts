@@ -90,10 +90,18 @@ export async function installRunner(
   const start = Date.now();
   const [cmd, ...args] = command;
 
+  // On Windows the package-manager entry points are batch shims (`npm.cmd`,
+  // `brew` via Git-Bash, etc.). Node's spawn does not apply PATHEXT, so
+  // `spawn('npm', …)` throws ENOENT even though `where.exe npm` — used by the
+  // availability probe — resolves `npm.cmd` fine. Run through the shell on
+  // Windows so the shim is found. The args are static package coordinates with
+  // no shell metacharacters, so this introduces no injection surface.
+  const useShell = process.platform === 'win32';
+
   return await new Promise<RunnerInstallResult>((resolve, reject) => {
     let child;
     try {
-      child = spawn(cmd, args, { windowsHide: true });
+      child = spawn(cmd, args, { windowsHide: true, shell: useShell });
     } catch (err) {
       reject(err);
       return;
