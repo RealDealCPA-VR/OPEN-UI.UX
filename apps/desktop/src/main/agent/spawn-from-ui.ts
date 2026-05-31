@@ -1,7 +1,7 @@
 import { BrowserWindow } from 'electron';
 import { logger } from '../logger';
 import { recordComplete, recordError, recordStart } from './run-registry';
-import { runnerRegistry } from './runner-registry-instance';
+import { resolveRegisteredRunnerId } from './runner-registry-instance';
 import { type SubagentResult } from './subagent';
 import { isUtilityProcessAvailable, runSubagentInline, runSubagentInWorker } from './worker-host';
 import { createWorktree, isGitRepo } from './worktrees';
@@ -31,18 +31,13 @@ export function abortSpawnedRun(runId: string): boolean {
 }
 
 export async function spawnFromUiAsync(opts: SpawnFromUiOptions): Promise<{ runId: string }> {
-  const runnerId = opts.runnerId ?? 'internal';
-  if (!runnerRegistry.has(runnerId)) {
-    throw new Error(`Unknown runner: ${runnerId}`);
-  }
-
-  if (runnerId !== 'internal') {
-    const workspaceIsGit = await isGitRepo(opts.workspaceRoot);
-    if (!workspaceIsGit) {
-      throw new Error(
-        "External runners require a git workspace. Run 'git init' in this folder or pick the internal runner.",
-      );
-    }
+  // The UI passes the exposed runner id (e.g. `claude-code`); plugin runners
+  // register under a wrapped id. Resolve once: record the exposed id for
+  // display, but drive execution with the registered id.
+  const exposedRunnerId = opts.runnerId ?? 'internal';
+  const registeredRunnerId = resolveRegisteredRunnerId(exposedRunnerId);
+  if (!registeredRunnerId) {
+    throw new Error(`Unknown runner: ${exposedRunnerId}`);
   }
 
   const controller = new AbortController();
@@ -51,7 +46,7 @@ export async function spawnFromUiAsync(opts: SpawnFromUiOptions): Promise<{ runI
     task: opts.task,
     providerId: opts.providerId,
     modelId: opts.modelId,
-    runnerId,
+    runnerId: exposedRunnerId,
     ...(ctx.worktreePath ? { worktreePath: ctx.worktreePath } : {}),
     ...(ctx.worktreeBranch ? { worktreeBranch: ctx.worktreeBranch } : {}),
     ...(ctx.repoRoot ? { worktreeRepoRoot: ctx.repoRoot } : {}),
@@ -71,7 +66,7 @@ export async function spawnFromUiAsync(opts: SpawnFromUiOptions): Promise<{ runI
             modelId: opts.modelId,
             workspaceRoot: workRoot,
             signal: controller.signal,
-            runnerId,
+            runnerId: registeredRunnerId,
           });
         } catch (err) {
           logger.error(
@@ -84,7 +79,7 @@ export async function spawnFromUiAsync(opts: SpawnFromUiOptions): Promise<{ runI
             modelId: opts.modelId,
             workspaceRoot: workRoot,
             signal: controller.signal,
-            runnerId,
+            runnerId: registeredRunnerId,
           });
         }
       } else {
@@ -94,11 +89,11 @@ export async function spawnFromUiAsync(opts: SpawnFromUiOptions): Promise<{ runI
           modelId: opts.modelId,
           workspaceRoot: workRoot,
           signal: controller.signal,
-          runnerId,
+          runnerId: registeredRunnerId,
         });
       }
-      if (runnerId !== 'internal' && result.stopReason === 'runner_error') {
-        broadcastRunnerFriendlyError(runnerId, result.error ?? '');
+      if (exposedRunnerId !== 'internal' && result.stopReason === 'runner_error') {
+        broadcastRunnerFriendlyError(exposedRunnerId, result.error ?? '');
       }
       recordComplete(runId, result);
     } catch (err) {
@@ -125,18 +120,12 @@ function broadcastRunnerFriendlyError(runnerId: string, errText: string): void {
 }
 
 async function bootstrapWorktreeOrSkip(opts: SpawnFromUiOptions): Promise<WorktreeCtx> {
-  const runnerId = opts.runnerId ?? 'internal';
-  const workspaceIsGit = await isGitRepo(opts.workspaceRoot);
-  if (runnerId !== 'internal' && !workspaceIsGit) {
-    throw new Error(
-      'External runners require a git workspace so changes can be reviewed before merge',
-    );
-  }
   if (!opts.useWorktree) return {};
+  const workspaceIsGit = await isGitRepo(opts.workspaceRoot);
   if (!workspaceIsGit) {
     logger.info(
       { workspaceRoot: opts.workspaceRoot },
-      'spawn-from-ui: useWorktree requested but workspace is not a git repo; falling back to direct execution',
+      'spawn-from-ui: useWorktree requested but workspace is not a git repo; running directly on the workspace',
     );
     return {};
   }

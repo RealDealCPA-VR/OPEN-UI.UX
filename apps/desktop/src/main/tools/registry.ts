@@ -4,10 +4,12 @@ import {
   globTool,
   grepTool,
   listDirTool,
+  readDocumentTool,
   readFileTool,
   runShellTool,
   searchCodebaseTool,
   webFetchTool,
+  writeDocumentTool,
   writeFileTool,
 } from '@opencodex/tools';
 import { spawnSubagentTool } from '../agent/spawn-subagent-tool';
@@ -18,10 +20,12 @@ export function getToolRegistry(): ToolRegistry {
   if (!instance) {
     const registry = new ToolRegistry();
     registry.register(readFileTool);
+    registry.register(readDocumentTool);
     registry.register(globTool);
     registry.register(grepTool);
     registry.register(listDirTool);
     registry.register(writeFileTool);
+    registry.register(writeDocumentTool);
     registry.register(editFileTool);
     registry.register(runShellTool);
     registry.register(webFetchTool);

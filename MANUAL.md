@@ -440,17 +440,17 @@ Each runner row has a **Test connection** button that spawns a minimal command a
 
 The Agent spawn modal now exposes a **Verify runner** button next to **Spawn task** when an external runner is selected. Clicking it runs the same probe used by Settings → Runners and shows ✓ Ready or ✗ &lt;hint&gt; inline. The check is non-blocking — you can still spawn without verifying — but it saves a round-trip if the CLI is logged out.
 
-##### Initialize git from the spawn modal
+##### Initialize git from the spawn modal (optional)
 
-When you pick an external runner against a non-git workspace, the modal renders the safety boundary callout:
+When you pick an external runner against a non-git workspace, the modal renders an optional callout:
 
-> External runners require a git repository. Run 'git init' in this workspace or pick the internal runner.
+> This workspace isn't a git repo, so the runner will edit your files directly. Optional: initialize git to get an isolated worktree you can review before merging.
 
-The inline **Initialize git repo** button next to that note runs `git init -b main` in the workspace, refreshes the repo check, and unlocks the spawn button. If you want a first commit too, use the terminal — the inline init does not commit by default.
+The inline **Initialize git repo (optional)** button runs `git init -b main` in the workspace and refreshes the repo check. This is not required — you can spawn the runner without it, and it will operate directly on your local files. Initializing git only adds the isolated-worktree review flow. If you want a first commit too, use the terminal — the inline init does not commit by default.
 
-##### Safety boundary callout
+##### Worktree isolation is optional
 
-The callout copy is deliberate. External runners cannot fall back to writing into a non-git folder; their diffs would not be reviewable. Initializing git or switching to the internal runner are the only two paths forward.
+If the workspace is a git repo, external runners run in an isolated worktree whose diffs you review before merge. If it isn't, they edit your files in place — convenient for quick local work, but without the review-before-merge boundary.
 
 #### Accessibility
 
@@ -522,7 +522,7 @@ When the agent (or scheduler) spawns a subtask in a git workspace with **Use wor
 
 When the run completes, the **MergeReviewModal** lets you accept (runs `git merge --no-ff <branch>` then removes the worktree) or reject (just removes the worktree).
 
-External runners (Claude Code, OpenCode, Aider) **always** require a git workspace + worktree — they can't run on non-git folders, by design, so their changes are always reviewable before merge.
+External runners (Claude Code, OpenCode, Aider) use a worktree **when the workspace is a git repo**, so their changes are reviewable before merge. On a non-git folder they run directly on your local files instead — no worktree, no merge-review step. Initialize git (one click in the spawn modal) if you want that isolation.
 
 ### Runners
 
@@ -784,9 +784,9 @@ The runner's CLI isn't on `PATH`. Two options:
 1. Install it. Each runner's docs URL is shown in the install-status hint.
 2. Set a CLI path override in **Settings → Runners → <runner> → CLI path**.
 
-### "External runners require a git workspace"
+### External runners and git
 
-External runners (Claude Code, OpenCode, Aider) only run inside git worktrees by design — so their writes are always reviewable. Either `git init` your workspace, or use the internal runner.
+External runners (Claude Code, OpenCode, Aider) run inside an isolated git worktree **when the workspace is a git repo**, so their writes are reviewable before merge. On a non-git folder they run directly on your local files instead. If you want the worktree review flow, `git init` your workspace (one click in the spawn modal).
 
 ### Cron task isn't firing
 

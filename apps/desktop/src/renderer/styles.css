@@ -44,6 +44,17 @@
   --border-strong-alt: rgba(255, 255, 255, 0.08);
   --border-row-divider: rgba(255, 255, 255, 0.04);
 
+  /* Aliases for legacy token names used across the agent-run CSS. They point at
+     the canonical tokens above, so they resolve correctly in every theme (the
+     substitution is evaluated in the using element's context). Without these,
+     `var(--bg-primary)` / `var(--border-default)` fell back to nothing, leaving
+     those surfaces transparent and borderless. */
+  --bg-primary: var(--bg-panel);
+  --border-default: var(--border);
+  --bg-secondary: var(--bg-elevated);
+  --bg-input: var(--bg-sunken);
+  --text-link: var(--accent-text);
+
   /* Text */
   --text-primary: #f5f5f7;
   --text-secondary: #98989d;
@@ -1777,27 +1788,40 @@ body {
 }
 
 .provider-card {
-  background: var(--bg-panel);
+  background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   padding: 20px 24px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  box-shadow: var(--shadow-card);
-  transition:
-    border-color var(--duration) var(--ease),
-    background var(--duration) var(--ease);
+  transition: border-color var(--duration) var(--ease);
 }
 
 .provider-card:hover {
+  border-color: var(--border-strong);
+}
+
+/* Inputs sit on the recessed card, so lift them to the elevated surface to
+   read as fields rather than blending into the well. */
+.provider-card .field input,
+.provider-card .field textarea,
+.provider-card .field select {
   background: var(--bg-elevated);
 }
 
 .provider-card-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
+  gap: 12px;
+}
+
+.provider-card-head-main {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
 }
 
 .provider-card-head h2 {
@@ -1806,16 +1830,10 @@ body {
   font-weight: 600;
 }
 
-.provider-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 6px;
-  font-size: 12px;
-}
-
 .provider-meta-text {
   color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .pill {
@@ -1884,7 +1902,7 @@ body {
 .field textarea,
 .field select {
   background: var(--bg-sunken);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   color: var(--text-primary);
   padding: 9px 13px;
   border-radius: var(--radius);
@@ -1949,6 +1967,8 @@ body {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 
 .btn {
@@ -2224,7 +2244,7 @@ body {
 }
 
 .tool-card-pill-pending {
-  color: var(--accent-on-bg);
+  color: var(--accent-text);
   background: var(--accent-pending-bg);
   border-color: var(--accent-border);
 }
@@ -2261,7 +2281,7 @@ body {
 .tool-card-pill-terminal.is-active {
   background: var(--accent-pending-bg);
   border-color: var(--accent-border);
-  color: var(--accent-on-bg);
+  color: var(--accent-text);
 }
 
 .tool-card-terminal {
@@ -2408,7 +2428,7 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
-  background: var(--bg-panel);
+  background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 14px;
@@ -2431,19 +2451,20 @@ body {
 }
 
 .approvals-tool-name {
-  font-family: inherit;
+  font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
-  color: var(--accent-on-bg);
-  background: var(--bg-base);
-  border: 1px solid var(--border);
+  color: var(--accent-text);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   padding: 2px 6px;
+  white-space: nowrap;
 }
 
 .approvals-select {
-  background: var(--bg-base);
+  background: var(--bg-elevated);
   color: var(--text-primary);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   padding: 5px 8px;
   font: inherit;
@@ -2526,9 +2547,9 @@ body {
 .workspace-path {
   flex: 1;
   min-width: 0;
-  font-family: inherit;
+  font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--accent-on-bg);
+  color: var(--text-primary);
   background: var(--bg-base);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -2572,7 +2593,7 @@ body {
 .workspace-btn-primary {
   background: var(--accent-soft-bg);
   border-color: var(--accent-soft-border);
-  color: var(--accent-on-bg);
+  color: var(--accent-text);
 }
 
 .workspace-btn-danger:hover:not(:disabled) {
@@ -2752,7 +2773,7 @@ body {
 }
 
 .audit-row {
-  background: var(--bg-panel);
+  background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
@@ -2887,7 +2908,7 @@ body {
   margin: 0;
   font-size: 12px;
   font-weight: 600;
-  color: var(--accent-on-bg);
+  color: var(--accent-text);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -2903,7 +2924,7 @@ body {
 .audit-row-pre {
   margin: 0;
   padding: 8px 10px;
-  background: var(--bg-base);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 4px;
   font-size: 12px;
@@ -4342,7 +4363,7 @@ body {
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm, 6px);
-  background: var(--bg-panel);
+  background: var(--bg-sunken);
 }
 .plugins-preset-card-body strong {
   display: block;
@@ -4389,14 +4410,13 @@ body {
 }
 
 .plugin-row {
-  background: var(--bg-panel);
+  background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  box-shadow: var(--shadow-card);
   transition: border-color var(--duration) var(--ease);
 }
 
@@ -4540,14 +4560,13 @@ body {
 }
 
 .mcp-server-row {
-  background: var(--bg-panel);
+  background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  box-shadow: var(--shadow-card);
 }
 
 .mcp-server-row:hover {
@@ -4621,11 +4640,7 @@ body {
 }
 
 .mcp-presets {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 16px 18px;
-  box-shadow: var(--shadow-card);
+  padding: 4px 0 0;
 }
 
 .mcp-presets h3 {
@@ -4651,7 +4666,7 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  background: var(--bg-elevated);
+  background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: 8px;
   transition: border-color var(--duration) var(--ease);
@@ -6772,7 +6787,7 @@ mark {
 .runners-list-item {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm, 6px);
-  background: var(--bg-panel);
+  background: var(--bg-sunken);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -7005,7 +7020,7 @@ mark {
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm, 6px);
-  background: var(--bg-panel);
+  background: var(--bg-sunken);
 }
 .runners-preset-card-body strong {
   display: block;

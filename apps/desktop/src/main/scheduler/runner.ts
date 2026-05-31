@@ -196,11 +196,6 @@ export async function fireScheduledTask(
 }
 
 async function runSubagentForTask(args: RunSubagentArgs): Promise<SubagentResult> {
-  if (args.runnerId !== 'internal' && !(await isGitRepo(args.workspaceRoot))) {
-    throw new Error(
-      'External runners require a git workspace so changes can be reviewed before merge',
-    );
-  }
   const useWorker = await isUtilityProcessAvailable();
   if (useWorker) {
     try {

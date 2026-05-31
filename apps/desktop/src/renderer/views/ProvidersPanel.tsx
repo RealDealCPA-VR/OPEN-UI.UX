@@ -254,15 +254,13 @@ function ProviderCard({ item, draft, onDraftChange, onApplyItem }: ProviderCardP
   return (
     <section className="provider-card">
       <header className="provider-card-head">
-        <div>
+        <div className="provider-card-head-main">
           <h2>{info.displayName}</h2>
-          <div className="provider-meta">
-            <span className={statusClass}>{statusLabel}</span>
-            <span className="provider-meta-text">
-              {chatModelCount} chat · {embedModelCount} embed
-            </span>
-          </div>
+          <span className="provider-meta-text">
+            {chatModelCount} chat · {embedModelCount} embed
+          </span>
         </div>
+        <span className={statusClass}>{statusLabel}</span>
       </header>
 
       <div className="provider-card-body">

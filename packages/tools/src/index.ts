@@ -1,5 +1,8 @@
 export { readFileTool } from './read-file';
 export { writeFileTool } from './write-file';
+export { readDocumentTool, type ReadDocumentResult } from './read-document';
+export { writeDocumentTool, type WriteDocumentResult } from './write-document';
+export { documentFormat, type DocumentFormat } from './document-format';
 export { editFileTool } from './edit-file';
 export { globTool } from './glob';
 export { grepTool } from './grep';

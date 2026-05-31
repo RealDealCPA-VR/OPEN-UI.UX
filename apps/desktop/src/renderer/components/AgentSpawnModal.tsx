@@ -234,7 +234,10 @@ export function AgentSpawnModal({
     modelId && modelOptions.some((m) => m.id === modelId) ? modelId : (modelOptions[0]?.id ?? '');
 
   const isExternalRunner = runnerId !== 'internal';
-  const effectiveUseWorktree = isExternalRunner ? true : useWorktree && isRepo === true;
+  // External runners use an isolated worktree when the workspace is a git repo
+  // (so their changes can be reviewed before merge); without a repo they run
+  // directly on the workspace files. Internal runners only worktree on request.
+  const effectiveUseWorktree = isExternalRunner ? isRepo === true : useWorktree && isRepo === true;
 
   const handleBrowse = useCallback(async () => {
     const bridge = getBridge();
@@ -290,13 +293,14 @@ export function AgentSpawnModal({
     onSpawned,
   ]);
 
-  const externalRunnerNeedsRepo = isExternalRunner && isRepo === false;
+  // Not a blocker — when an external runner has no git repo it runs directly on
+  // the workspace; we just surface an optional offer to init git for isolation.
+  const externalRunnerNoGit = isExternalRunner && isRepo === false;
 
   const canSubmit =
     !busy &&
     task.trim().length > 0 &&
     workspaceRoot !== '' &&
-    !externalRunnerNeedsRepo &&
     (isExternalRunner || (providerId !== '' && effectiveModelId !== ''));
 
   const onKeyDown = (e: KeyboardEvent): void => {
@@ -407,18 +411,20 @@ export function AgentSpawnModal({
               lineHeight: 1.45,
             }}
           >
-            {selectedRunner?.displayName ?? 'This runner'} uses its own approval model. Changes land
-            in a git worktree for your review — your OpenCodex approval policy does not gate the
-            runner&apos;s internal tool calls.
+            {selectedRunner?.displayName ?? 'This runner'} uses its own approval model — your
+            OpenCodex approval policy does not gate the runner&apos;s internal tool calls.{' '}
+            {isRepo === true
+              ? 'Changes land in a git worktree for your review before merge.'
+              : 'Changes apply directly to your workspace files.'}
           </div>
         )}
 
-        {externalRunnerNeedsRepo && (
+        {externalRunnerNoGit && (
           <div
             style={{
-              border: '1px solid var(--danger-border)',
-              background: 'var(--danger-bg)',
-              color: 'var(--danger)',
+              border: '1px solid var(--border-strong)',
+              background: 'var(--bg-sunken)',
+              color: 'var(--text-secondary)',
               borderRadius: 6,
               padding: '8px 10px',
               margin: '4px 0',
@@ -430,8 +436,8 @@ export function AgentSpawnModal({
             }}
           >
             <span>
-              External runners require a git repository. Run &apos;git init&apos; in this workspace
-              or pick the internal runner.
+              This workspace isn&apos;t a git repo, so the runner will edit your files directly.
+              Optional: initialize git to get an isolated worktree you can review before merging.
             </span>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button
@@ -440,7 +446,7 @@ export function AgentSpawnModal({
                 disabled={gitInitBusy || !workspaceRoot}
                 onClick={() => void handleGitInit()}
               >
-                {gitInitBusy ? 'Initializing…' : 'Initialize git repo'}
+                {gitInitBusy ? 'Initializing…' : 'Initialize git repo (optional)'}
               </button>
               {gitInitError && (
                 <span style={{ fontSize: 12, color: 'var(--danger)' }}>
@@ -531,7 +537,11 @@ export function AgentSpawnModal({
           />
           <span>
             Use git worktree
-            {isExternalRunner ? ' (forced on for external runners)' : ''}
+            {isExternalRunner && isRepo === true ? ' (automatic for external runners)' : ''}
+            {isExternalRunner && isRepo === false
+              ? ' (no git repo — runs directly on your files)'
+              : ''}
+            {isExternalRunner && isRepo === null ? ' (checking…)' : ''}
             {!isExternalRunner && isRepo === false ? ' (workspace is not a git repo)' : ''}
             {!isExternalRunner && isRepo === null ? ' (checking…)' : ''}
           </span>

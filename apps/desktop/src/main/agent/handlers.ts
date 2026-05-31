@@ -15,7 +15,7 @@ import {
 import { toFriendlyError } from '../util/friendly-error';
 import { acceptMerge, prepareMergeBundle, rejectMerge } from './merge-review';
 import { clear, listRuns, onRunsChanged } from './run-registry';
-import { runnerRegistry } from './runner-registry-instance';
+import { resolveRegisteredRunnerId, runnerRegistry } from './runner-registry-instance';
 import { abortSpawnedRun, spawnFromUiAsync } from './spawn-from-ui';
 import { isGitRepo } from './worktrees';
 import { getAvailablePackageManagers, installRunner } from './runner-install';
@@ -74,16 +74,6 @@ function describeRunners(): RunnerInfo[] {
   });
 }
 
-function resolveRegisteredRunnerId(requestedId: string): string | null {
-  if (runnerRegistry.has(requestedId)) return requestedId;
-  // Allow callers to pass the bare (exposed) plugin runner id; look up the
-  // wrapped `plugin__<pluginId>__<bareId>` form.
-  const wrapped = runnerRegistry
-    .list()
-    .find((r) => r.id.startsWith(PLUGIN_PREFIX) && r.id.endsWith(`__${requestedId}`));
-  return wrapped ? wrapped.id : null;
-}
-
 export function registerAgentHandlers(): void {
   registerInvoke('agent:list-runs', z.void(), () => listRuns());
   registerInvoke('agent:clear-runs', z.void(), () => {
@@ -121,7 +111,7 @@ export function registerAgentHandlers(): void {
 
   registerInvoke('agent:spawn-from-ui', spawnFromUiSchema, async (req) => {
     const runnerId = req.runnerId ?? 'internal';
-    assertRunnerExists(runnerId);
+    if (!resolveRegisteredRunnerId(runnerId)) throw new Error(`Unknown runner: ${runnerId}`);
     try {
       return await spawnFromUiAsync({
         task: req.task,

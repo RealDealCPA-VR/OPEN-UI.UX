@@ -95,18 +95,23 @@ describe('spawnFromUiAsync — runner wiring', () => {
     ).rejects.toThrow(/Unknown runner: does-not-exist/);
   });
 
-  it('rejects external runner on non-git workspace with worktree-only error', async () => {
-    registerForTest(makeFakeRunner('ext-needs-git'));
-    await expect(
-      spawnFromUiAsync({
-        task: 't',
-        providerId: 'openai',
-        modelId: 'gpt-4o',
-        workspaceRoot: '/tmp/ws-not-a-repo',
-        useWorktree: false,
-        runnerId: 'ext-needs-git',
-      }),
-    ).rejects.toThrow(/External runners require a git workspace/);
+  it('runs an external runner directly on a non-git workspace (no worktree required)', async () => {
+    const { isGitRepo } = await import('./worktrees');
+    vi.mocked(isGitRepo).mockResolvedValue(false);
+    registerForTest(makeFakeRunner('ext-no-git'));
+    const { runId } = await spawnFromUiAsync({
+      task: 't',
+      providerId: 'openai',
+      modelId: 'gpt-4o',
+      workspaceRoot: '/tmp/ws-not-a-repo',
+      useWorktree: false,
+      runnerId: 'ext-no-git',
+    });
+    await waitForCompletion(runId);
+    const run = listAgentRuns().find((r) => r.id === runId);
+    expect(run).toBeDefined();
+    expect(run!.runnerId).toBe('ext-no-git');
+    expect(run!.worktreePath).toBeNull();
   });
 
   it("defaults runnerId to 'internal' when omitted and records it on the AgentRun", async () => {
