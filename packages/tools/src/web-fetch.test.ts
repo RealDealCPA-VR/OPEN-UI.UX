@@ -162,4 +162,46 @@ describe('webFetchTool', () => {
       webFetchTool.execute({ url: 'https://api.example.com/slow', timeoutMs: 30 }, ctx()),
     ).rejects.toThrow(/abort/i);
   });
+
+  it('blocks a redirect to a host outside the allowlist (SSRF guard)', async () => {
+    vi.stubEnv('OPENCODEX_WEB_FETCH_ALLOWLIST', 'api.example.com');
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location: 'https://evil.com/steal' } }),
+    );
+    await expect(
+      webFetchTool.execute({ url: 'https://api.example.com/redir' }, ctx()),
+    ).rejects.toThrow(/blocked redirect to non-allowlisted host/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks a redirect to a cloud-metadata IP', async () => {
+    vi.stubEnv('OPENCODEX_WEB_FETCH_ALLOWLIST', 'api.example.com');
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, {
+        status: 301,
+        headers: { location: 'http://169.254.169.254/latest/meta-data/' },
+      }),
+    );
+    await expect(
+      webFetchTool.execute({ url: 'https://api.example.com/redir' }, ctx()),
+    ).rejects.toThrow(/blocked redirect/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('follows a redirect to an allowlisted host', async () => {
+    vi.stubEnv('OPENCODEX_WEB_FETCH_ALLOWLIST', '*.example.com');
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { location: 'https://cdn.example.com/final' },
+        }),
+      )
+      .mockResolvedValueOnce(new Response('landed', { status: 200 }));
+    const result = await webFetchTool.execute({ url: 'https://api.example.com/start' }, ctx());
+    expect(result.status).toBe(200);
+    expect(result.body).toBe('landed');
+    expect(result.finalUrl).toBe('https://cdn.example.com/final');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

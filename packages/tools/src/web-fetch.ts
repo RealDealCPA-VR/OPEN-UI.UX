@@ -26,6 +26,7 @@ export interface WebFetchResult {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_BYTES = 1024 * 1024;
+const MAX_REDIRECTS = 5;
 
 export const webFetchTool = defineTool({
   name: 'web_fetch',
@@ -56,13 +57,39 @@ export const webFetchTool = defineTool({
     );
 
     try {
-      const res = await fetch(args.url, {
-        method: args.method ?? 'GET',
-        headers: args.headers,
-        body: args.body,
-        signal: AbortSignal.any([ctx.signal, timeoutAc.signal]),
-        redirect: 'follow',
-      });
+      // Follow redirects manually so the host allowlist is enforced on EVERY
+      // hop. With `redirect: 'follow'` an allowlisted host could 30x-redirect to
+      // an internal address (cloud metadata at 169.254.169.254, 127.0.0.1, ...)
+      // and fetch would chase it unchecked — an SSRF bypass of the allowlist.
+      let currentUrl = args.url;
+      let res: Response | undefined;
+      for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        res = await fetch(currentUrl, {
+          method: args.method ?? 'GET',
+          headers: args.headers,
+          body: args.body,
+          signal: AbortSignal.any([ctx.signal, timeoutAc.signal]),
+          redirect: 'manual',
+        });
+        const isRedirect = res.status >= 300 && res.status < 400;
+        const location = isRedirect ? res.headers.get('location') : null;
+        if (!location) break;
+        const nextUrl = new URL(location, currentUrl);
+        if (nextUrl.protocol !== 'http:' && nextUrl.protocol !== 'https:') {
+          throw new Error(`web_fetch: redirect to unsupported protocol ${nextUrl.protocol}`);
+        }
+        if (!isHostAllowed(nextUrl.hostname, allowlist)) {
+          throw new Error(
+            `web_fetch: blocked redirect to non-allowlisted host "${nextUrl.hostname}"`,
+          );
+        }
+        await res.body?.cancel().catch(() => undefined);
+        res = undefined;
+        currentUrl = nextUrl.toString();
+      }
+      if (!res) {
+        throw new Error(`web_fetch: too many redirects (>${MAX_REDIRECTS})`);
+      }
 
       const headers: Record<string, string> = {};
       res.headers.forEach((value, key) => {
@@ -77,7 +104,7 @@ export const webFetchTool = defineTool({
         body,
         truncated,
         contentType: res.headers.get('content-type'),
-        finalUrl: res.url || args.url,
+        finalUrl: currentUrl,
       };
     } finally {
       clearTimeout(timer);
