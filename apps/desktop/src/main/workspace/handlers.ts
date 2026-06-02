@@ -62,6 +62,24 @@ export function registerWorkspaceHandlers(): void {
     return broadcastChange(setActiveWorkspace(picked));
   });
 
+  // Side-effect-free folder picker: opens the OS dialog and returns the chosen
+  // path WITHOUT changing the active workspace. Used by features that need a
+  // folder path (e.g. the Obsidian vault picker) but must not switch the
+  // agent's coding workspace the way workspace:browse does.
+  registerInvoke('workspace:pick-folder', z.void(), async (): Promise<string | null> => {
+    const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null;
+    const opts: Electron.OpenDialogOptions = {
+      properties: ['openDirectory', 'createDirectory'],
+      title: 'Choose folder',
+    };
+    const result = parent
+      ? await dialog.showOpenDialog(parent, opts)
+      : await dialog.showOpenDialog(opts);
+    if (result.canceled || result.filePaths.length === 0) return null;
+    const picked = result.filePaths[0];
+    return picked && isExistingDirectory(picked) ? picked : null;
+  });
+
   registerInvoke(
     'workspace:remove',
     z.object({ path: z.string().min(1) }),

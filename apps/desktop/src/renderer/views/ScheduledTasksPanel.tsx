@@ -54,7 +54,10 @@ export function ScheduledTasksPanel(): JSX.Element {
       try {
         const res = await window.opencodex.skills.list();
         const skill: Skill | undefined = res.skills.find((s) => s.id === skillId);
-        if (!skill) return;
+        if (!skill) {
+          setActionError(`Skill "${skillId}" not found — the deep link could not be opened.`);
+          return;
+        }
         setPrefill({
           name: `skill:${skill.name}`,
           description: skill.description,
@@ -67,8 +70,10 @@ export function ScheduledTasksPanel(): JSX.Element {
         const next = new URLSearchParams(searchParams);
         next.delete('prefillSkill');
         setSearchParams(next, { replace: true });
-      } catch {
-        // ignore
+      } catch (err) {
+        setActionError(
+          `Could not open the linked skill — ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     })();
   }, [searchParams, setSearchParams, editing]);

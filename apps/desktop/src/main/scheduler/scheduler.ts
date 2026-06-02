@@ -10,6 +10,7 @@ import { withSqliteBusyRetry } from '../util/sqlite-retry';
 type TaskListProvider = () => readonly ScheduledTask[];
 type Notifier = (event: {
   taskId: string;
+  runId: string;
   agentRunId: string;
   status: 'completed' | 'failed';
 }) => void;
@@ -260,7 +261,7 @@ class Scheduler {
     recordFireLog({ taskId, firedAt: new Date().toISOString(), reason: 'tick' });
     try {
       const res = await this.fireImpl(fresh);
-      this.notifyImpl({ taskId, agentRunId: res.agentRunId, status: res.status });
+      this.notifyImpl({ taskId, runId: res.runId, agentRunId: res.agentRunId, status: res.status });
     } catch (err) {
       logger.error(
         { err: err instanceof Error ? err.message : String(err), taskId },
@@ -319,7 +320,7 @@ class Scheduler {
     recordFireLog({ taskId, firedAt: new Date().toISOString(), reason: 'manual' });
     try {
       const res = await this.fireImpl(fresh);
-      this.notifyImpl({ taskId, agentRunId: res.agentRunId, status: res.status });
+      this.notifyImpl({ taskId, runId: res.runId, agentRunId: res.agentRunId, status: res.status });
     } catch (err) {
       logger.error(
         { err: err instanceof Error ? err.message : String(err), taskId },
@@ -378,7 +379,12 @@ class Scheduler {
           if (!fresh) return;
           recordFireLog({ taskId: task.id, firedAt: new Date().toISOString(), reason: 'catchup' });
           const res = await this.fireImpl(fresh, { wasCatchup: true });
-          this.notifyImpl({ taskId: task.id, agentRunId: res.agentRunId, status: res.status });
+          this.notifyImpl({
+            taskId: task.id,
+            runId: res.runId,
+            agentRunId: res.agentRunId,
+            status: res.status,
+          });
           try {
             const refreshed = getTask(task.id);
             if (refreshed) {

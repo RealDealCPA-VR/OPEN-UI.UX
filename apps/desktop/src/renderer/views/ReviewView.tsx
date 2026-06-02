@@ -17,7 +17,7 @@ export function ReviewView(): JSX.Element {
   const [warning, setWarning] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [extraContext, setExtraContext] = useState<string>('');
-  const [postConfirm, setPostConfirm] = useState<ReviewFinding | null>(null);
+  const [postConfirmAll, setPostConfirmAll] = useState(false);
   const [postBusy, setPostBusy] = useState(false);
   const [postLog, setPostLog] = useState<string[]>([]);
 
@@ -89,34 +89,32 @@ export function ReviewView(): JSX.Element {
     }
   }, []);
 
-  const onPostOne = useCallback(
-    async (finding: ReviewFinding) => {
-      if (!diff || diff.prNumber === null) return;
-      setPostBusy(true);
-      try {
-        const res = await window.opencodex.review.postComments({
-          prNumber: diff.prNumber,
-          findings: [finding],
-          perFindingMode: true,
-        });
-        const ok = res.postedCount > 0;
-        const errMsg = res.errors[0]?.message;
-        const line = ok
-          ? `Posted: ${finding.title}`
-          : `Failed: ${finding.title}${errMsg ? ` — ${errMsg}` : ''}`;
-        setPostLog((prev) => [...prev, line]);
-      } catch (err) {
-        setPostLog((prev) => [
-          ...prev,
-          `Failed: ${finding.title} — ${err instanceof Error ? err.message : String(err)}`,
-        ]);
-      } finally {
-        setPostBusy(false);
-        setPostConfirm(null);
-      }
-    },
-    [diff],
-  );
+  const onPostSelected = useCallback(async () => {
+    if (!diff || diff.prNumber === null) return;
+    const selectedFindings = findings.filter((f) => selectedIds.has(f.id));
+    if (selectedFindings.length === 0) return;
+    setPostBusy(true);
+    try {
+      const res = await window.opencodex.review.postComments({
+        prNumber: diff.prNumber,
+        findings: selectedFindings,
+        perFindingMode: true,
+      });
+      setPostLog((prev) => [
+        ...prev,
+        `Posted ${res.postedCount}/${selectedFindings.length} selected finding(s)`,
+        ...res.errors.map((e) => `Failed: ${e.message ?? 'unknown error'}`),
+      ]);
+    } catch (err) {
+      setPostLog((prev) => [
+        ...prev,
+        `Failed to post selection — ${err instanceof Error ? err.message : String(err)}`,
+      ]);
+    } finally {
+      setPostBusy(false);
+      setPostConfirmAll(false);
+    }
+  }, [diff, findings, selectedIds]);
 
   const canPostToPr = diff !== null && diff.prNumber !== null;
 
@@ -259,10 +257,7 @@ export function ReviewView(): JSX.Element {
                   type="button"
                   className="btn"
                   disabled={selectedIds.size === 0 || postBusy}
-                  onClick={() => {
-                    const first = sortedFindings.find((f) => selectedIds.has(f.id));
-                    if (first) setPostConfirm(first);
-                  }}
+                  onClick={() => setPostConfirmAll(true)}
                   style={{ marginLeft: 'auto' }}
                 >
                   Post selected as PR comments…
@@ -285,47 +280,33 @@ export function ReviewView(): JSX.Element {
         )}
       </main>
 
-      {postConfirm && (
+      {postConfirmAll && (
         <div className="approval-modal-backdrop" role="dialog" aria-modal="true">
           <div className="approval-modal" style={{ minWidth: 'min(520px, 92vw)' }}>
             <header className="approval-modal-header">
-              <h2>Post comment to PR #{diff?.prNumber}</h2>
+              <h2>
+                Post {selectedIds.size} comment(s) to PR #{diff?.prNumber}
+              </h2>
             </header>
             <p className="approval-modal-description">
-              Confirm posting this finding via <code>gh pr comment</code>. You can post each
-              selected finding one-by-one.
+              Confirm posting all {selectedIds.size} selected finding(s) via{' '}
+              <code>gh pr comment</code>, one comment per finding.
             </p>
-            <pre
-              style={{
-                background: 'var(--bg-sunken)',
-                padding: 8,
-                fontSize: 12,
-                maxHeight: 200,
-                overflow: 'auto',
-                whiteSpace: 'pre-wrap',
-              }}
-            >
-              {postConfirm.title}
-              {'\n'}
-              {postConfirm.filePath}:L{postConfirm.startLine}
-              {'\n\n'}
-              {postConfirm.rationale}
-            </pre>
             <div className="approval-modal-actions">
               <div className="approval-modal-action-group">
                 <button
                   type="button"
                   className="btn btn-primary"
                   disabled={postBusy}
-                  onClick={() => void onPostOne(postConfirm)}
+                  onClick={() => void onPostSelected()}
                 >
-                  {postBusy ? 'Posting…' : 'Confirm post'}
+                  {postBusy ? 'Posting…' : `Post ${selectedIds.size} comment(s)`}
                 </button>
                 <button
                   type="button"
                   className="btn"
                   disabled={postBusy}
-                  onClick={() => setPostConfirm(null)}
+                  onClick={() => setPostConfirmAll(false)}
                 >
                   Cancel
                 </button>

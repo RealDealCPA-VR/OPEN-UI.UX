@@ -1,9 +1,58 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ChatEvent } from '@opencodex/core';
+import type { ChatEvent, ChatRequest } from '@opencodex/core';
 import { openAIProvider } from './provider';
 import { buildResponsesRequestBody } from './responses';
+
+const baseResponsesReq: ChatRequest = { model: 'o3', messages: [{ role: 'user', content: 'hi' }] };
+
+describe('buildResponsesRequestBody params', () => {
+  it('forwards reasoning effort', () => {
+    expect(
+      buildResponsesRequestBody(
+        { ...baseResponsesReq, reasoning: { effort: 'low' } },
+        {
+          stream: false,
+        },
+      ).reasoning,
+    ).toEqual({ effort: 'low' });
+  });
+  it('maps a named toolChoice to {type:function,name}', () => {
+    expect(
+      buildResponsesRequestBody(
+        { ...baseResponsesReq, toolChoice: { name: 'grep' } },
+        {
+          stream: false,
+        },
+      ).tool_choice,
+    ).toEqual({ type: 'function', name: 'grep' });
+  });
+  it('passes through required toolChoice', () => {
+    expect(
+      buildResponsesRequestBody({ ...baseResponsesReq, toolChoice: 'required' }, { stream: false })
+        .tool_choice,
+    ).toBe('required');
+  });
+  it('maps json_schema responseFormat to text.format', () => {
+    const schema = { type: 'object' as const };
+    expect(
+      buildResponsesRequestBody(
+        { ...baseResponsesReq, responseFormat: { type: 'json_schema', name: 'R', schema } },
+        { stream: false },
+      ).text,
+    ).toEqual({ format: { type: 'json_schema', name: 'R', schema } });
+  });
+  it('never forwards stop (the Responses API has no stop param)', () => {
+    const body = buildResponsesRequestBody(
+      { ...baseResponsesReq, stop: ['END'] },
+      {
+        stream: false,
+      },
+    ) as Record<string, unknown>;
+    expect(body.stop).toBeUndefined();
+  });
+});
 
 const STREAM_FIXTURE = readFileSync(
   fileURLToPath(new URL('./__fixtures__/responses-api.txt', import.meta.url)),

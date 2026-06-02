@@ -160,12 +160,15 @@ export async function collectSubagentResult(
           outputTokens += evt.outputTokens;
           break;
         case 'done': {
-          if (error === undefined && stopReason !== 'error') {
-            const r = evt.stopReason;
+          const r = evt.stopReason;
+          if (r === 'cancelled') {
+            stopReason = 'cancelled';
+          } else if (r === 'budget_exceeded') {
+            stopReason = 'budget_exceeded';
+          } else if (error === undefined && stopReason !== 'error') {
             if (r === 'tool_use') stopReason = 'tool_use';
             else if (r === 'max_tokens') stopReason = 'max_tokens';
             else if (r === 'error') stopReason = 'error';
-            else if (r === 'cancelled') stopReason = 'cancelled';
             else stopReason = 'end_turn';
           }
           break;
@@ -194,7 +197,7 @@ export async function collectSubagentResult(
   }
 
   if (aborted) {
-    if (stopReason !== 'error' && error === undefined) {
+    if (stopReason !== 'cancelled') {
       stopReason = 'cancelled';
       const reason = signal?.reason;
       error = reason !== undefined ? String(reason) : 'aborted';

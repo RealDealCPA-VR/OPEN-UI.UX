@@ -274,7 +274,7 @@ export function RoutingPanel(): JSX.Element {
                 padding: '10px 12px',
                 background: 'var(--bg-elevated)',
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-md, 8px)',
+                borderRadius: 'var(--radius)',
               }}
             >
               <div style={{ fontWeight: 600 }}>{preset.name}</div>
@@ -324,7 +324,7 @@ export function RoutingPanel(): JSX.Element {
                 style={{
                   background: 'var(--bg-panel)',
                   border: `1px solid ${isActive ? 'var(--accent-border)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius-md, 8px)',
+                  borderRadius: 'var(--radius)',
                   padding: 12,
                 }}
                 data-settings-anchor={`routing-policy-${p.id}`}
@@ -339,20 +339,7 @@ export function RoutingPanel(): JSX.Element {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <strong>{p.name}</strong>
-                    {isActive && (
-                      <span
-                        style={{
-                          fontSize: 11,
-                          padding: '2px 8px',
-                          borderRadius: 'var(--radius-pill, 999px)',
-                          background: 'var(--accent-soft-bg)',
-                          color: 'var(--accent)',
-                          border: '1px solid var(--accent-border)',
-                        }}
-                      >
-                        active
-                      </span>
-                    )}
+                    {isActive && <span className="pill pill-local">active</span>}
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
                     {!isActive && (
@@ -439,8 +426,9 @@ function RuleEditor(props: {
             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{RULE_HINTS[rule.when]}</div>
           </div>
           <input
-            className="input"
+            className="settings-input"
             placeholder="providerId"
+            aria-label={`${RULE_LABELS[rule.when]} provider ID`}
             value={rule.use.providerId}
             onChange={(e) =>
               onUpdate({ ...rule, use: { ...rule.use, providerId: e.target.value } })
@@ -448,8 +436,9 @@ function RuleEditor(props: {
             disabled={pendingKey === `rule:${policy.id}:${rule.id}`}
           />
           <input
-            className="input"
+            className="settings-input"
             placeholder="modelId"
+            aria-label={`${RULE_LABELS[rule.when]} model ID`}
             value={rule.use.modelId}
             onChange={(e) => onUpdate({ ...rule, use: { ...rule.use, modelId: e.target.value } })}
             disabled={pendingKey === `rule:${policy.id}:${rule.id}`}

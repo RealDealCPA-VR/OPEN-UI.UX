@@ -142,7 +142,7 @@ export function TelemetryPanel(): JSX.Element {
             Save
           </button>
           {savedFlash === 'apiKey' && (
-            <span aria-live="polite" style={{ fontSize: 12, color: 'var(--success, #22c55e)' }}>
+            <span aria-live="polite" style={{ fontSize: 12, color: 'var(--success)' }}>
               Saved
             </span>
           )}
@@ -172,7 +172,7 @@ export function TelemetryPanel(): JSX.Element {
             Save
           </button>
           {savedFlash === 'host' && (
-            <span aria-live="polite" style={{ fontSize: 12, color: 'var(--success, #22c55e)' }}>
+            <span aria-live="polite" style={{ fontSize: 12, color: 'var(--success)' }}>
               Saved
             </span>
           )}

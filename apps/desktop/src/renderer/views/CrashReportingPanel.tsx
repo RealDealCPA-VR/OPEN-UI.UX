@@ -137,7 +137,7 @@ export function CrashReportingPanel(): JSX.Element {
             Save
           </button>
           {savedFlash === 'dsn' && (
-            <span aria-live="polite" style={{ fontSize: 12, color: 'var(--success, #22c55e)' }}>
+            <span aria-live="polite" className="settings-saved-flash">
               Saved
             </span>
           )}

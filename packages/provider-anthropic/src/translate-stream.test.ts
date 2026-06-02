@@ -131,6 +131,32 @@ describe('streamEventsToChatEvents', () => {
     });
   });
 
+  it('costs full-rate input on top of cache reads (input_tokens excludes cache)', async () => {
+    const events: StreamEvent[] = [
+      {
+        type: 'message_start',
+        message: {
+          id: 'm',
+          role: 'assistant',
+          usage: { input_tokens: 1_000_000, output_tokens: 1, cache_read_input_tokens: 1_000_000 },
+        },
+      },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 0 } },
+    ];
+    const out = await collect(
+      streamEventsToChatEvents(fromArray(events), { model: 'claude-haiku-4-5-20251001' }),
+    );
+    const usage = out.find((e) => e.type === 'usage');
+    // input_tokens (1M) is the full-rate portion; cache_read (1M) is the cached portion.
+    // haiku pricing: input $1/m, cached $0.1/m => $1.00 + $0.10 = $1.10.
+    // The old (buggy) behavior subtracted cache reads from input_tokens, yielding $0.10.
+    expect(usage).toBeDefined();
+    expect(usage).toMatchObject({ inputTokens: 1_000_000, cachedInputTokens: 1_000_000 });
+    if (usage?.type === 'usage') {
+      expect(usage.costUsd).toBeCloseTo(1.1);
+    }
+  });
+
   it('maps stop_reason max_tokens', async () => {
     const events: StreamEvent[] = [{ type: 'message_delta', delta: { stop_reason: 'max_tokens' } }];
     const out = await collect(streamEventsToChatEvents(fromArray(events)));

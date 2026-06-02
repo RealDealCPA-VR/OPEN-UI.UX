@@ -34,6 +34,7 @@ export const stopReasonSchema = z.enum([
   'tool_use',
   'error',
   'cancelled',
+  'budget_exceeded',
   'content_filter',
 ]);
 

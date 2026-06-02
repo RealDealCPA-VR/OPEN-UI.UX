@@ -556,6 +556,10 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
     request: void;
     response: WorkspaceState;
   };
+  'workspace:pick-folder': {
+    request: void;
+    response: string | null;
+  };
   'workspace:remove': {
     request: RemoveWorkspaceRequest;
     response: WorkspaceState;

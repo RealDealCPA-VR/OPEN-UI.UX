@@ -163,8 +163,16 @@ export function UpdatesPanel({ onCheckRef }: UpdatesPanelProps = {}): JSX.Elemen
           <p className="updates-progress">Downloading… {Math.round(status.percent)}%</p>
         ) : null}
         {status.version ? <p className="updates-version">Version {status.version}</p> : null}
-        {status.error ? <p className="chat-warn">{status.error}</p> : null}
-        {actionError ? <p className="chat-warn">{actionError}</p> : null}
+        {status.error ? (
+          <p className="chat-warn" role="alert">
+            {status.error}
+          </p>
+        ) : null}
+        {actionError ? (
+          <p className="chat-warn" role="alert">
+            {actionError}
+          </p>
+        ) : null}
       </div>
     </div>
   );

@@ -1,5 +1,30 @@
 import { describe, expect, it } from 'vitest';
+import type { ChatRequest } from '@opencodex/core';
 import { buildChatRequestBody, translateMessages, translateTools } from './translate-request';
+
+const baseReq: ChatRequest = { model: 'o3-mini', messages: [{ role: 'user', content: 'hi' }] };
+
+describe('buildChatRequestBody reasoning', () => {
+  it('omits reasoning_effort when reasoning is unset', () => {
+    expect(buildChatRequestBody(baseReq, { stream: false }).reasoning_effort).toBeUndefined();
+  });
+  it('maps reasoning:true to medium effort', () => {
+    expect(
+      buildChatRequestBody({ ...baseReq, reasoning: true }, { stream: false }).reasoning_effort,
+    ).toBe('medium');
+  });
+  it('treats reasoning:false as off', () => {
+    expect(
+      buildChatRequestBody({ ...baseReq, reasoning: false }, { stream: false }).reasoning_effort,
+    ).toBeUndefined();
+  });
+  it('passes an explicit effort through', () => {
+    expect(
+      buildChatRequestBody({ ...baseReq, reasoning: { effort: 'high' } }, { stream: false })
+        .reasoning_effort,
+    ).toBe('high');
+  });
+});
 
 describe('translateMessages', () => {
   it('passes through string content', () => {

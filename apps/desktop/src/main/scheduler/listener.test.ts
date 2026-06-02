@@ -234,6 +234,51 @@ describe('scheduler listener', () => {
     void RATE_LIMIT_WINDOW_MS;
   });
 
+  it('rate-limits a flood of unknown-task requests', async () => {
+    const lookup = vi.fn((): ReturnType<TaskSecretLookup> => null);
+    const info = await startListener({
+      rangeStart: 39040,
+      rangeEnd: 39049,
+      lookupTaskSecret: lookup,
+      onTrigger: vi.fn(),
+    });
+    expect(info).not.toBeNull();
+    const sig = sign('whatever', '{}');
+
+    const r1 = await post(info!.port, 'unknown', '{}', { [SIGNATURE_HEADER]: sig });
+    expect(r1.status).toBe(404);
+
+    const r2 = await post(info!.port, 'unknown', '{}', { [SIGNATURE_HEADER]: sig });
+    expect(r2.status).toBe(429);
+
+    // The second request must be throttled before the secret lookup runs again.
+    expect(lookup).toHaveBeenCalledOnce();
+  });
+
+  it('rate-limits a flood of invalid-signature requests', async () => {
+    const lookup = vi.fn(
+      (): ReturnType<TaskSecretLookup> => ({ kind: 'webhook', secret: 'right-secret' }),
+    );
+    const info = await startListener({
+      rangeStart: 39050,
+      rangeEnd: 39059,
+      lookupTaskSecret: lookup,
+      onTrigger: vi.fn(),
+    });
+    expect(info).not.toBeNull();
+    const body = JSON.stringify({ ok: true });
+    const badSig = sign('wrong-secret', body);
+
+    const r1 = await post(info!.port, 'task-bad', body, { [SIGNATURE_HEADER]: badSig });
+    expect(r1.status).toBe(401);
+
+    const r2 = await post(info!.port, 'task-bad', body, { [SIGNATURE_HEADER]: badSig });
+    expect(r2.status).toBe(429);
+
+    // The second flooded request must be throttled before the HMAC re-computation.
+    expect(lookup).toHaveBeenCalledOnce();
+  });
+
   it('prunes lastTriggerAt entries older than the TTL', () => {
     const now = 10_000_000;
     __recordTriggerAtForTests('expired-1', now - LAST_TRIGGER_TTL_MS - 1);

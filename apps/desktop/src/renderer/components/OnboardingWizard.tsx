@@ -46,7 +46,7 @@ const STYLES = `
     background: var(--accent, #6366f1);
   }
   .onboarding-progress li[data-state="current"] {
-    background: var(--accent-soft, rgba(99,102,241,0.55));
+    background: var(--accent-soft-bg);
   }
   .onboarding-why {
     font-size: 12px;

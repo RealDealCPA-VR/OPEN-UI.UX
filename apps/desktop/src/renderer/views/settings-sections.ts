@@ -146,6 +146,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     tags: ['history', 'log', 'audit', 'trace', 'forensic', 'tool calls', 'review'],
   },
   {
+    slug: 'replay',
+    title: 'Replay & provenance',
+    description:
+      'Replay an applied diff against a different model, or export a signed provenance bundle (transcript + diffs + prompts + citations + routing decisions) for any conversation.',
+    tags: ['replay', 'provenance', 'diff', 'reproduce', 'bundle', 'signed', 'ed25519', 'audit'],
+  },
+  {
     slug: 'indexing',
     title: 'Indexing',
     description: 'Codebase indexing for semantic search over your workspace.',

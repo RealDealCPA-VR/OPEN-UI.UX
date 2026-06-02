@@ -158,6 +158,59 @@ describe('prepareMergeBundle / accept / reject', () => {
     expect(bundle.files).toContain('NEW.txt');
   });
 
+  it.skipIf(!gitAvailable)(
+    'prepareMergeBundle surfaces untracked files without a manual git add',
+    async () => {
+      const wt = await createWorktree(repoRoot);
+      const id = recordStart({
+        task: 'edit',
+        providerId: 'p',
+        modelId: 'm',
+        worktreePath: wt.path,
+        worktreeBranch: wt.branch,
+        worktreeRepoRoot: repoRoot,
+      });
+      recordComplete(id, fakeResult());
+      // Subagent writes files directly; nothing stages them.
+      await writeFile(path.join(wt.path, 'README.txt'), 'hello\nnew line\n');
+      await writeFile(path.join(wt.path, 'BRAND_NEW.txt'), 'created by subagent\n');
+
+      const bundle = await prepareMergeBundle(id);
+      expect(bundle.files).toContain('README.txt');
+      expect(bundle.files).toContain('BRAND_NEW.txt');
+      expect(bundle.diff).toContain('created by subagent');
+    },
+  );
+
+  it.skipIf(!gitAvailable)(
+    'acceptMerge commits and merges uncommitted subagent changes (incl. new files)',
+    async () => {
+      const wt = await createWorktree(repoRoot);
+      const id = recordStart({
+        task: 'edit',
+        providerId: 'p',
+        modelId: 'm',
+        worktreePath: wt.path,
+        worktreeBranch: wt.branch,
+        worktreeRepoRoot: repoRoot,
+      });
+      recordComplete(id, fakeResult());
+      // No manual commit/add: mirror the real subagent flow.
+      await writeFile(path.join(wt.path, 'GENERATED.txt'), 'subagent output\n');
+      await writeFile(path.join(repoRoot, 'README.txt'), 'hello\n'); // base unchanged
+
+      const outcome = await acceptMerge(id);
+      expect(outcome.ok).toBe(true);
+
+      // The new file must exist on the base branch after merge.
+      const merged = await git(repoRoot, ['show', 'HEAD:GENERATED.txt']);
+      expect(merged).toContain('subagent output');
+
+      const branches = await git(repoRoot, ['branch', '--list', wt.branch]);
+      expect(branches.trim()).toBe('');
+    },
+  );
+
   it.skipIf(!gitAvailable)('acceptMerge merges branch and removes worktree', async () => {
     const wt = await createWorktree(repoRoot);
     const id = recordStart({

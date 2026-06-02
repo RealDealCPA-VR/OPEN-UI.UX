@@ -11,6 +11,7 @@ import { computeCostUsd, fetchWithRetry, sanitizeErrorDetail } from '@opencodex/
 import type { OpenAIConfig } from './config';
 import { findModel } from './models';
 import { sseEvents } from './sse';
+import { reasoningEffort } from './translate-request';
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 
@@ -50,6 +51,13 @@ interface ResponsesTool {
   parameters: Record<string, unknown>;
 }
 
+type ResponsesToolChoice = 'auto' | 'required' | 'none' | { type: 'function'; name: string };
+
+type ResponsesTextFormat =
+  | { type: 'text' }
+  | { type: 'json_object' }
+  | { type: 'json_schema'; name?: string; schema: Record<string, unknown> };
+
 interface ResponsesRequestBody {
   model: string;
   input: ResponsesInputItem[];
@@ -58,6 +66,9 @@ interface ResponsesRequestBody {
   max_output_tokens?: number;
   top_p?: number;
   tools?: ResponsesTool[];
+  tool_choice?: ResponsesToolChoice;
+  text?: { format: ResponsesTextFormat };
+  reasoning?: { effort: 'low' | 'medium' | 'high' };
 }
 
 type MessageRole = 'system' | 'user' | 'assistant';
@@ -180,7 +191,40 @@ export function buildResponsesRequestBody(
   if (req.topP !== undefined) body.top_p = req.topP;
   const tools = translateToolsForResponses(req.tools);
   if (tools) body.tools = tools;
+  if (req.toolChoice !== undefined) {
+    const tc = translateToolChoiceForResponses(req.toolChoice);
+    if (tc !== undefined) body.tool_choice = tc;
+  }
+  if (req.responseFormat !== undefined) {
+    body.text = { format: translateResponseFormatForResponses(req.responseFormat) };
+  }
+  const effort = reasoningEffort(req.reasoning);
+  if (effort) body.reasoning = { effort };
+  // NOTE: the Responses API has no `stop` parameter (unlike Chat Completions),
+  // so req.stop is intentionally not forwarded here — sending it would 400.
   return body;
+}
+
+function translateToolChoiceForResponses(
+  choice: NonNullable<ChatRequest['toolChoice']>,
+): ResponsesToolChoice | undefined {
+  if (choice === 'auto' || choice === 'required' || choice === 'none') return choice;
+  if (typeof choice === 'object' && typeof choice.name === 'string') {
+    return { type: 'function', name: choice.name };
+  }
+  return undefined;
+}
+
+function translateResponseFormatForResponses(
+  format: NonNullable<ChatRequest['responseFormat']>,
+): ResponsesTextFormat {
+  if (format.type === 'text') return { type: 'text' };
+  if (format.type === 'json_object') return { type: 'json_object' };
+  return {
+    type: 'json_schema',
+    name: format.name ?? 'response',
+    schema: format.schema as Record<string, unknown>,
+  };
 }
 
 const responseEventSchema = z.object({

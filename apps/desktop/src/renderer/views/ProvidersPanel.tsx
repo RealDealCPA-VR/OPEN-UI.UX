@@ -127,7 +127,7 @@ export function ProvidersPanel(): JSX.Element {
     return (
       <div className="providers-error">
         Failed to load providers: {loadError}
-        <button type="button" onClick={reload}>
+        <button type="button" className="btn" onClick={reload}>
           Retry
         </button>
       </div>
@@ -348,7 +348,7 @@ function ProviderCard({ item, draft, onDraftChange, onApplyItem }: ProviderCardP
                     style={{
                       marginTop: 4,
                       fontSize: 12,
-                      color: 'var(--text-muted, #98a0aa)',
+                      color: 'var(--text-muted)',
                     }}
                   >
                     Suggested fix: {fix}
@@ -375,7 +375,7 @@ function ProviderCard({ item, draft, onDraftChange, onApplyItem }: ProviderCardP
             aria-live="polite"
             style={{
               fontSize: 12,
-              color: 'var(--success, #22c55e)',
+              color: 'var(--success)',
               margin: '4px 0 0',
               transition: 'opacity 300ms ease',
             }}

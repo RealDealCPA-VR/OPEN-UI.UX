@@ -58,21 +58,9 @@ export function SettingsRail({
         {query.length > 0 && (
           <button
             type="button"
+            className="settings-rail-search-clear"
             onClick={() => onQueryChange('')}
             aria-label="Clear search"
-            style={{
-              position: 'absolute',
-              right: 6,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              fontSize: 14,
-              padding: '2px 6px',
-              borderRadius: 4,
-            }}
           >
             ×
           </button>

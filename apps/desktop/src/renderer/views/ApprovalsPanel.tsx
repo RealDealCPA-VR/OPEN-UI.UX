@@ -108,25 +108,17 @@ export function ApprovalsPanel(): JSX.Element {
         role="alert"
         style={{
           padding: 10,
-          background: 'var(--danger-bg, rgba(220,38,38,0.08))',
-          color: 'var(--danger, #dc2626)',
-          border: '1px solid var(--danger-border, rgba(220,38,38,0.3))',
+          background: 'var(--danger-bg)',
+          border: '1px solid var(--danger-border)',
           borderRadius: 6,
         }}
       >
         <div>Failed to load approval policies: {loadError}</div>
         <button
           type="button"
+          className="btn btn-danger"
           onClick={() => window.location.reload()}
-          style={{
-            marginTop: 6,
-            background: 'transparent',
-            border: '1px solid currentColor',
-            color: 'inherit',
-            borderRadius: 4,
-            padding: '2px 8px',
-            cursor: 'pointer',
-          }}
+          style={{ marginTop: 6 }}
         >
           Retry
         </button>
@@ -203,7 +195,7 @@ export function ApprovalsPanel(): JSX.Element {
                         <span
                           style={{
                             fontSize: 11,
-                            color: 'var(--text-muted, #98a0aa)',
+                            color: 'var(--text-muted)',
                             display: 'block',
                             marginTop: 2,
                           }}
@@ -253,7 +245,7 @@ function SkeletonRows({ count }: { count: number }): JSX.Element {
             height: 36,
             borderRadius: 6,
             background:
-              'linear-gradient(90deg, var(--bg-elevated, rgba(255,255,255,0.05)) 0%, var(--border, rgba(255,255,255,0.08)) 50%, var(--bg-elevated, rgba(255,255,255,0.05)) 100%)',
+              'linear-gradient(90deg, var(--bg-elevated) 0%, var(--border) 50%, var(--bg-elevated) 100%)',
             backgroundSize: '200% 100%',
             animation: 'settings-skeleton-pulse 1.4s ease-in-out infinite',
           }}

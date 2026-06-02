@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../logger';
 import { getRun, setMergeStatus } from './run-registry';
-import { getDiffBundle, removeWorktree } from './worktrees';
+import { commitWorktree, getDiffBundle, removeWorktree } from './worktrees';
 
 const execFileAsync = promisify(execFile);
 
@@ -85,6 +85,17 @@ export async function acceptMerge(runId: string): Promise<MergeOutcome> {
   }
   if (!run.worktreePath || !run.worktreeBranch || !run.worktreeRepoRoot) {
     return { ok: false, error: `subagent run ${runId} has no associated worktree` };
+  }
+  try {
+    // Subagent tools write files directly and never commit, so the worktree
+    // branch still points at base HEAD. Commit the worktree state first;
+    // otherwise the merge below is a no-op ("Already up to date") and the
+    // accepted work is silently dropped.
+    await commitWorktree(run.worktreePath, `subagent ${runId}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn({ runId, err: message }, 'commit of worktree before merge failed');
+    return { ok: false, error: message };
   }
   try {
     await runGit(run.worktreeRepoRoot, ['merge', '--no-ff', run.worktreeBranch]);

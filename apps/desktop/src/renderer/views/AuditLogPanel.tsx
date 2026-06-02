@@ -406,7 +406,7 @@ export function AuditLogPanel(): JSX.Element {
         </label>
         {clearConfirming ? (
           <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: 'var(--danger, #dc2626)' }}>
+            <span style={{ fontSize: 12, color: 'var(--danger)' }}>
               Delete every row? This cannot be undone.
             </span>
             <button
@@ -419,18 +419,7 @@ export function AuditLogPanel(): JSX.Element {
             >
               {clearing ? 'Clearing…' : 'Confirm clear'}
             </button>
-            <button
-              type="button"
-              onClick={() => setClearConfirming(false)}
-              style={{
-                background: 'transparent',
-                border: '1px solid var(--border, #2a2a32)',
-                color: 'var(--text-muted, #98a0aa)',
-                borderRadius: 4,
-                padding: '4px 10px',
-                cursor: 'pointer',
-              }}
-            >
+            <button type="button" className="btn" onClick={() => setClearConfirming(false)}>
               Cancel
             </button>
           </span>
@@ -692,19 +681,11 @@ export function AuditLogPanel(): JSX.Element {
                           {row.inputTruncated && <span className="audit-truncated">truncated</span>}
                           <button
                             type="button"
+                            className="btn"
                             onClick={() =>
                               void copyToClipboard(`in:${row.id}`, safePretty(row.input))
                             }
-                            style={{
-                              marginLeft: 'auto',
-                              fontSize: 11,
-                              background: 'transparent',
-                              border: '1px solid var(--border, #2a2a32)',
-                              borderRadius: 4,
-                              padding: '2px 8px',
-                              cursor: 'pointer',
-                              color: 'var(--text-muted, #98a0aa)',
-                            }}
+                            style={{ marginLeft: 'auto' }}
                           >
                             {copiedKey === `in:${row.id}` ? 'Copied' : 'Copy'}
                           </button>
@@ -720,19 +701,11 @@ export function AuditLogPanel(): JSX.Element {
                           {row.output !== null && (
                             <button
                               type="button"
+                              className="btn"
                               onClick={() =>
                                 void copyToClipboard(`out:${row.id}`, safePretty(row.output))
                               }
-                              style={{
-                                marginLeft: 'auto',
-                                fontSize: 11,
-                                background: 'transparent',
-                                border: '1px solid var(--border, #2a2a32)',
-                                borderRadius: 4,
-                                padding: '2px 8px',
-                                cursor: 'pointer',
-                                color: 'var(--text-muted, #98a0aa)',
-                              }}
+                              style={{ marginLeft: 'auto' }}
                             >
                               {copiedKey === `out:${row.id}` ? 'Copied' : 'Copy'}
                             </button>

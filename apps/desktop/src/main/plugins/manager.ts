@@ -29,6 +29,10 @@ import {
   setStoredPlugins,
 } from '../storage/settings';
 import { getToolRegistry } from '../tools/registry';
+import {
+  registerPluginProvider,
+  unregisterPluginProvidersFor,
+} from '../providers/plugin-provider-registry';
 
 export const HOST_PLUGIN_ENGINE_VERSION = '0.1.0';
 
@@ -174,9 +178,15 @@ function buildHost(id: string): PluginHost {
         displayName: provider.displayName,
         factory: provider,
       });
+      registerPluginProvider({
+        pluginId: id,
+        id: provider.id,
+        displayName: provider.displayName,
+        factory: provider,
+      });
       logger.info(
         { pluginId: id, providerId: provider.id },
-        'plugin provider registered (tracked, not yet auto-wired into the global provider registry)',
+        'plugin provider registered (buildProviderForId can now construct it via routing / spawn)',
       );
     },
     registerRunner(runner: SubagentRunner) {
@@ -289,6 +299,7 @@ function deactivatePlugin(id: string): void {
   const registry = getToolRegistry();
   for (const toolName of r.registeredTools) registry.unregister(toolName);
   for (const runnerName of r.registeredRunners) runnerRegistry.unregister(runnerName);
+  unregisterPluginProvidersFor(id);
   r.registeredTools = [];
   r.registeredProviders = [];
   r.registeredCommands = [];

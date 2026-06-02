@@ -15,6 +15,7 @@ import {
 import { HoverHint } from '../components/HoverHint';
 import { Markdown } from '../components/Markdown';
 import { SlashCommands } from '../components/SlashCommands';
+import { useToast } from '../components/Toasts';
 import {
   applyInsert,
   buildSlashGroups,
@@ -183,6 +184,8 @@ function ChatPane({
   const [mcpPrompts, setMcpPrompts] = useState<McpPromptEntry[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [slashTrigger, setSlashTrigger] = useState<SlashCommandTrigger | null>(null);
+  const [branching, setBranching] = useState(false);
+  const toast = useToast();
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [debouncedInput, setDebouncedInput] = useState('');
   const [dismissedHintSkillIds, setDismissedHintSkillIds] = useState<Set<string>>(new Set());
@@ -716,20 +719,29 @@ function ChatPane({
           <button
             type="button"
             className="btn"
-            disabled={!chat.activeId}
+            disabled={!chat.activeId || branching}
             onClick={() => {
-              if (!chat.activeId) return;
+              if (!chat.activeId || branching) return;
+              setBranching(true);
               void window.opencodex.git
                 .branchFromConversation({ conversationId: chat.activeId })
                 .then((res) => {
-                  if (!res.ok) {
-                    console.warn('branchFromConversation failed', res.error);
+                  if (res.ok) {
+                    toast.show(res.branch ? `Created branch ${res.branch}` : 'Branch created', {
+                      kind: 'success',
+                    });
+                  } else {
+                    toast.show(res.error ?? 'Failed to create branch', { kind: 'error' });
                   }
-                });
+                })
+                .catch((err: unknown) => {
+                  toast.show(err instanceof Error ? err.message : String(err), { kind: 'error' });
+                })
+                .finally(() => setBranching(false));
             }}
             title="Create an oc/<slug> branch in the active workspace from this conversation"
           >
-            Branch from this conversation
+            {branching ? 'Branching…' : 'Branch from this conversation'}
           </button>
         </div>
         <ExportMenu

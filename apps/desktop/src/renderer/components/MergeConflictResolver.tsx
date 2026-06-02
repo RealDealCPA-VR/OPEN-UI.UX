@@ -53,7 +53,7 @@ export function MergeConflictResolver({
       const res = await bridge.git.resolveConflict({
         repoRoot,
         filePath: hunk.filePath,
-        hunkIndex: 0,
+        hunkIndex: hunk.index,
         decision,
       });
       if (!res.ok) {

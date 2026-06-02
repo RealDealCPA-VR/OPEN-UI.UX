@@ -52,6 +52,42 @@ describe('initCrash', () => {
   });
 });
 
+describe('initCrash native integrations', () => {
+  beforeEach(() => {
+    _resetForTesting();
+    vi.resetModules();
+    vi.unmock('@sentry/electron/main');
+  });
+
+  it('does not enable the native minidump integration (it bypasses scrubEvent)', async () => {
+    let capturedOptions: { integrations?: Array<{ name: string }> } | undefined;
+    vi.doMock('@sentry/electron/main', () => ({
+      init: (opts: { integrations?: Array<{ name: string }> }) => {
+        capturedOptions = opts;
+      },
+      captureException: () => {},
+      close: async () => true,
+      onUncaughtExceptionIntegration: () => ({ name: 'OnUncaughtException' }),
+      onUnhandledRejectionIntegration: () => ({ name: 'OnUnhandledRejection' }),
+      sentryMinidumpIntegration: () => ({ name: 'SentryMinidump' }),
+      electronContextIntegration: () => ({ name: 'ElectronContext' }),
+      additionalContextIntegration: () => ({ name: 'AdditionalContext' }),
+      normalizePathsIntegration: () => ({ name: 'NormalizePaths' }),
+    }));
+
+    const mod = await import('./index');
+    mod._resetForTesting();
+    const client = await mod.initCrash({ enabled: true, dsn: 'https://abc@sentry.io/1' });
+
+    expect(client.enabled).toBe(true);
+    const names = (capturedOptions?.integrations ?? []).map((i) => i.name);
+    expect(names).not.toContain('SentryMinidump');
+    expect(names).toContain('OnUncaughtException');
+
+    await client.close();
+  });
+});
+
 describe('scrubEvent', () => {
   it('drops user info', () => {
     const out = scrubEvent({
@@ -142,6 +178,45 @@ describe('scrubEvent', () => {
   it('scrubs the top-level message', () => {
     const out = scrubEvent({ message: '/Users/x/project/secret' });
     expect(out.message).toBe('<redacted-path>');
+  });
+
+  it('does not stack-overflow on a self-referential extra object', () => {
+    const cyclic: Record<string, unknown> = { workspace: '/Users/x/project' };
+    cyclic['self'] = cyclic;
+    let out: ReturnType<typeof scrubEvent> | undefined;
+    expect(() => {
+      out = scrubEvent({ extra: cyclic });
+    }).not.toThrow();
+    expect(out?.extra?.['workspace']).toBe('<redacted-path>');
+    expect(out?.extra?.['self']).toEqual({ '<circular>': true });
+  });
+
+  it('bails out of deeply-nested extra without recursing unbounded', () => {
+    const root: Record<string, unknown> = {};
+    let node = root;
+    for (let i = 0; i < 50; i++) {
+      const child: Record<string, unknown> = {};
+      node['child'] = child;
+      node = child;
+    }
+    let out: ReturnType<typeof scrubEvent> | undefined;
+    expect(() => {
+      out = scrubEvent({ extra: root });
+    }).not.toThrow();
+    const serialized = JSON.stringify(out?.extra);
+    expect(serialized).toContain('<max-depth>');
+  });
+
+  it('handles a cyclic array nested in extra', () => {
+    const arr: unknown[] = ['/Users/x/project'];
+    arr.push(arr);
+    let out: ReturnType<typeof scrubEvent> | undefined;
+    expect(() => {
+      out = scrubEvent({ extra: { items: arr } });
+    }).not.toThrow();
+    const items = out?.extra?.['items'] as unknown[];
+    expect(items[0]).toBe('<redacted-path>');
+    expect(items[1]).toBe('<circular>');
   });
 
   it('scrubs exception stack frames and frame vars', () => {

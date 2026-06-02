@@ -103,8 +103,13 @@ export async function* streamEventsToChatEvents(
 
   if (inputTokens > 0 || outputTokens > 0) {
     const pricing = opts.model ? findModel(opts.model)?.pricing : undefined;
+    // Anthropic reports input_tokens EXCLUSIVE of cache-read tokens, but
+    // computeCostUsd treats inputTokens as cache-inclusive (billedInput =
+    // inputTokens - cached). Pass the cache-inclusive total so the
+    // full-rate portion is computed correctly and cache reads aren't
+    // double-discounted.
     const cost = computeCostUsd({
-      inputTokens,
+      inputTokens: inputTokens + (cachedInputTokens ?? 0),
       outputTokens,
       ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
       ...(pricing ? { pricing } : {}),

@@ -56,6 +56,22 @@ export interface OpenAIChatRequestBody {
   stream_options?: { include_usage: boolean };
   tool_choice?: OpenAIToolChoice;
   response_format?: OpenAIResponseFormat;
+  reasoning_effort?: 'low' | 'medium' | 'high';
+}
+
+/**
+ * Map the provider-agnostic ReasoningOption to OpenAI's `reasoning_effort`
+ * (Chat Completions) / the Responses API `reasoning.effort`. `true` means
+ * "reason at the default effort"; an explicit `effort` wins. A reasoning
+ * token budget (the object's `maxTokens`) has no Chat-Completions equivalent
+ * and is ignored here — it maps to Anthropic's `thinking.budget_tokens`.
+ */
+export function reasoningEffort(
+  reasoning: ChatRequest['reasoning'],
+): 'low' | 'medium' | 'high' | undefined {
+  if (reasoning === undefined || reasoning === false) return undefined;
+  if (reasoning === true) return 'medium';
+  return reasoning.effort ?? 'medium';
 }
 
 export function translateMessages(messages: Message[]): OpenAIMessage[] {
@@ -163,6 +179,8 @@ export function buildChatRequestBody(
   if (req.responseFormat !== undefined) {
     body.response_format = translateResponseFormat(req.responseFormat);
   }
+  const effort = reasoningEffort(req.reasoning);
+  if (effort) body.reasoning_effort = effort;
   return body;
 }
 

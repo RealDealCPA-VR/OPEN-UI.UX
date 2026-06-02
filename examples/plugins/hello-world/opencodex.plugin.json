@@ -7,7 +7,7 @@
   "license": "MIT",
   "entry": "dist/index.js",
   "engines": { "opencodex": "^0.1.0" },
-  "permissions": [],
+  "permissions": ["workspace.read"],
   "contributions": {
     "tools": ["hello_world"]
   }

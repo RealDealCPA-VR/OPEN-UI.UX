@@ -110,6 +110,13 @@ export function CodebasePreviewPane({
     void bridge.shell.showItemInFolder(workspaceRoot, path).catch(() => undefined);
   }, [workspaceRoot, path]);
 
+  const handleOpenInEditor = useCallback(() => {
+    if (!workspaceRoot || !path) return;
+    const bridge = getBridge();
+    if (!bridge) return;
+    void bridge.shell.openPath(workspaceRoot, path).catch(() => undefined);
+  }, [workspaceRoot, path]);
+
   const current =
     fetchState && fetchState.workspaceRoot === workspaceRoot && fetchState.path === path
       ? fetchState
@@ -201,8 +208,8 @@ export function CodebasePreviewPane({
       <button
         type="button"
         className="btn"
-        onClick={handleRevealInOs}
-        title="Open the file's enclosing folder in your OS"
+        onClick={handleOpenInEditor}
+        title="Open this file in your OS default editor"
         disabled={!workspaceRoot}
       >
         Open in editor

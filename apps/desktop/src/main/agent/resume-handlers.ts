@@ -1,24 +1,14 @@
-import { ipcMain } from 'electron';
 import {
-  agentRespondResumeChannel,
   agentRespondResumeRequestSchema,
   type AgentRespondResumeResponse,
 } from '../../shared/agent-resume';
 import { logger } from '../logger';
+import { registerInvoke } from '../ipc/registry';
 import { consumePendingResume } from './run-resume';
 import { markStatus } from './run-store';
 
 export function registerResumeHandlers(): void {
-  ipcMain.handle(agentRespondResumeChannel, async (_event, raw: unknown) => {
-    const parsed = agentRespondResumeRequestSchema.safeParse(raw);
-    if (!parsed.success) {
-      logger.warn(
-        { channel: agentRespondResumeChannel, issues: parsed.error.issues },
-        'invalid IPC request',
-      );
-      throw new Error(`invalid request for ${agentRespondResumeChannel}: ${parsed.error.message}`);
-    }
-    const req = parsed.data;
+  registerInvoke('agent:respond-resume', agentRespondResumeRequestSchema, (req) => {
     try {
       const wasPending = consumePendingResume(req.runId);
       if (req.decision === 'discard') {

@@ -26,17 +26,6 @@ interface StoredRow {
   magnitude: number;
 }
 
-const MAGNITUDE_BUCKET_COUNT = 8;
-
-function magnitudeBucket(norm: number): number {
-  if (!Number.isFinite(norm) || norm <= 0) return 0;
-  const log = Math.log2(Math.max(norm, 1e-9));
-  const bucket = Math.floor(log) + (MAGNITUDE_BUCKET_COUNT >> 1);
-  if (bucket < 0) return 0;
-  if (bucket >= MAGNITUDE_BUCKET_COUNT) return MAGNITUDE_BUCKET_COUNT - 1;
-  return bucket;
-}
-
 /**
  * Vector store for RAG retrieval.
  *
@@ -47,10 +36,11 @@ function magnitudeBucket(norm: number): number {
  * `LanceVectorStore` export is kept as a deprecated alias so older imports
  * keep working.
  *
- * Search is O(N) full-table scan with magnitude-bucketed prefilter that
- * narrows candidates to nearby norms first; ranking is cosine similarity in
- * process. Fine up to ~10K vectors per workspace. Above that, swap to real
- * LanceDB or an HNSW/IVF index — this implementation is not an ANN index.
+ * Search is an O(N) full-table scan; ranking is cosine similarity in process.
+ * Cosine is magnitude-invariant, so no magnitude prefilter is applied (it would
+ * wrongly drop high-cosine matches with off-bucket norms). Fine up to ~10K
+ * vectors per workspace. Above that, swap to real LanceDB or an HNSW/IVF index
+ * — this implementation is not an ANN index.
  */
 export class SqliteVectorStore {
   private db: Database.Database | null = null;
@@ -153,28 +143,14 @@ export class SqliteVectorStore {
     const queryNorm = vectorNorm(embedding);
     if (queryNorm === 0) return [];
 
-    const queryBucket = magnitudeBucket(queryNorm);
-    const bucketLow = Math.max(0, queryBucket - 1);
-    const bucketHigh = Math.min(MAGNITUDE_BUCKET_COUNT - 1, queryBucket + 1);
-    const lowNorm = Math.pow(2, bucketLow - (MAGNITUDE_BUCKET_COUNT >> 1));
-    const highNorm = Math.pow(2, bucketHigh + 1 - (MAGNITUDE_BUCKET_COUNT >> 1));
-
-    const candidateLimit = Math.max(clamped * 8, 256);
-    let rows = db
-      .prepare(
-        `SELECT path, content, start_line, end_line, embedding, magnitude
-         FROM vectors
-         WHERE magnitude >= ? AND magnitude <= ?
-         ORDER BY ABS(magnitude - ?) ASC
-         LIMIT ?`,
-      )
-      .all(lowNorm, highNorm, queryNorm, candidateLimit) as StoredRow[];
-
-    if (rows.length < clamped) {
-      rows = db
-        .prepare(`SELECT path, content, start_line, end_line, embedding, magnitude FROM vectors`)
-        .all() as StoredRow[];
-    }
+    // Cosine similarity is magnitude-invariant, so a magnitude-bucket prefilter
+    // is not a valid ANN prefilter for cosine ranking — a perfectly-aligned
+    // chunk can have any stored norm and would be silently dropped if it fell
+    // outside the query's bucket window. The store is documented as O(N), so we
+    // scan all rows and rank in process.
+    const rows = db
+      .prepare(`SELECT path, content, start_line, end_line, embedding, magnitude FROM vectors`)
+      .all() as StoredRow[];
 
     const scored: VectorSearchHit[] = [];
     for (const row of rows) {

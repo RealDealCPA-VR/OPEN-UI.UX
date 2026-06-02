@@ -43,6 +43,7 @@ export async function* streamChunksToEvents(
   let cachedInputTokens: number | undefined;
   let usageSeen = false;
   let finishReason: string | undefined;
+  let blockReason: string | undefined;
   let toolCallCounter = 0;
   let sawFunctionCall = false;
 
@@ -56,6 +57,8 @@ export async function* streamChunksToEvents(
 
   for await (const chunk of chunks) {
     captureUsage(chunk.usageMetadata);
+
+    if (chunk.promptFeedback?.blockReason) blockReason = chunk.promptFeedback.blockReason;
 
     const candidates = chunk.candidates ?? [];
     for (const candidate of candidates) {
@@ -101,6 +104,17 @@ export async function* streamChunksToEvents(
     yield {
       type: 'error',
       message: `Google blocked the response: ${finishReason}`,
+      retryable: false,
+      code: 'content_filter',
+    };
+    yield { type: 'done', stopReason: 'content_filter' };
+    return;
+  }
+
+  if (blockReason !== undefined) {
+    yield {
+      type: 'error',
+      message: `Google blocked the prompt: ${blockReason}`,
       retryable: false,
       code: 'content_filter',
     };

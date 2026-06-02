@@ -88,25 +88,18 @@ export function WorkspacePanel(): JSX.Element {
         role="alert"
         style={{
           padding: 10,
-          background: 'var(--danger-bg, rgba(220,38,38,0.08))',
-          color: 'var(--danger, #dc2626)',
-          border: '1px solid var(--danger-border, rgba(220,38,38,0.3))',
+          background: 'var(--danger-bg)',
+          color: 'var(--danger)',
+          border: '1px solid var(--danger-border)',
           borderRadius: 6,
         }}
       >
         <div>Failed to load workspace state: {loadError}</div>
         <button
           type="button"
+          className="btn btn-danger"
           onClick={() => window.location.reload()}
-          style={{
-            marginTop: 6,
-            background: 'transparent',
-            border: '1px solid currentColor',
-            color: 'inherit',
-            borderRadius: 4,
-            padding: '2px 8px',
-            cursor: 'pointer',
-          }}
+          style={{ marginTop: 6 }}
         >
           Retry
         </button>

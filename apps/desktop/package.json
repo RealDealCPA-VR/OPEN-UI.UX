@@ -42,6 +42,7 @@
     "@opencodex/provider-ollama": "workspace:*",
     "@opencodex/provider-openai": "workspace:*",
     "@opencodex/provider-openrouter": "workspace:*",
+    "@opencodex/provider-voyage": "workspace:*",
     "@opencodex/provider-xai": "workspace:*",
     "@opencodex/rag-chunker": "workspace:*",
     "@opencodex/telemetry": "workspace:*",

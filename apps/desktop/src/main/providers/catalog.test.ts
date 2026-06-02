@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildProviderConfig, catalog, catalogById, getAllProviderInfo } from './catalog';
 
 describe('provider catalog', () => {
-  it('covers all seven phase-1 adapters', () => {
+  it('covers all eight phase-1 adapters', () => {
     const ids = catalog.map((e) => e.id).sort();
     expect(ids).toEqual([
       'anthropic',
@@ -11,6 +11,7 @@ describe('provider catalog', () => {
       'ollama',
       'openai',
       'openrouter',
+      'voyage',
       'xai',
     ]);
   });

@@ -223,11 +223,17 @@ describe('LanceVectorStore', () => {
 
   describe('magnitude bucket prefilter', () => {
     it('still returns the highest-cosine match even when many vectors live in distant buckets', () => {
-      // Match-vector parallel to query
+      // Exact directional match for query [1,0,0], but its large magnitude (norm 10)
+      // places it OUTSIDE the query's magnitude bucket window.
       store.upsert('exact.ts', [makeChunk('hit', 1, 1, [10, 0, 0])]);
-      // Many low-magnitude distractors in a different bucket
-      for (let i = 0; i < 32; i++) {
-        store.upsert(`noise-${i}.ts`, [makeChunk('miss', 1, 1, [0.01, 0.01, 0.01])]);
+      // Seed MORE than candidateLimit (max(limit*8, 256)) orthogonal distractors whose
+      // norm (1.0) sits squarely inside the query's bucket window. With > candidateLimit
+      // in-bucket rows the prefilter fills its LIMIT entirely, so the all-rows fallback
+      // (rows.length < clamped) never engages and the out-of-bucket exact match is dropped.
+      // These distractors are orthogonal to the query (cosine 0), so a correct ranking
+      // must still surface exact.ts first.
+      for (let i = 0; i < 300; i++) {
+        store.upsert(`noise-${i}.ts`, [makeChunk('miss', 1, 1, [0, 1, 0])]);
       }
       const hits = store.searchByVector([1, 0, 0], 5);
       expect(hits[0]?.path).toBe('exact.ts');

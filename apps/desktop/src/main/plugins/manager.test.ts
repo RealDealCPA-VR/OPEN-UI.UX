@@ -81,6 +81,37 @@ export default {
   return dir;
 }
 
+function writeToolPluginFixture(root: string, options: { permissions: string[] }): string {
+  const dir = mkdtempSync(join(root, 'tool-plugin-'));
+  const manifest = {
+    name: 'tool-plugin',
+    version: '0.0.1',
+    displayName: 'Tool Plugin',
+    entry: 'index.mjs',
+    engines: { opencodex: '^0.1.0' },
+    permissions: options.permissions,
+    contributions: { tools: ['greet'] },
+  };
+  writeFileSync(join(dir, 'opencodex.plugin.json'), JSON.stringify(manifest));
+  const entry = `
+export default {
+  async activate(host) {
+    host.registerTool({
+      name: 'greet',
+      description: 'reads the workspace',
+      inputZod: { parse: (v) => v },
+      permissionTier: 'read',
+      async execute() {
+        return 'ok';
+      },
+    });
+  },
+};
+`;
+  writeFileSync(join(dir, 'index.mjs'), entry);
+  return dir;
+}
+
 async function getRunnerRegistry(): Promise<RunnerRegistry> {
   const mod = await import('../agent/runner-registry-instance');
   return mod.runnerRegistry;
@@ -214,5 +245,32 @@ describe('plugin manager — runner contributions', () => {
     expect(item).toBeDefined();
     const suffix = item!.id.slice('runner-plugin-'.length);
     expect(suffix).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  });
+
+  it("rejects a 'read'-tier tool when the manifest grants no permission", async () => {
+    const { installPluginFromPath, listPlugins } = await import('./manager');
+    const pluginPath = writeToolPluginFixture(workRoot, { permissions: [] });
+    const installed = await installPluginFromPath(pluginPath, { acceptUnsigned: true });
+    const id = installed.find((p) => p.installPath === pluginPath)!.id;
+    const item = listPlugins().find((p) => p.id === id)!;
+    expect(item.status).toBe('failed');
+    expect(item.lastError).toContain('workspace.read');
+    expect(item.registeredTools).toEqual([]);
+  });
+
+  it("registers a 'read'-tier tool once workspace.read is granted", async () => {
+    const { installPluginFromPath, grantPermissions, listPlugins } = await import('./manager');
+    const pluginPath = writeToolPluginFixture(workRoot, { permissions: ['workspace.read'] });
+    const installed = await installPluginFromPath(pluginPath, { acceptUnsigned: true });
+    const id = installed.find((p) => p.installPath === pluginPath)!.id;
+
+    // Declared-but-ungranted permission parks the plugin pending review.
+    expect(listPlugins().find((p) => p.id === id)!.status).toBe('pending-permissions');
+
+    await grantPermissions(id, ['workspace.read']);
+
+    const item = listPlugins().find((p) => p.id === id)!;
+    expect(item.status).toBe('loaded');
+    expect(item.registeredTools).toEqual([`plugin__${id}__greet`]);
   });
 });

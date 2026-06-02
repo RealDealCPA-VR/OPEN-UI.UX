@@ -1,10 +1,49 @@
 import { describe, expect, it } from 'vitest';
+import type { ChatRequest } from '@opencodex/core';
 import {
   buildChatRequestBody,
   extractSystem,
   translateMessages,
   translateTools,
 } from './translate-request';
+
+const baseThinkReq: ChatRequest = {
+  model: 'claude-opus-4-7',
+  messages: [{ role: 'user', content: 'hi' }],
+  maxTokens: 1000,
+  temperature: 0.5,
+};
+
+describe('buildChatRequestBody thinking', () => {
+  it('omits thinking when reasoning is unset', () => {
+    expect(buildChatRequestBody(baseThinkReq, { stream: false }).thinking).toBeUndefined();
+  });
+  it('enables thinking with the default budget for reasoning:true', () => {
+    expect(
+      buildChatRequestBody({ ...baseThinkReq, reasoning: true }, { stream: false }).thinking,
+    ).toEqual({ type: 'enabled', budget_tokens: 4096 });
+  });
+  it('bumps max_tokens above the thinking budget when too small', () => {
+    expect(
+      buildChatRequestBody({ ...baseThinkReq, reasoning: true }, { stream: false }).max_tokens,
+    ).toBe(4096 + 1024);
+  });
+  it('strips temperature and top_p when thinking is enabled', () => {
+    const body = buildChatRequestBody(
+      { ...baseThinkReq, topP: 0.9, reasoning: { effort: 'high' } },
+      { stream: false },
+    );
+    expect(body.temperature).toBeUndefined();
+    expect(body.top_p).toBeUndefined();
+    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 16384 });
+  });
+  it('uses an explicit maxTokens budget, floored to 1024', () => {
+    expect(
+      buildChatRequestBody({ ...baseThinkReq, reasoning: { maxTokens: 500 } }, { stream: false })
+        .thinking,
+    ).toEqual({ type: 'enabled', budget_tokens: 1024 });
+  });
+});
 
 describe('extractSystem', () => {
   it('pulls a single string system message out and joins with body text', () => {

@@ -5,6 +5,7 @@ import { logger } from '../logger';
 import { getMemoryConfig, setMemoryConfig } from '../storage/settings';
 import { deleteSecret, getSecret, setSecret } from '../storage/secrets';
 import { getToolRegistry } from '../tools/registry';
+import { applyLocalFsBackend, getLocalFsBackendState } from './local-fs-runtime';
 import type {
   MemoryBackendId,
   MemoryBackendStatus,
@@ -117,6 +118,7 @@ export async function reloadMemory(): Promise<MemoryStatus> {
   const config = getMemoryConfig();
   await applyObsidian(config);
   await applyNotion(config);
+  applyLocalFsBackend();
   await emitChange();
   return getMemoryStatus();
 }
@@ -152,6 +154,16 @@ export async function getMemoryStatus(): Promise<MemoryStatus> {
     if (r.lastError !== undefined) status.lastError = r.lastError;
     return status;
   });
+  const localFs = getLocalFsBackendState();
+  const localFsStatus: MemoryBackendStatus = {
+    id: 'local-fs',
+    enabled: localFs.enabled,
+    configured: localFs.configured,
+    registered: localFs.registered,
+    toolCount: localFs.toolCount,
+  };
+  if (localFs.lastError !== undefined) localFsStatus.lastError = localFs.lastError;
+  backends.push(localFsStatus);
   return {
     config,
     hasNotionToken: token !== null && token.length > 0,

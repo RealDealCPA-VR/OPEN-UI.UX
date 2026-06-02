@@ -51,6 +51,18 @@ export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
  *
  * Line numbers are 1-based and inclusive at both ends.
  */
+function countLines(text: string): number {
+  // Number of content lines. A single trailing newline terminates the last
+  // line rather than introducing an empty one, so `'a\nb\n'` is 2 lines.
+  if (text.length === 0) return 0;
+  let count = 1;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\n') count++;
+  }
+  if (text[text.length - 1] === '\n') count--;
+  return count;
+}
+
 export function chunkBySize(text: string, maxChars = 1500, overlapChars = 100): Chunk[] {
   if (maxChars <= 0) throw new Error('maxChars must be positive');
   if (overlapChars < 0) throw new Error('overlapChars must be non-negative');
@@ -58,11 +70,13 @@ export function chunkBySize(text: string, maxChars = 1500, overlapChars = 100): 
 
   if (text.length === 0) return [];
   if (text.length <= maxChars) {
-    const lines = text.split('\n').length;
-    return [{ content: text, startLine: 1, endLine: lines }];
+    return [{ content: text, startLine: 1, endLine: countLines(text) }];
   }
 
   const lines = text.split('\n');
+  // A single trailing newline yields a phantom empty final element from split;
+  // it terminates the last line rather than adding one, so it must not count.
+  const lastContentLine = countLines(text);
   const chunks: Chunk[] = [];
 
   let i = 0;
@@ -78,7 +92,7 @@ export function chunkBySize(text: string, maxChars = 1500, overlapChars = 100): 
     }
 
     const content = lines.slice(i, j).join('\n');
-    chunks.push({ content, startLine: i + 1, endLine: j });
+    chunks.push({ content, startLine: i + 1, endLine: Math.min(j, lastContentLine) });
 
     if (j >= lines.length) break;
 

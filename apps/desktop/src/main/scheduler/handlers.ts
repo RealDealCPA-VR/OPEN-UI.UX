@@ -34,6 +34,7 @@ const createRequestSchema = z.object({
   useWorktree: z.boolean().optional(),
   enabled: z.boolean().optional(),
   linkedSkillId: z.string().nullable().optional(),
+  runnerId: z.string().nullable().optional(),
 });
 
 const updateRequestSchema = z.object({
@@ -49,6 +50,7 @@ const updateRequestSchema = z.object({
   useWorktree: z.boolean().optional(),
   enabled: z.boolean().optional(),
   linkedSkillId: z.string().nullable().optional(),
+  runnerId: z.string().nullable().optional(),
 });
 
 const deleteRequestSchema = z.object({ id: z.string().min(1) });
@@ -70,6 +72,7 @@ function emitTasksChanged(): void {
 
 function emitRunCompleted(payload: {
   taskId: string;
+  runId: string;
   agentRunId: string;
   status: 'completed' | 'failed';
 }): void {
@@ -77,7 +80,7 @@ function emitRunCompleted(payload: {
     if (win.isDestroyed()) continue;
     win.webContents.send('scheduler:run-completed', {
       taskId: payload.taskId,
-      runId: payload.agentRunId,
+      runId: payload.runId,
       status: payload.status,
       agentRunId: payload.agentRunId,
     });
@@ -123,8 +126,8 @@ export function startSchedulerForApp(opts: { enabledInDev?: boolean } = {}): voi
   startScheduler({
     listTasks: () => listTasks(),
     fire: fireScheduledTask,
-    onRunCompleted: ({ taskId, agentRunId, status }) =>
-      emitRunCompleted({ taskId, agentRunId, status }),
+    onRunCompleted: ({ taskId, runId, agentRunId, status }) =>
+      emitRunCompleted({ taskId, runId, agentRunId, status }),
   });
   // Start the local HTTP listener that backs webhook + git-hook triggers.
   // Failure to bind is logged but non-fatal — cron/manual/file-change still work.
@@ -233,6 +236,7 @@ export function registerSchedulerHandlers(): void {
       const res = await fireScheduledTask(task);
       emitRunCompleted({
         taskId: req.id,
+        runId: res.runId,
         agentRunId: res.agentRunId,
         status: res.status,
       });
@@ -296,3 +300,5 @@ function ensureGitHookSecret(
 
 // Test-only re-export
 export const __resetSchedulerForTests = __resetForTests;
+export const __createRequestSchemaForTests = createRequestSchema;
+export const __updateRequestSchemaForTests = updateRequestSchema;

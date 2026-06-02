@@ -47,6 +47,7 @@ export class HttpTransport implements Transport {
       headers,
       body: JSON.stringify(message),
       signal: this.abort?.signal,
+      redirect: 'error',
     });
 
     if (!response.ok) throw new Error(`HTTP transport ${response.status}`);
@@ -89,6 +90,7 @@ export class HttpTransport implements Transport {
         method: 'GET',
         headers,
         signal: this.abort.signal,
+        redirect: 'error',
       });
 
       if (!response.ok || !response.body) return;

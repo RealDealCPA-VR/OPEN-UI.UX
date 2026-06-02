@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { McpClient, UnsupportedProtocolVersionError } from './client';
+import { PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS } from './protocol';
 import type { Transport, TransportKind } from './transport';
 
 type MessageHandler = (msg: unknown) => void;
@@ -73,6 +74,42 @@ describe('McpClient', () => {
 
     expect(client.info?.serverInfo.name).toBe('mock');
     expect(transport.outgoing[1]).toMatchObject({ method: 'notifications/initialized' });
+  });
+
+  it('advertises the newest supported protocol version in initialize', async () => {
+    expect(PROTOCOL_VERSION).toBe(SUPPORTED_PROTOCOL_VERSIONS[0]);
+    expect(PROTOCOL_VERSION).toBe('2025-06-18');
+
+    const transport = makeMockTransport();
+    const client = new (class extends McpClient {
+      constructor() {
+        super('test', { kind: 'stdio', command: 'noop', args: [] });
+        (this as unknown as { transport: Transport }).transport = transport;
+        transport.onMessage((msg) => {
+          (this as unknown as { handleMessage: (m: unknown) => void }).handleMessage(msg);
+        });
+      }
+    })();
+
+    const connect = client.connect();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(transport.outgoing[0]).toMatchObject({
+      method: 'initialize',
+      params: { protocolVersion: '2025-06-18' },
+    });
+
+    const initId = (transport.outgoing[0] as { id: number }).id;
+    transport.pushIncoming({
+      jsonrpc: '2.0',
+      id: initId,
+      result: {
+        protocolVersion: '2025-06-18',
+        serverInfo: { name: 'mock', version: '1.0' },
+        capabilities: {},
+      },
+    });
+    await connect;
+    expect(client.info?.protocolVersion).toBe('2025-06-18');
   });
 
   it('rejects unsupported protocol versions during connect', async () => {

@@ -161,17 +161,9 @@ export function McpServersPanel(): JSX.Element {
           {error}
           <button
             type="button"
+            className="btn"
             onClick={() => setError(null)}
-            style={{
-              marginLeft: 8,
-              background: 'transparent',
-              border: '1px solid currentColor',
-              color: 'inherit',
-              borderRadius: 4,
-              padding: '2px 8px',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
+            style={{ marginLeft: 8 }}
           >
             Dismiss
           </button>
@@ -242,10 +234,7 @@ export function McpServersPanel(): JSX.Element {
                       <span key={r.resource.uri}>
                         <code style={{ fontSize: 11 }}>{r.resource.uri}</code>
                         {r.resource.name && r.resource.name !== r.resource.uri ? (
-                          <span style={{ color: 'var(--text-muted,#98a0aa)' }}>
-                            {' '}
-                            — {r.resource.name}
-                          </span>
+                          <span style={{ color: 'var(--text-muted)' }}> — {r.resource.name}</span>
                         ) : null}
                       </span>
                     )}
@@ -259,7 +248,7 @@ export function McpServersPanel(): JSX.Element {
                       <span key={p.prompt.name}>
                         <code style={{ fontSize: 11 }}>{p.prompt.name}</code>
                         {p.prompt.description ? (
-                          <span style={{ color: 'var(--text-muted,#98a0aa)' }}>
+                          <span style={{ color: 'var(--text-muted)' }}>
                             {' '}
                             — {p.prompt.description}
                           </span>
@@ -373,10 +362,10 @@ function CountButton({
       disabled={disabled}
       aria-pressed={active}
       style={{
-        background: active ? 'var(--accent-soft, rgba(99,102,241,0.18))' : 'transparent',
-        border: '1px solid var(--border, #2a2a32)',
+        background: active ? 'var(--accent-soft-bg)' : 'transparent',
+        border: '1px solid var(--border)',
         color: 'inherit',
-        borderRadius: 999,
+        borderRadius: 'var(--radius-pill)',
         padding: '1px 8px',
         fontSize: 11,
         cursor: disabled ? 'default' : 'pointer',
@@ -402,15 +391,15 @@ function ExpandedList<T>({
       style={{
         margin: '6px 0',
         padding: '8px 10px',
-        background: 'var(--bg-elevated, rgba(255,255,255,0.04))',
-        borderRadius: 6,
-        border: '1px solid var(--border, #2a2a32)',
+        background: 'var(--bg-elevated)',
+        borderRadius: 'var(--radius-sm)',
+        border: '1px solid var(--border)',
       }}
     >
       {loading ? (
-        <span style={{ fontSize: 12, color: 'var(--text-muted,#98a0aa)' }}>Loading…</span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading…</span>
       ) : items.length === 0 ? (
-        <span style={{ fontSize: 12, color: 'var(--text-muted,#98a0aa)' }}>None to show.</span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>None to show.</span>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 4 }}>
           {items.map((item, i) => (
@@ -441,8 +430,8 @@ function SpinnerStyles(): JSX.Element {
         width: 10px;
         height: 10px;
         border-radius: 50%;
-        border: 2px solid var(--border, #2a2a32);
-        border-top-color: var(--accent, #6366f1);
+        border: 2px solid var(--border);
+        border-top-color: var(--accent);
         animation: mcp-spinner-rotate 0.7s linear infinite;
         vertical-align: -1px;
         margin-right: 4px;

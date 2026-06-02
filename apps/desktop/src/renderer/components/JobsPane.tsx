@@ -33,7 +33,7 @@ export function JobsPane({ initialRuns }: JobsPaneProps = {}): JSX.Element {
     (async () => {
       try {
         const list = await bridge.agent.listRuns();
-        if (!cancelled) setRuns(list);
+        if (!cancelled) setRuns(Array.isArray(list) ? list : []);
       } catch (err) {
         if (!cancelled) {
           setLoadError(err instanceof Error ? err.message : String(err));

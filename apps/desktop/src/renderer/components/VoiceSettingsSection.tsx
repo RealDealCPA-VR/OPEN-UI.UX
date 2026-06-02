@@ -69,11 +69,16 @@ export function VoiceSettingsSection(): JSX.Element {
   };
 
   const handleSelectModel = async (next: WhisperModel): Promise<void> => {
+    const prev = model;
     setModel(next);
+    setPttError(null);
     try {
       await window.opencodex.voice.setSelectedModel(next);
-    } catch {
-      // best effort
+    } catch (err) {
+      // Persistence failed — revert the optimistic selection and surface why,
+      // rather than leaving the UI showing a model that was never saved.
+      setModel(prev);
+      setPttError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -112,25 +117,25 @@ export function VoiceSettingsSection(): JSX.Element {
   };
 
   return (
-    <section className="voice-settings" data-settings-anchor="voice">
-      <h3 className="voice-settings-title">Voice input</h3>
-      <p className="voice-settings-desc">
+    <section className="voice-settings settings-block" data-settings-anchor="voice">
+      <h3 className="settings-field-label">Voice input</h3>
+      <p className="settings-section-desc">
         Push-to-talk dictation powered by a local whisper.cpp binary. Audio never leaves your
         machine.
       </p>
 
-      <div className="voice-settings-row">
-        <label className="voice-settings-label" htmlFor="voice-ptt-shortcut">
+      <div className="settings-block">
+        <label className="settings-field-label" htmlFor="voice-ptt-shortcut">
           Push-to-talk shortcut
         </label>
-        <div className="voice-settings-inline">
+        <div className="settings-field-row">
           <input
             id="voice-ptt-shortcut"
             type="text"
             value={pttDraft}
             onChange={(e) => setPttDraft(e.target.value)}
             placeholder={DEFAULT_PTT_SHORTCUT}
-            className="voice-settings-input"
+            className="settings-input"
           />
           <HoverHint hint="Save and register globally">
             <button type="button" className="btn" onClick={() => void handleApplyShortcut()}>
@@ -139,9 +144,9 @@ export function VoiceSettingsSection(): JSX.Element {
           </HoverHint>
         </div>
         {pttError ? (
-          <p className="voice-settings-error">{pttError}</p>
+          <p className="chat-error">{pttError}</p>
         ) : (
-          <p className="voice-settings-hint">
+          <p className="settings-block-hint">
             Currently: <code>{pttShortcut || '(disabled)'}</code>. Use Electron accelerator syntax
             (e.g. <code>Alt+Space</code>, <code>CommandOrControl+Shift+V</code>). Leave blank to
             disable.
@@ -149,25 +154,26 @@ export function VoiceSettingsSection(): JSX.Element {
         )}
       </div>
 
-      <div className="voice-settings-row">
-        <span className="voice-settings-label">Whisper binary</span>
+      <div className="settings-block">
+        <span className="settings-field-label">Whisper binary</span>
         {binaryStatus?.found ? (
-          <p className="voice-settings-hint">
+          <p className="settings-block-hint">
             Found at <code>{binaryStatus.path}</code>
             {binaryStatus.version ? ` (${binaryStatus.version})` : ''}.
           </p>
         ) : (
-          <p className="voice-settings-error">
+          <p className="chat-error">
             {binaryStatus?.setupHint ?? 'whisper-cli not found on PATH.'}
           </p>
         )}
-        <div className="voice-settings-inline">
+        <div className="settings-field-row">
           <input
             type="text"
             value={configuredBinaryPath}
             onChange={(e) => setConfiguredBinaryPath(e.target.value)}
             placeholder="Optional: absolute path to whisper-cli"
-            className="voice-settings-input"
+            aria-label="Whisper binary path"
+            className="settings-input"
           />
           <button type="button" className="btn" onClick={() => void handleBinaryPathSave()}>
             Save path
@@ -175,8 +181,8 @@ export function VoiceSettingsSection(): JSX.Element {
         </div>
       </div>
 
-      <div className="voice-settings-row">
-        <span className="voice-settings-label">Model</span>
+      <div className="settings-block">
+        <span className="settings-field-label">Model</span>
         <div className="voice-settings-models">
           {WHISPER_MODEL_INFO.map((info) => {
             const selected = model === info.id;
@@ -198,8 +204,8 @@ export function VoiceSettingsSection(): JSX.Element {
                   <span className="voice-settings-model-name">{info.displayName}</span>
                   <span className="voice-settings-model-size">{info.approxSizeMb} MB</span>
                 </label>
-                <p className="voice-settings-model-desc">{info.description}</p>
-                <div className="voice-settings-inline">
+                <p className="voice-settings-model-desc settings-block-hint">{info.description}</p>
+                <div className="settings-field-row">
                   <button
                     type="button"
                     className="btn"
@@ -213,9 +219,7 @@ export function VoiceSettingsSection(): JSX.Element {
                       {Math.round((progress.receivedBytes / progress.totalBytes) * 100)}%
                     </span>
                   ) : null}
-                  {progress?.error ? (
-                    <span className="voice-settings-error">{progress.error}</span>
-                  ) : null}
+                  {progress?.error ? <span className="chat-error">{progress.error}</span> : null}
                 </div>
               </div>
             );

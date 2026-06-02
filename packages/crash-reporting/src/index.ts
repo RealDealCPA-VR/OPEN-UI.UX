@@ -175,7 +175,10 @@ function buildMinimalIntegrations(sentry: SentryMainModule): SentryIntegration[]
   const candidates: Array<(() => SentryIntegration) | undefined> = [
     sentry.onUncaughtExceptionIntegration,
     sentry.onUnhandledRejectionIntegration,
-    sentry.sentryMinidumpIntegration,
+    // Intentionally NOT including sentry.sentryMinidumpIntegration: native minidumps
+    // capture raw process memory (file paths, prompts, API keys) and are uploaded as
+    // attachments that bypass beforeSend/scrubEvent, contradicting the privacy promise
+    // surfaced in CrashReportingPanel ('scrubbed of local file paths ... before send').
     sentry.electronContextIntegration,
     sentry.additionalContextIntegration,
     sentry.normalizePathsIntegration,
@@ -300,22 +303,38 @@ function scrubFrame(frame: SentryStackFrame): SentryStackFrame {
   return next;
 }
 
-function scrubObject(input: Record<string, unknown>): Record<string, unknown> {
+const MAX_SCRUB_DEPTH = 8;
+
+function scrubObject(
+  input: Record<string, unknown>,
+  depth = 0,
+  seen?: WeakSet<object>,
+): Record<string, unknown> {
+  if (depth >= MAX_SCRUB_DEPTH) return { '<max-depth>': true };
+  const visited = seen ?? new WeakSet<object>();
+  if (visited.has(input)) return { '<circular>': true };
+  visited.add(input);
   const cleaned: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(input)) {
-    cleaned[k] = scrubValue(v);
+    cleaned[k] = scrubValue(v, depth + 1, visited);
   }
   return cleaned;
 }
 
-function scrubValue(value: unknown): unknown {
+function scrubValue(value: unknown, depth = 0, seen?: WeakSet<object>): unknown {
   if (typeof value === 'string') {
     if (looksLikePath(value)) return '<redacted-path>';
     return scrubString(value);
   }
-  if (Array.isArray(value)) return value.map(scrubValue);
+  if (depth >= MAX_SCRUB_DEPTH) return '<max-depth>';
+  if (Array.isArray(value)) {
+    const visited = seen ?? new WeakSet<object>();
+    if (visited.has(value)) return '<circular>';
+    visited.add(value);
+    return value.map((item) => scrubValue(item, depth + 1, visited));
+  }
   if (value !== null && typeof value === 'object') {
-    return scrubObject(value as Record<string, unknown>);
+    return scrubObject(value as Record<string, unknown>, depth, seen);
   }
   return value;
 }

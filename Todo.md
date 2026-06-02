@@ -1022,7 +1022,7 @@ Goal: take OpenCodex from "feature-complete OSS Electron coding agent" to "the d
 #### Pair-programming mode
 
 - [x] Filesystem watcher tied to the active workspace — when the user edits a file in their external editor, surface a dismissible suggestion in OpenCodex if the change touches an open conversation's context _(shipped — `apps/desktop/src/main/pair/file-suggestions.ts` + tests)_
-- [x] LSP-style bridge follow-up — `apps/desktop/src/main/pair/lsp-bridge.ts` listens for save events + outline changes for richer suggestions without polling _(shipped — file exists)_
+- [ ] LSP-style bridge follow-up — `apps/desktop/src/main/pair/lsp-bridge.ts` listens for save events + outline changes for richer suggestions without polling _(NOT shipped — corrected 2026-06-01 module-health sweep. `lsp-bridge.ts` is a no-op stub (`createStubLspBridge`: start/stop flip a boolean, `onDiagnostics` never emits) and is imported by nothing in production. The prior "shipped — file exists" note was inaccurate: a file existing is not a feature. Real impl = JSON-RPC over stdio to typescript-language-server; deferred as out of scope for the wiring sweep.)_
 - [x] Pair Suggestions pane is passive _(already shipped: `SuggestionsPane` renders from `pair:suggestion` event + `pair:get-active-suggestions`; each card has individual × dismiss + user-initiated "Apply as context"; no auto-apply path, no push notifications anywhere)_
 
 #### Voice / dictation in
@@ -1526,3 +1526,74 @@ Driven by a 6-agent parallel audit (first-run flow / visual design / information
 - Cross-view "Open in Codebase" links on chat citations (already supported via transfer-context; needs the tokenized citations to render as `<button>`)
 - `withTraceContext` AsyncLocalStorage helper (proposed in `docs/agent-debugging-guide.md`)
 - `--bundle` flag for `pnpm diagnose` (zip JSON + redacted log tails into one shareable file)
+
+---
+
+## Phase 17 — Codebase knowledge graph (native, graphify-inspired)
+
+> **Why.** Phase 3 gives us chunk+vector+keyword _retrieval_ — good for "find code like X". It does not give us a **relationship model**: who-calls-whom, what-imports-what, which symbols cluster into a subsystem. A knowledge graph is a different and complementary lens (architecture overview, blast-radius / "what breaks if I change this", subsystem onboarding) and is the one capability `RealDealCPA-VR/graphify` (Python) has that OpenCodex doesn't.
+>
+> **Architecture stance (must hold).** Native TypeScript only — do **not** shell out to graphify's Python. Reuse what we already ship: `web-tree-sitter` (from `@opencodex/rag-chunker`), the `LLMProvider` contract for the optional semantic pass, `better-sqlite3` for persistence, `chokidar` (`WorkspaceWatcher`) for incremental updates. No hosted backend, no provider-specific code outside its package (CLAUDE.md rules 1–3). graphify is the **spec to port**, not a dependency.
+>
+> **Source reference.** Port targets in `RealDealCPA-VR/graphify@v8`: `graphify/build.py` (graph assembly, ID normalization, phantom-edge drops), `graphify/symbol_resolution.py` (deterministic call/import resolution), `graphify/cluster.py` (Leiden→Louvain community detection + cohesion split), `graphify/dedup.py` (Jaro-Winkler label dedup). Skip its LLM-extraction, SCIP, transcribe, wiki, google-workspace, and HTML-render modules.
+
+### Core model + package
+
+- [ ] New `@opencodex/code-graph` package: Zod schemas for `GraphNode { id, label, file_type: code|document|concept, source_file, source_location, metadata }` and `GraphEdge { source, target, relation: calls|imports_from|contains|method|extends, confidence: EXTRACTED|INFERRED|AMBIGUOUS, confidence_score, source_file, source_location, weight }`. Mirror graphify's `_make_id` exactly (NFKC normalize → `[^\w]+`→`_` → collapse `_` → casefold) so endpoints reconcile.
+- [ ] Graph assembly (`build_from_json` port): add nodes idempotently (last-write-wins), normalize edge endpoints via a `normId → id` map before dropping, skip dangling edges to external/stdlib symbols (expected, not an error), drop cross-language `INFERRED` `calls` edges via a language-family table, preserve original direction on undirected storage. Back it with `graphology` (TS) instead of NetworkX.
+
+### Extraction (deterministic first)
+
+- [ ] AST symbol+edge extractor: extend `rag-chunker`'s existing `web-tree-sitter` walk so that, alongside chunks, it emits symbol nodes (function/class/method/struct/interface) + `contains`/`method` edges + a per-file `raw_calls` list (callee label, caller node id, `is_member_call`, source_location). Reuse the same registered grammars — no new wasm.
+- [ ] Deterministic cross-file resolution (`symbol_resolution.py` port): import-guided call resolution (`from mod import sym [as alias]` → `EXTRACTED` edge when the `(module_stem, symbol)` index has exactly one match) + conservative label-index resolution (unique global label → `INFERRED` edge). Member calls and ambiguous labels are skipped. Pure TS, no LLM.
+- [ ] Entity dedup (`dedup.py` port): normalized-label merge + Jaro-Winkler similarity; prefer non-chunk-suffixed / shorter IDs as canonical, rewrite edge endpoints, drop resulting self-loops. (LLM tie-break for the 75–92 score band is **optional / deferred** — gate behind a setting via `LLMProvider`.)
+
+### Community detection
+
+- [ ] Louvain community detection via `graphology-communities-louvain` (deterministic seed). Port the cohesion-split heuristics: split communities > 25% of graph (min 10 nodes), re-split low-cohesion (< 0.05) communities ≥ 50 nodes, optional degree-percentile hub exclusion + majority-vote reattach. Leiden/`graspologic` is Python-only — Louvain is the realistic native target; note the quality delta. Add stable community-id remap across runs (`remap_communities_to_previous`).
+
+### Persistence, incremental update, surfacing
+
+- [ ] Persist nodes/edges/communities in SQLite (new migration alongside `codebase-index.ts`); incremental rebuild on file change via the existing `WorkspaceWatcher` (port `build_merge` / `prune_sources`: grow-or-prune, never silently shrink).
+- [ ] `query_code_graph` tool exposed to the agent (neighbors-of, callers-of, path-between, subsystem-of) so chat can answer relationship questions — complements, does not replace, `search_codebase`.
+- [ ] Renderer: graph view in CodebaseView (sigma.js or cytoscape, lazy-loaded + code-split like Monaco/xterm) — filter by community, search, click-through to `file:line` via the existing citation/preview wiring.
+
+### Tests + docs
+
+- [ ] Port graphify's golden-corpus idea: run the extractor on `examples/` fixtures and assert node/edge counts + key relationships; unit-cover ID normalization, phantom-edge drops, dedup merges, and community split thresholds.
+- [ ] `docs/architecture.md`: document the graph as a sibling to RAG retrieval, the deterministic-vs-LLM confidence split, and the Louvain-vs-Leiden trade-off.
+
+---
+
+## Phase 18 — Module-health sweep follow-ups (2026-06-01)
+
+> A 22-unit module-health sweep verified every module typechecks + its runnable tests pass (1,678 green; the rest ENV-blocked by the better-sqlite3 ABI). It surfaced 11 confirmed "built-but-not-wired" gaps. **9 were fixed in that sweep** (cancelled stop-reason, Voyage catalog, Replay/Provenance UI mount, SSRF hardening, OpenAI/Anthropic reasoning + Responses params, production embeddings resolver, AST-aware chunkFn wiring, plugin-provider build path, LSP record correction). The items below remain because they need a design decision rather than a wire.
+
+- [ ] **Enforce the fan-out consent gate** — the consent machinery is fully built (`fanout-consent.ts`, `FanoutConsentModal`, `agent:fanout-consent` IPC, tree-handlers) but has no producer: `spawn_subagent` runs unconditionally. Enforcing it needs EITHER (a) threading a `parentRunId`/`conversationId` through `ToolContext` (touches `@opencodex/core` + the agent loop + every tool) so a per-parent one-time gate can fire, OR (b) an orchestrator that parses the model's `fanout` block (declared in `orchestrator-prompt.ts`) and calls `requestFanoutConsent(plan)` before spawning. Decision needed: per-spawn gate vs. plan-first orchestration, and the spawn-count threshold that triggers consent. Not force-fit into `spawn_subagent` during the sweep to avoid regressing the core agent loop.
+- [ ] **Dispatch plugin slash commands** — `registerSlashCommand` tracks `{name, handler}` per plugin (`getPluginSlashCommands`) but there is NO main-process slash-command dispatcher anywhere, and skills use a separate renderer-composer path. Needs a dispatcher + a composer integration (how plugin commands are surfaced/autocompleted alongside `/skill`). Design decision, not a wire. (Plugin _providers_ were wired in the sweep via `buildProviderForId` + `plugin-provider-registry.ts`.)
+- [ ] **Ship tree-sitter grammar `.wasm` assets to activate AST chunking** — `astAwareChunkFn` + `registerBundledGrammars('<resources>/tree-sitter')` are now wired into the production indexer, but `web-tree-sitter` isn't an installed dependency and zero grammar `.wasm` files exist in the tree, so chunking still degrades to size-based. Remaining: add `web-tree-sitter` as a dep, source/bundle the ~15 supported grammars into `resources/tree-sitter/tree-sitter-<lang>.wasm`, and verify `chunkBySymbols` activates. (Build/packaging task.)
+- [ ] **Surface plugin providers in the model-picker UI** (small follow-up) — plugin providers are now buildable via routing/spawn, but `getAllProviderInfo()` doesn't list them, so they don't appear in the provider/model picker. Append `listPluginProviders()` entries to the provider-info path if picker selection is desired.
+
+## Phase 19 — Settings-UI consistency + project-wide defect sweep (2026-06-02)
+
+> Two `/goal` runs this session, both multi-agent. (1) A Settings-UI consistency pass; (2) a build/test/lint/typecheck diagnosis + 14-subsystem discovery fan-out → **38 items / 24 file-disjoint groups** (full list in `docs/ITEMS.md`), fixed by 24 implementer agents each cross-checked by an independent verifier (24/24 pass). Final gate run by the lead: **build green, typecheck green, lint 0 errors, tests 2032 passed / 0 failed / 8 skipped (215 files)**.
+
+### 19.1 — Settings-UI consistency (shipped)
+
+- [x] Tokenized all hardcoded hex / `var(--token,#fallback)` fallbacks across every `views/*Panel.tsx` (only ThemePanel's intentional light/dark preview swatches remain literal).
+- [x] Replaced ad-hoc inline-style layout with shared `.btn`/`.settings-input`/`.settings-field-row`/`.toggle`/`.settings-block` where exact equivalents exist; fixed heading hierarchy (e.g. AccessibilityPanel `<h4>`→`<h3>`).
+- [x] Defined 28 Settings-panel CSS classes that were **referenced in TSX but never defined in `styles.css`** (Accessibility / Indexing / Memory / Skills / Updates / Voice / rail-search-clear / saved-flash) — panels rendered unstyled before. Wired two leftover inline styles to the new classes.
+- [ ] Non-Settings UI consistency backlog captured in `docs/UX-REVIEW.md` (73 findings: phantom `--radius-md`/`--shadow-popover` tokens, hand-rolled modals that should use shared `<Modal>`, dialogs missing accessible names). **Deferred** by maintainer ("stop at Settings").
+
+### 19.2 — Defect sweep (shipped, all cross-verified + lead-gated)
+
+- [x] Security: Windows command-injection in all 3 external runners (array-arg spawn, no `shell:true` on untrusted task); MCP host-guard SSRF-via-redirect closed; native crash minidump no longer bypasses redaction.
+- [x] Correctness: RAG magnitude-bucket prefilter no longer drops top cosine matches (+ strengthened test); subagent `acceptMerge` now commits worktree state before merge and untracked new files are included in diff/preview; Anthropic cached-input cost no longer double-discounted; Google prompt-level safety blocks now surfaced as `content_filter` instead of swallowed.
+- [x] Contract/IPC: scheduler `runnerId` no longer stripped at the IPC boundary; MCP `hostAllowlist` now accepted (LAN HTTP+SSE servers addable); local-fs memory tools re-register on workspace switch + on `memory:set-config`, status exposed over IPC; `agent:respond-resume` routed through the senderFrame guard; `file-tree:has-children` exposed in preload bridge; `fileTree.list()` return type includes `truncated`; `scheduler:run-completed` emits correct `runId`/`agentRunId`.
+- [x] Other: stale `catalog.test.ts` (now expects 8 incl. voyage); `ReplayPanel` setState-in-effect lint error; `JobsPane` "function as React child" bug (`Array.isArray` guard on bridge fetch); Ollama `script` installer no longer advertised when its pinned SHA is empty + `/api/tags` Zod-validated; MCP client advertises newest supported protocol version; `chunkBySize` trailing-newline off-by-one.
+- [x] New tests for previously-untested critical paths: runner `run()` generators, crash/telemetry opt-in managers, plugin `registerTool` permission gate, AST chunker, listener rate-limiter, and a 6-provider `assertProviderHonorsAbort` conformance suite (consolidated in `provider-openai/src/assert-provider-honors-abort.test.ts`, importing the other 5 via the root vitest alias — re: the abort-helper item ~L1198).
+
+### 19.3 — Deferred / not done
+
+- [ ] **Implement Google embeddings** — `packages/provider-google/src/provider.ts:47` still throws `Google embeddings not implemented yet`. Correctly skipped in the sweep because a real impl must edit `models.ts` (add a text-embedding model, `embeddings:true`), `response-schemas.ts` (Zod embed schema), `provider.ts` (call the Gemini `:embedContent`/`batchEmbedContents` endpoint, index-preserving order), and `provider.test.ts` (currently asserts embed() rejects) **together** — a multi-file change that didn't fit the file-disjoint group boundary. Safe consistent state holds today (all Google models `embeddings:false`, embed() throws a clear error).
+- [ ] The abort-conformance suite covers all 6 streaming providers but lives in one file; the standing abort-helper item (~L1198) also asks to split per `provider-*/src/*.test.ts` + a plugin-sdk README mention — left as-is since coverage already exists.

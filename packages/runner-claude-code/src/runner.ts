@@ -71,10 +71,43 @@ function stripAnsi(s: string): string {
   return s.replace(CSI_RE, '').replace(OSC_RE, '');
 }
 
-function needsShell(cliPath: string): boolean {
-  if (process.platform !== 'win32') return false;
-  const lower = cliPath.toLowerCase();
-  return lower.endsWith('.cmd') || lower.endsWith('.bat') || lower.endsWith('.ps1');
+interface SpawnInvocation {
+  command: string;
+  args: string[];
+}
+
+/**
+ * Build a spawn invocation that NEVER enables `shell: true`. On Windows, batch
+ * wrappers (`.cmd`/`.bat`) and PowerShell scripts (`.ps1`) cannot be executed
+ * directly by `CreateProcess`, so they are routed through the appropriate
+ * interpreter with the original args kept as discrete argv elements. Because
+ * `shell` stays false, Node escapes each element for `CreateProcess` and the
+ * task string is delivered verbatim — `cmd.exe` never re-interprets `&`, `|`,
+ * `>` etc. embedded in the task (command-injection guard).
+ */
+function buildSpawnInvocation(cliPath: string, args: readonly string[]): SpawnInvocation {
+  if (process.platform === 'win32') {
+    const lower = cliPath.toLowerCase();
+    if (lower.endsWith('.cmd') || lower.endsWith('.bat')) {
+      const comspec = process.env.COMSPEC ?? 'cmd.exe';
+      return { command: comspec, args: ['/d', '/s', '/c', cliPath, ...args] };
+    }
+    if (lower.endsWith('.ps1')) {
+      return {
+        command: 'powershell.exe',
+        args: [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          cliPath,
+          ...args,
+        ],
+      };
+    }
+  }
+  return { command: cliPath, args: [...args] };
 }
 
 async function resolveCliPath(host: PluginHost): Promise<string | null> {
@@ -111,22 +144,24 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
       const env = scrubEnv(process.env, envOverrides);
       host.logger.info('claude-code: spawning', { cliPath, cwd: opts.workspaceRoot });
 
-      const useShell = needsShell(cliPath);
       // `--print --output-format=stream-json` requires `--verbose` on the
       // Claude Code CLI (>=2.x); without it the CLI exits with an error before
       // emitting any JSON.
-      const child = spawn(
-        cliPath,
-        ['--output-format', 'stream-json', '--verbose', '--print', opts.task],
-        {
-          cwd: opts.workspaceRoot,
-          env,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          windowsHide: true,
-          detached: process.platform !== 'win32',
-          shell: useShell,
-        },
-      );
+      const invocation = buildSpawnInvocation(cliPath, [
+        '--output-format',
+        'stream-json',
+        '--verbose',
+        '--print',
+        opts.task,
+      ]);
+      const child = spawn(invocation.command, invocation.args, {
+        cwd: opts.workspaceRoot,
+        env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+        detached: process.platform !== 'win32',
+        shell: false,
+      });
       const childStdout = child.stdout;
       const childStderr = child.stderr;
       const childStdin = child.stdin;
@@ -152,6 +187,7 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
       let closed = false;
       let spawnError: Error | null = null;
       let budgetExceeded = false;
+      let aborted = false;
 
       const wake = (): void => {
         if (resolveWait) {
@@ -167,6 +203,7 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
         });
 
       const onAbort = (): void => {
+        aborted = true;
         host.logger.warn('claude-code: abort signal received, killing process tree');
         void treeKill(child);
         wake();
@@ -174,6 +211,7 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
       const signal = opts.signal;
       if (signal) {
         if (signal.aborted) {
+          aborted = true;
           void treeKill(child);
         } else {
           signal.addEventListener('abort', onAbort, { once: true });
@@ -275,6 +313,12 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
         return;
       }
 
+      if (aborted && !state.resultEmitted) {
+        if (!state.usageEmitted) yield { type: 'usage', inputTokens: 0, outputTokens: 0 };
+        yield { type: 'done', stopReason: 'cancelled' };
+        return;
+      }
+
       if (budgetExceeded && !state.resultEmitted) {
         yield {
           type: 'error',
@@ -282,7 +326,7 @@ export function createClaudeCodeRunner(host: PluginHost): SubagentRunner {
           retryable: false,
         };
         if (!state.usageEmitted) yield { type: 'usage', inputTokens: 0, outputTokens: 0 };
-        yield { type: 'done', stopReason: 'error' };
+        yield { type: 'done', stopReason: 'budget_exceeded' };
         return;
       }
 

@@ -34,6 +34,26 @@ describe('chunkBySize', () => {
     expect(chunkBySize('', 1500, 100)).toEqual([]);
   });
 
+  it('does not over-count endLine when the text ends in a trailing newline', () => {
+    const text = 'a\nb\n';
+    const chunks = chunkBySize(text, 1500, 100);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]?.content).toBe(text);
+    expect(chunks[0]?.startLine).toBe(1);
+    // 'a\nb\n' has 2 content lines; the trailing newline terminates line 2.
+    expect(chunks[0]?.endLine).toBe(2);
+  });
+
+  it('does not over-count endLine on a multi-chunk split ending in a newline', () => {
+    const lines = Array.from({ length: 30 }, (_, i) => `line${i}`);
+    const text = `${lines.join('\n')}\n`;
+    const chunks = chunkBySize(text, 60, 20);
+    expect(chunks.length).toBeGreaterThan(1);
+    const last = chunks[chunks.length - 1];
+    // The final chunk must not claim the phantom empty line from the trailing newline.
+    expect(last?.endLine).toBe(30);
+  });
+
   it('splits a long text into multiple chunks', () => {
     const line = 'x'.repeat(80);
     const text = Array.from({ length: 60 }, () => line).join('\n');

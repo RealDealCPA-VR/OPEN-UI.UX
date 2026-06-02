@@ -83,6 +83,7 @@ export class SseTransport implements Transport {
     const response = await fetch(this.config.url, {
       headers,
       signal: this.abort.signal,
+      redirect: 'error',
     });
 
     if (!response.ok || !response.body) {
@@ -135,6 +136,7 @@ export class SseTransport implements Transport {
       method: 'POST',
       headers,
       body: JSON.stringify(message),
+      redirect: 'error',
     });
     if (!response.ok) {
       throw new Error(`SSE POST HTTP ${response.status}`);

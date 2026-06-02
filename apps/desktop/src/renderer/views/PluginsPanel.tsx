@@ -257,7 +257,7 @@ export function PluginsPanel(): JSX.Element {
                 </button>
                 {confirmingUninstall === item.id ? (
                   <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, color: 'var(--danger, #dc2626)' }}>
+                    <span style={{ fontSize: 12, color: 'var(--danger)' }}>
                       Uninstall {item.manifest.displayName}?
                     </span>
                     <button

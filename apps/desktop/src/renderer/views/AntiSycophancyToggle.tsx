@@ -42,10 +42,8 @@ export function AntiSycophancyToggle(): JSX.Element {
         the chat agent and the orchestrator.
       </p>
       <label
+        className="toggle"
         style={{
-          display: 'flex',
-          gap: 10,
-          alignItems: 'center',
           padding: '8px 0',
           cursor: enabled === null || pending ? 'progress' : 'pointer',
         }}
@@ -64,9 +62,9 @@ export function AntiSycophancyToggle(): JSX.Element {
           style={{
             marginTop: 6,
             padding: 8,
-            background: 'var(--danger-bg, rgba(220,38,38,0.08))',
-            color: 'var(--danger, #dc2626)',
-            border: '1px solid var(--danger-border, rgba(220,38,38,0.3))',
+            background: 'var(--danger-bg)',
+            color: 'var(--danger)',
+            border: '1px solid var(--danger-border)',
             borderRadius: 6,
             fontSize: 12,
           }}

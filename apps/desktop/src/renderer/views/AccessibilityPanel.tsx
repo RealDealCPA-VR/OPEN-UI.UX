@@ -85,26 +85,13 @@ export function AccessibilityPanel(): JSX.Element {
 
       {saveError && <p className="theme-action-error">Failed: {saveError}</p>}
 
-      <div
-        className="accessibility-row"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-          padding: '10px 12px',
-          background: 'var(--bg-elevated, rgba(255,255,255,0.04))',
-          border: '1px solid var(--border, #2a2a32)',
-          borderRadius: 6,
-          margin: '12px 0',
-        }}
-      >
+      <div className="accessibility-row">
         <div>
           <div style={{ fontWeight: 500 }}>Reduced motion</div>
           <div
             style={{
               fontSize: 12,
-              color: 'var(--text-muted, #98a0aa)',
+              color: 'var(--text-muted)',
               marginTop: 2,
               lineHeight: 1.4,
             }}
@@ -119,10 +106,10 @@ export function AccessibilityPanel(): JSX.Element {
           style={{
             fontSize: 11,
             padding: '2px 8px',
-            borderRadius: 999,
-            border: '1px solid var(--border, #2a2a32)',
-            color: reducedMotion ? 'var(--success, #22c55e)' : 'var(--text-muted, #98a0aa)',
-            background: reducedMotion ? 'var(--success-bg, rgba(34,197,94,0.10))' : 'transparent',
+            borderRadius: 'var(--radius-pill)',
+            border: '1px solid var(--border)',
+            color: reducedMotion ? 'var(--success)' : 'var(--text-muted)',
+            background: reducedMotion ? 'var(--success-bg)' : 'transparent',
           }}
         >
           Detected from OS: {reducedMotion ? 'reduced' : 'default'}
@@ -130,7 +117,7 @@ export function AccessibilityPanel(): JSX.Element {
       </div>
 
       <div className="accessibility-preview">
-        <h4 className="accessibility-preview-title">Preview</h4>
+        <h3 className="accessibility-preview-title">Preview</h3>
         <p className="accessibility-preview-desc">
           Hover or focus the button below to see a hint when the setting is enabled.
         </p>

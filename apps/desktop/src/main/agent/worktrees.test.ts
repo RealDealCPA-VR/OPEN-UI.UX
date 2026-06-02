@@ -139,6 +139,21 @@ describe('worktrees', () => {
   );
 
   it.skipIf(!gitAvailable)(
+    'getDiffBundle surfaces untracked new files without a manual git add',
+    async () => {
+      const wt = await createWorktree(repoRoot);
+      await writeFile(path.join(wt.path, 'README.txt'), 'hello world\nedited\n');
+      await writeFile(path.join(wt.path, 'UNTRACKED.txt'), 'brand new untracked file\n');
+
+      const diff = await getDiffBundle(wt.path);
+      expect(diff).toContain('README.txt');
+      expect(diff).toContain('+edited');
+      expect(diff).toContain('UNTRACKED.txt');
+      expect(diff).toContain('+brand new untracked file');
+    },
+  );
+
+  it.skipIf(!gitAvailable)(
     'getDiffBundle against a prior ref includes committed changes too',
     async () => {
       const baseSha = (await git(repoRoot, ['rev-parse', 'HEAD'])).trim();

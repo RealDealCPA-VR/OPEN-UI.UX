@@ -121,7 +121,7 @@ export function PrivacyPanel(): JSX.Element {
           <code>.local</code>. Use it when you only run local models (e.g. Ollama, llama.cpp) and
           never want a token to leak to a hosted API — even by accident.
         </p>
-        <label className="toggle" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <label className="toggle">
           <input
             type="checkbox"
             checked={policy.localOnlyMode}
@@ -144,16 +144,13 @@ export function PrivacyPanel(): JSX.Element {
       <div className="settings-divider" />
 
       <div className="settings-block" data-settings-anchor="allowlist">
-        <h4 style={{ margin: '0 0 4px 0' }}>Network allowlist</h4>
+        <h3 style={{ margin: '0 0 4px 0' }}>Network allowlist</h3>
         <p className="settings-block-hint" style={{ marginTop: 0 }}>
           When Local Only is OFF, the allowlist gates every outbound request. Empty allowlist =
           allow all (legacy behavior). Wildcards like <code>*.anthropic.com</code> are supported.
         </p>
 
-        <div
-          className="settings-field-row"
-          style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}
-        >
+        <div className="settings-field-row">
           <input
             type="text"
             className="settings-input"
@@ -206,12 +203,11 @@ export function PrivacyPanel(): JSX.Element {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   padding: '6px 10px',
-                  borderRadius: 6,
-                  background: 'var(--bg-elevated, rgba(255,255,255,0.04))',
-                  border: '1px solid var(--border, #2a2a32)',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border)',
                   marginBottom: 6,
-                  fontFamily:
-                    'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+                  fontFamily: 'var(--font-mono)',
                   fontSize: 12,
                 }}
               >
@@ -241,7 +237,7 @@ export function PrivacyPanel(): JSX.Element {
       <div className="settings-divider" />
 
       <div className="settings-block" data-settings-anchor="threat-model">
-        <h4 style={{ margin: '0 0 4px 0' }}>Threat model</h4>
+        <h3 style={{ margin: '0 0 4px 0' }}>Threat model</h3>
         <p className="privacy-explainer">
           OpenCodex is local-first. Even so, every external request — provider HTTPS, the{' '}
           <code>web_fetch</code> tool, MCP servers, plugin code — is a potential exfiltration

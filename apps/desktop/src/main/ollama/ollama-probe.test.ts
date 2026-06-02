@@ -82,6 +82,20 @@ describe('probeOllama', () => {
     expect(result.models[0]?.id).toBe('good:tag');
   });
 
+  it('returns running:true with empty models when payload is not an object', async () => {
+    const fetchImpl = makeFetchOk('not-json-object');
+    const result = await probeOllama(undefined, fetchImpl, PROBE_OPTS);
+    expect(result.running).toBe(true);
+    expect(result.models).toEqual([]);
+  });
+
+  it('returns running:true with empty models when models is not an array', async () => {
+    const fetchImpl = makeFetchOk({ models: 'oops' });
+    const result = await probeOllama(undefined, fetchImpl, PROBE_OPTS);
+    expect(result.running).toBe(true);
+    expect(result.models).toEqual([]);
+  });
+
   it('honours OLLAMA_HOST when no provider baseUrl is configured', async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (url: unknown) => {

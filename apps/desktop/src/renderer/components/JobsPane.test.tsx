@@ -125,6 +125,72 @@ describe('JobsPane', () => {
     await waitFor(() => expect(onRunsChanged).toHaveBeenCalledTimes(1));
   });
 
+  it('renders runs fetched via the bridge without a function-as-child warning', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      setBridge({
+        listRuns: vi.fn(async () => [
+          makeRun({ id: 'fetched', task: 'fetched task', inputTokens: 1234, outputTokens: 567 }),
+        ]),
+        onRunsChanged: vi.fn(() => () => {}),
+        abortRun: vi.fn(),
+      });
+      render(<JobsPane />);
+      await waitFor(() => expect(screen.getByText('fetched task')).toBeTruthy());
+      expect(screen.getByText(/1,234/)).toBeTruthy();
+      expect(screen.getByText(/567/)).toBeTruthy();
+      const sawFunctionChild = errorSpy.mock.calls.some((args) =>
+        args.some(
+          (a) => typeof a === 'string' && a.includes('Functions are not valid as a React child'),
+        ),
+      );
+      expect(sawFunctionChild).toBe(false);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('tolerates a non-array listRuns result without rendering a function', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      // Mirrors the preload test-shim (src/test/setup.ts), whose Proxy resolves
+      // to a callable whose every property access / call returns another
+      // callable Proxy — never an AgentRun[]. Before the Array.isArray guard this
+      // leaked a function into the render tree as `running.length` /
+      // `running.map(...)`, producing the "Functions are not valid as a React
+      // child" warning seen via the bridge-fetch path.
+      const makeShim = (): unknown => {
+        const target = (() => undefined) as ((...a: unknown[]) => unknown) &
+          Record<PropertyKey, unknown>;
+        return new Proxy(target, {
+          get(_t, prop): unknown {
+            if (prop === 'then') return undefined;
+            if (typeof prop === 'symbol') return undefined;
+            return makeShim();
+          },
+          apply(): unknown {
+            return makeShim();
+          },
+        });
+      };
+      setBridge({
+        listRuns: vi.fn(async () => makeShim() as AgentRun[]),
+        onRunsChanged: vi.fn(() => () => {}),
+        abortRun: vi.fn(),
+      });
+      render(<JobsPane />);
+      await waitFor(() => expect(screen.getByText('No active jobs.')).toBeTruthy());
+      const sawFunctionChild = errorSpy.mock.calls.some((args) =>
+        args.some(
+          (a) => typeof a === 'string' && a.includes('Functions are not valid as a React child'),
+        ),
+      );
+      expect(sawFunctionChild).toBe(false);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it('shows scheduled pill for scheduled runs', () => {
     const run = makeRun({ triggerSource: 'scheduled' });
     render(<JobsPane initialRuns={[run]} />);

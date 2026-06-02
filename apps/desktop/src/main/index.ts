@@ -44,6 +44,8 @@ import {
   setActiveMultiWorkspaceIndexer,
 } from './rag/multi-workspace-indexer';
 import { setWatchedWorkspace, stopWatchedWorkspace } from './rag/watcher';
+import { RoutingEmbeddingResolver } from './rag/embedding-resolver';
+import { astAwareChunkFn, registerBundledGrammars } from './rag/ast-chunk';
 import { registerReplayHandlers } from './replay/handlers';
 import { registerReviewHandlers } from './review/handlers';
 import { registerRoutingHandlers } from './routing/handlers';
@@ -417,8 +419,14 @@ app.whenReady().then(() => {
 
   // Lane 4 — start multi-workspace RAG indexer once the app is ready
   try {
+    // Register any bundled tree-sitter grammars so the indexer can chunk along
+    // AST symbol boundaries; absent assets degrade to size-based chunking.
+    const resourcesBase = process.resourcesPath ?? app.getAppPath();
+    registerBundledGrammars(pathJoin(resourcesBase, 'tree-sitter'));
     const indexer = new MultiWorkspaceIndexer({
       baseDir: pathJoin(app.getPath('userData'), 'rag'),
+      embeddingResolver: new RoutingEmbeddingResolver(),
+      chunkFn: astAwareChunkFn,
     });
     setActiveMultiWorkspaceIndexer(indexer);
     void indexer.start().catch((err: unknown) => {
@@ -556,6 +564,13 @@ function initWorkspaceWatcher(): void {
 
   settingsStore.onDidChange('activeWorkspace', (next) => {
     applyRoot(typeof next === 'string' ? next : null);
+    // Re-register local-fs memory tools against the new workspace so the agent's
+    // memory_local_read/search/append tools point at the current workspace's memory.md.
+    try {
+      applyLocalFsBackend();
+    } catch (err) {
+      logger.warn({ err }, 'local-fs memory backend re-init on workspace switch failed');
+    }
   });
 }
 

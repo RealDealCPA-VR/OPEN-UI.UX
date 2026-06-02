@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HttpTransport } from './http-transport';
 import { SseTransport } from './sse-transport';
 import { DisallowedMcpHostError } from './host-guard';
@@ -53,5 +53,43 @@ describe('SseTransport host guard', () => {
           hostAllowlist: ['mcp.example.com'],
         }),
     ).toThrow(DisallowedMcpHostError);
+  });
+});
+
+describe('transport SSRF redirect hardening', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function okResponse(): Response {
+    return new Response('{}', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+
+  it('HttpTransport.send rejects following redirects (redirect: error)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okResponse());
+    const t = new HttpTransport({ kind: 'http', url: 'https://api.example.com/mcp' });
+    await t.start();
+    await t.send({ jsonrpc: '2.0', id: 1, method: 'ping' });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0]?.[1];
+    expect(init?.redirect).toBe('error');
+  });
+
+  it('SseTransport.start fetch rejects following redirects (redirect: error)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      }),
+    );
+    const t = new SseTransport({ kind: 'sse', url: 'https://mcp.example.com/sse' });
+    await t.start();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0]?.[1];
+    expect(init?.redirect).toBe('error');
+    await t.stop();
   });
 });

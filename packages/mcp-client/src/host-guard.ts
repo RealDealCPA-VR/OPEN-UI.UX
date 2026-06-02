@@ -40,7 +40,21 @@ function isPrivateOrLinkLocalIpv4(host: string): string | null {
   const [a, b] = octets;
   if (a === 169 && b === 254) return 'link-local IPv4';
   if (a === 0) return 'unspecified IPv4';
+  // RFC1918 private ranges. Loopback (127.0.0.0/8) is deliberately NOT blocked:
+  // local-first MCP servers commonly bind to 127.0.0.1. LAN hosts, however, are
+  // classic SSRF targets (router admin panels, internal services) and must be
+  // opt-in via an explicit allowlist.
+  if (a === 10) return 'private IPv4 (RFC1918 10.0.0.0/8)';
+  if (a === 172 && b >= 16 && b <= 31) return 'private IPv4 (RFC1918 172.16.0.0/12)';
+  if (a === 192 && b === 168) return 'private IPv4 (RFC1918 192.168.0.0/16)';
   return null;
+}
+
+function isUniqueLocalIpv6(host: string): boolean {
+  // IPv6 unique-local addresses fc00::/7 (fc00: – fdff:). Loopback ::1 is left
+  // allowed for the same local-first reason as 127.0.0.0/8.
+  const inner = stripBrackets(host).toLowerCase();
+  return /^f[cd][0-9a-f]{0,2}:/.test(inner);
 }
 
 function stripBrackets(host: string): string {
@@ -86,6 +100,10 @@ export function assertHostAllowed(rawUrl: string, options: HostGuardOptions = {}
 
   if (isLinkLocalIpv6(hostname)) {
     throw new DisallowedMcpHostError(hostname, rawUrl, 'link-local IPv6');
+  }
+
+  if (isUniqueLocalIpv6(hostname)) {
+    throw new DisallowedMcpHostError(hostname, rawUrl, 'unique-local IPv6 (fc00::/7)');
   }
 
   return parsed;

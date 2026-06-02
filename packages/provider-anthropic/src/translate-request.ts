@@ -53,6 +53,33 @@ export interface AnthropicChatRequestBody {
   stop_sequences?: string[];
   stream?: boolean;
   tool_choice?: AnthropicToolChoice;
+  thinking?: { type: 'enabled'; budget_tokens: number };
+}
+
+/**
+ * Map the provider-agnostic ReasoningOption to Anthropic extended thinking.
+ * `true` → a default budget; `{ maxTokens }` → that exact budget; `{ effort }`
+ * → a per-effort budget. The Anthropic API requires budget_tokens >= 1024, so
+ * the result is floored to 1024. Returns undefined when reasoning is off.
+ */
+export function anthropicThinking(
+  reasoning: ChatRequest['reasoning'],
+): { type: 'enabled'; budget_tokens: number } | undefined {
+  if (reasoning === undefined || reasoning === false) return undefined;
+  let budget: number;
+  if (reasoning === true) {
+    budget = 4096;
+  } else if (typeof reasoning.maxTokens === 'number') {
+    budget = reasoning.maxTokens;
+  } else {
+    const byEffort: Record<'low' | 'medium' | 'high', number> = {
+      low: 2048,
+      medium: 8192,
+      high: 16384,
+    };
+    budget = byEffort[reasoning.effort ?? 'medium'];
+  }
+  return { type: 'enabled', budget_tokens: Math.max(1024, Math.floor(budget)) };
 }
 
 export function extractSystem(messages: Message[]): { system: string; rest: Message[] } {
@@ -188,6 +215,19 @@ export function buildChatRequestBody(
   if (req.toolChoice !== undefined) {
     const tc = translateToolChoice(req.toolChoice);
     if (tc) body.tool_choice = tc;
+  }
+  const thinking = anthropicThinking(req.reasoning);
+  if (thinking) {
+    body.thinking = thinking;
+    // budget_tokens must be strictly less than max_tokens — give headroom for
+    // the visible (non-thinking) output if the caller's max_tokens is too small.
+    if (body.max_tokens <= thinking.budget_tokens) {
+      body.max_tokens = thinking.budget_tokens + 1024;
+    }
+    // Extended thinking requires default sampling params; Anthropic rejects a
+    // custom temperature/top_p when thinking is enabled.
+    delete body.temperature;
+    delete body.top_p;
   }
   return body;
 }

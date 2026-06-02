@@ -26,23 +26,30 @@ The runner auto-detects the binary with `which opencode` (POSIX) or `where.exe o
 The runner currently invokes:
 
 ```sh
-opencode --headless --message "<task>"
+opencode run "<task>" [--model <id>]
 ```
 
-This is the **assumed** headless invocation. OpenCode's flag set has changed
-across releases. If the version you have installed uses a different flag set
-(e.g. `run`, `--non-interactive`, `--print`, `--json`), set the
-`opencodeCliPath` setting and/or open an issue so we can extend the runner
-with a version-aware flag matrix.
+The legacy `--headless --message` flags no longer exist in the OpenCode CLI and
+have been removed from the runner; the `run` subcommand is the current
+non-interactive entry point. OpenCode's flag set has changed across releases. If
+the version you have installed uses a different flag set, set the
+`opencodeCliPath` setting and/or open an issue so we can extend the runner with
+a version-aware flag matrix.
 
 Peer-dependency pin in this package's `package.json`: `opencode >=0.1.0` (optional).
 
 ## Event mapping (assumed)
 
-OpenCode emits a JSON-event stream on stdout (one JSON object per line, NDJSON).
-The mapping below is the runner's **assumed** translation. If the actual
-release diverges, the runner falls back to treating each unparseable stdout
-line as a `text_delta` so the plugin still works in degraded mode.
+The runner parses stdout as NDJSON (one JSON object per line) at
+`src/runner.ts`. Note that `opencode run` does **not** pass an explicit
+output-format flag, so the build you have installed must emit NDJSON on stdout
+for the transcript to be captured — any line that is not valid JSON is logged
+and dropped (`src/runner.ts` `handleLine`), yielding an empty transcript. If a
+newer release requires a flag (e.g. `--print`, `--json`, `--output-format`) to
+produce machine-readable output, add it to the `['run', opts.task]` argv in
+`src/runner.ts`.
+
+The mapping below is the runner's **assumed** translation:
 
 | OpenCode stream-json             | OpenCodex `ChatEvent`   |
 | -------------------------------- | ----------------------- |
@@ -56,8 +63,8 @@ line as a `text_delta` so the plugin still works in degraded mode.
 
 When pinning a new OpenCode version:
 
-1. Run `opencode --help` against the new binary; confirm the headless flag.
-2. Capture a sample run: `opencode --headless --message "say hi" 2>/dev/null | head -20`.
+1. Run `opencode run --help` against the new binary; confirm the `run` subcommand and any output-format flag.
+2. Capture a sample run: `opencode run "say hi" 2>/dev/null | head -20`.
 3. If the JSON shape changed, update `src/event-translator.ts` and the table
    above, and bump the peer-dependency range in `package.json`.
 4. Re-run `pnpm --filter @opencodex/runner-opencode test`.

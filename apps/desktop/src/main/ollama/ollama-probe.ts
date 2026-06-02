@@ -1,4 +1,5 @@
 import type { ModelCapabilities } from '@opencodex/core';
+import { z } from 'zod';
 import type { OllamaModelEntry, OllamaProbeResult } from '../../shared/ollama';
 import { getProviderEntry } from '../storage/settings';
 import { buildOllamaModelCapabilities } from './ollama-models';
@@ -9,9 +10,19 @@ const PROBE_TIMEOUT_MS = 3_000;
 const BYTES_PER_GB = 1024 * 1024 * 1024;
 const TAGS_PATH = '/api/tags';
 
-interface OllamaTagsResponse {
-  models?: Array<{ name?: unknown; model?: unknown; size?: unknown }>;
-}
+const ollamaTagEntrySchema = z
+  .object({
+    name: z.unknown(),
+    model: z.unknown(),
+    size: z.unknown(),
+  })
+  .partial();
+
+const ollamaTagsResponseSchema = z
+  .object({
+    models: z.array(ollamaTagEntrySchema).optional(),
+  })
+  .partial();
 
 function coerceModelEntry(raw: unknown): OllamaModelEntry | null {
   if (typeof raw !== 'object' || raw === null) return null;
@@ -73,8 +84,8 @@ async function probeOnce(
   if (!res.ok) {
     return { running: false, models: [], error: `HTTP ${res.status}` };
   }
-  const raw = (await res.json()) as OllamaTagsResponse;
-  const list = Array.isArray(raw.models) ? raw.models : [];
+  const parsed = ollamaTagsResponseSchema.safeParse(await res.json());
+  const list = parsed.success && parsed.data.models ? parsed.data.models : [];
   const models: OllamaModelEntry[] = [];
   for (const item of list) {
     const entry = coerceModelEntry(item);

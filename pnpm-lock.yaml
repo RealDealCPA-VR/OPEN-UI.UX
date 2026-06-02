@@ -92,6 +92,9 @@ importers:
       '@opencodex/provider-openrouter':
         specifier: workspace:*
         version: link:../../packages/provider-openrouter
+      '@opencodex/provider-voyage':
+        specifier: workspace:*
+        version: link:../../packages/provider-voyage
       '@opencodex/provider-xai':
         specifier: workspace:*
         version: link:../../packages/provider-xai

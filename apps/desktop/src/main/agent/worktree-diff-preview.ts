@@ -80,7 +80,11 @@ export async function getWorktreePreview(runId: string): Promise<WorktreePreview
     };
   }
   try {
-    const numstat = await runGit(run.worktreePath, ['diff', '--numstat', 'HEAD']);
+    // Stage first so brand-new untracked files (written by subagent tools but
+    // never `git add`ed) are reflected in the preview, matching what
+    // acceptMerge will commit and merge.
+    await runGit(run.worktreePath, ['add', '-A']);
+    const numstat = await runGit(run.worktreePath, ['diff', '--cached', '--numstat', 'HEAD']);
     const entries = parseNumstat(numstat);
     if (entries.length === 0) {
       return {
@@ -103,6 +107,7 @@ export async function getWorktreePreview(runId: string): Promise<WorktreePreview
     try {
       snippet = await runGit(run.worktreePath, [
         'diff',
+        '--cached',
         '--no-color',
         '-U2',
         'HEAD',

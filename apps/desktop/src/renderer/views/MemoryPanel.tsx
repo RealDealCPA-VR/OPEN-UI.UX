@@ -88,6 +88,20 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
     [status, applyConfig],
   );
 
+  const toggleLocalFs = useCallback(
+    (enabled: boolean) => {
+      if (!status) return;
+      const next: MemoryConfig = {
+        backends: {
+          ...status.config.backends,
+          localFs: { ...status.config.backends.localFs, enabled },
+        },
+      };
+      void applyConfig(next);
+    },
+    [status, applyConfig],
+  );
+
   const setVaultPath = useCallback(
     (vaultPath: string) => {
       if (!status) return;
@@ -163,6 +177,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
 
   const obsidian = status.backends.find((b) => b.id === 'obsidian') ?? fallbackStatus('obsidian');
   const notion = status.backends.find((b) => b.id === 'notion') ?? fallbackStatus('notion');
+  const localFs = status.backends.find((b) => b.id === 'local-fs') ?? fallbackStatus('local-fs');
 
   return (
     <div className={`memory-panel${props.className ? ` ${props.className}` : ''}`}>
@@ -175,7 +190,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
           Point the agent at a folder of markdown notes. Read tools run without a prompt; write
           tools (append, create) ask first.
         </p>
-        <label className="memory-field">
+        <label className="toggle">
           <input
             type="checkbox"
             checked={status.config.backends.obsidian.enabled}
@@ -183,16 +198,17 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
           />
           <span>Enable Obsidian backend</span>
         </label>
-        <label className="memory-field">
-          <span>Vault folder</span>
+        <label className="settings-field-row">
+          <span className="settings-field-label">Vault folder</span>
           <input
             type="text"
+            className="settings-input"
             value={status.config.backends.obsidian.vaultPath}
             placeholder="/path/to/vault"
             onChange={(e) => setVaultPath(e.target.value)}
           />
           {typeof (window as WindowWithBrowse).opencodex.workspace?.pickFolder === 'function' && (
-            <button type="button" className="memory-btn" onClick={() => void browseVault()}>
+            <button type="button" className="btn" onClick={() => void browseVault()}>
               Browse…
             </button>
           )}
@@ -200,7 +216,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
         <div className="memory-actions">
           <button
             type="button"
-            className="memory-btn"
+            className="btn"
             onClick={() => void runTest('obsidian')}
             disabled={busy.testing === 'obsidian'}
           >
@@ -219,7 +235,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
           Provide a Notion integration token (stored in OS keychain). Share the pages and databases
           you want the agent to access with that integration.
         </p>
-        <label className="memory-field">
+        <label className="toggle">
           <input
             type="checkbox"
             checked={status.config.backends.notion.enabled}
@@ -227,10 +243,11 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
           />
           <span>Enable Notion backend</span>
         </label>
-        <label className="memory-field">
-          <span>Integration token</span>
+        <label className="settings-field-row">
+          <span className="settings-field-label">Integration token</span>
           <input
             type="password"
+            className="settings-input"
             value={notionTokenDraft}
             placeholder={
               status.hasNotionToken ? 'Token is set — leave blank to keep' : 'secret_...'
@@ -239,7 +256,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
           />
           <button
             type="button"
-            className="memory-btn"
+            className="btn"
             onClick={() => void saveNotionToken()}
             disabled={busy.notionTokenSaving || notionTokenDraft.length === 0}
           >
@@ -250,7 +267,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
               aria-live="polite"
               style={{
                 fontSize: 12,
-                color: 'var(--success, #22c55e)',
+                color: 'var(--success)',
                 marginLeft: 6,
               }}
             >
@@ -262,14 +279,14 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
               <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', marginLeft: 6 }}>
                 <button
                   type="button"
-                  className="memory-btn memory-btn-danger"
+                  className="btn btn-danger"
                   onClick={() => void clearNotionToken()}
                 >
                   Confirm clear
                 </button>
                 <button
                   type="button"
-                  className="memory-btn"
+                  className="btn"
                   onClick={() => setConfirmingClearToken(false)}
                 >
                   Cancel
@@ -278,7 +295,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
             ) : (
               <button
                 type="button"
-                className="memory-btn memory-btn-danger"
+                className="btn btn-danger"
                 onClick={() => setConfirmingClearToken(true)}
               >
                 Clear
@@ -288,7 +305,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
         <div className="memory-actions">
           <button
             type="button"
-            className="memory-btn"
+            className="btn"
             onClick={() => void runTest('notion')}
             disabled={busy.testing === 'notion'}
           >
@@ -296,6 +313,25 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
           </button>
           {testResults.notion && <TestResultPill result={testResults.notion} />}
         </div>
+      </div>
+
+      <div className="memory-subsection">
+        <header className="memory-subhead">
+          <h3>Local workspace memory</h3>
+          <StatusPill status={localFs} />
+        </header>
+        <p className="memory-subhead-desc">
+          Keep a per-workspace memory.md the agent can read, search, and append to. Tools target the
+          currently active workspace.
+        </p>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={status.config.backends.localFs.enabled}
+            onChange={(e) => toggleLocalFs(e.target.checked)}
+          />
+          <span>Enable local workspace memory</span>
+        </label>
       </div>
 
       {actionError && <p className="memory-action-error">Failed: {actionError}</p>}
@@ -308,18 +344,17 @@ function fallbackStatus(id: MemoryBackendId): MemoryBackendStatus {
 }
 
 function StatusPill({ status }: { status: MemoryBackendStatus }): JSX.Element {
-  if (!status.enabled) return <span className="memory-pill memory-pill-off">Disabled</span>;
-  if (!status.configured)
-    return <span className="memory-pill memory-pill-warn">Not configured</span>;
-  if (status.lastError) return <span className="memory-pill memory-pill-error">Error</span>;
+  if (!status.enabled) return <span className="pill pill-neutral">Disabled</span>;
+  if (!status.configured) return <span className="pill pill-warn">Not configured</span>;
+  if (status.lastError) return <span className="pill pill-danger">Error</span>;
   if (status.registered) {
     return (
-      <span className="memory-pill memory-pill-ok">
+      <span className="pill pill-ok">
         Connected · {status.toolCount} tool{status.toolCount === 1 ? '' : 's'}
       </span>
     );
   }
-  return <span className="memory-pill memory-pill-warn">Idle</span>;
+  return <span className="pill pill-warn">Idle</span>;
 }
 
 function TestResultPill({ result }: { result: TestConnectionResult }): JSX.Element {
@@ -327,7 +362,7 @@ function TestResultPill({ result }: { result: TestConnectionResult }): JSX.Eleme
     const detail =
       result.detail?.userName ??
       (result.detail?.noteCount !== undefined ? `${result.detail.noteCount} notes` : 'OK');
-    return <span className="memory-pill memory-pill-ok">OK · {detail}</span>;
+    return <span className="pill pill-ok">OK · {detail}</span>;
   }
-  return <span className="memory-pill memory-pill-error">{result.error ?? 'Failed'}</span>;
+  return <span className="pill pill-danger">{result.error ?? 'Failed'}</span>;
 }

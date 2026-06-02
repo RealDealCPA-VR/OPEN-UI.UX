@@ -173,6 +173,37 @@ function parseWorktreePorcelain(stdout: string): WorktreeInfo[] {
   return result;
 }
 
+/**
+ * Stage every change in the worktree (modifications, deletions, and brand-new
+ * untracked files) so they are visible to `git diff HEAD` and to a subsequent
+ * commit/merge. Subagent tools write files directly to disk and never stage,
+ * so without this step untracked files are invisible and the branch never
+ * advances. Safe to call repeatedly; a no-op when the tree is clean.
+ */
+export async function stageWorktree(worktreePath: string): Promise<void> {
+  await ensureAbsoluteExistingDir(worktreePath);
+  if (!(await isGitRepo(worktreePath))) {
+    throw new Error(`not a git repo: ${worktreePath}`);
+  }
+  await runGit(worktreePath, ['add', '-A']);
+}
+
+/**
+ * Stage and commit the current worktree state so the worktree branch advances
+ * past the base HEAD. Returns true when a commit was created, false when there
+ * was nothing to commit (clean tree). The commit is what `acceptMerge` later
+ * merges; without it the merge is a no-op ("Already up to date").
+ */
+export async function commitWorktree(worktreePath: string, message: string): Promise<boolean> {
+  await stageWorktree(worktreePath);
+  const { stdout } = await runGit(worktreePath, ['status', '--porcelain']);
+  if (stdout.trim() === '') {
+    return false;
+  }
+  await runGit(worktreePath, ['commit', '--no-gpg-sign', '-m', message]);
+  return true;
+}
+
 export async function getDiffBundle(
   worktreePath: string,
   baseRef: string = 'HEAD',
@@ -181,6 +212,8 @@ export async function getDiffBundle(
   if (!(await isGitRepo(worktreePath))) {
     throw new Error(`not a git repo: ${worktreePath}`);
   }
-  const { stdout } = await runGit(worktreePath, ['diff', baseRef]);
+  // Stage first so untracked files written by subagent tools appear in the diff.
+  await runGit(worktreePath, ['add', '-A']);
+  const { stdout } = await runGit(worktreePath, ['diff', '--cached', baseRef]);
   return stdout;
 }

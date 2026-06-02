@@ -110,11 +110,17 @@ function isSupportedPlatform(kind: OllamaInstallerKind): boolean {
   }
 }
 
-export async function getAvailableOllamaInstallers(): Promise<OllamaInstallerKind[]> {
+export async function getAvailableOllamaInstallers(
+  deps: { expectedScriptSha256?: string } = {},
+): Promise<OllamaInstallerKind[]> {
+  const expectedScriptSha = deps.expectedScriptSha256 ?? INSTALL_SCRIPT_SHA256;
   const kinds: OllamaInstallerKind[] = ['homebrew', 'winget', 'script'];
   const out: OllamaInstallerKind[] = [];
   for (const kind of kinds) {
     if (!isSupportedPlatform(kind)) continue;
+    // The script installer fails closed unless a known-good install.sh hash is
+    // pinned; don't advertise an option wired to throw a checksum error.
+    if (kind === 'script' && !expectedScriptSha) continue;
     const bin = INSTALLER_BINARY[kind];
     if (await probeBinary(bin)) out.push(kind);
   }

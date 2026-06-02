@@ -200,7 +200,7 @@ export function BudgetsPanel(): JSX.Element {
 
   return (
     <div className="budgets-panel" data-settings-anchor="budgets">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="settings-field-row" style={{ justifyContent: 'space-between' }}>
         <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
           {budgets.length === 0
             ? 'No budgets configured. The agent runs without spending caps.'
@@ -228,7 +228,7 @@ export function BudgetsPanel(): JSX.Element {
               data-settings-anchor={`budget-${b.id}`}
               style={{
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-md, 8px)',
+                borderRadius: 'var(--radius)',
                 padding: 12,
                 background: 'var(--bg-panel)',
               }}
@@ -318,7 +318,7 @@ function BudgetEditor({
         marginTop: 16,
         padding: 16,
         border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-md, 8px)',
+        borderRadius: 'var(--radius)',
         background: 'var(--bg-elevated)',
         display: 'flex',
         flexDirection: 'column',
@@ -327,8 +327,8 @@ function BudgetEditor({
     >
       <h3 style={{ margin: 0 }}>{isNew ? 'New budget' : 'Edit budget'}</h3>
 
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span>Scope</span>
+      <label className="field">
+        <span className="field-label">Scope</span>
         <select
           value={draft.scope}
           onChange={(e) => {
@@ -345,8 +345,8 @@ function BudgetEditor({
       </label>
 
       {draft.scope === 'provider' ? (
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span>Provider (leave empty for any provider)</span>
+        <label className="field">
+          <span className="field-label">Provider (leave empty for any provider)</span>
           <select
             value={draft.scopeId ?? ''}
             onChange={(e) => patch({ scopeId: e.target.value === '' ? null : e.target.value })}
@@ -362,8 +362,8 @@ function BudgetEditor({
       ) : null}
 
       {draft.scope === 'conversation' ? (
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span>Conversation id (leave empty for every conversation)</span>
+        <label className="field">
+          <span className="field-label">Conversation id (leave empty for every conversation)</span>
           <input
             type="text"
             value={draft.scopeId ?? ''}
@@ -373,8 +373,8 @@ function BudgetEditor({
         </label>
       ) : null}
 
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span>Period</span>
+      <label className="field">
+        <span className="field-label">Period</span>
         <select
           value={draft.period}
           onChange={(e) => patch({ period: e.target.value as BudgetPeriod })}
@@ -387,8 +387,8 @@ function BudgetEditor({
         </select>
       </label>
 
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span>Amount (USD)</span>
+      <label className="field">
+        <span className="field-label">Amount (USD)</span>
         <input
           type="number"
           min={0.01}
@@ -398,8 +398,8 @@ function BudgetEditor({
         />
       </label>
 
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span>Warn threshold: {draft.warnThresholdPct}%</span>
+      <label className="field">
+        <span className="field-label">Warn threshold: {draft.warnThresholdPct}%</span>
         <input
           type="range"
           min={0}
@@ -410,7 +410,7 @@ function BudgetEditor({
         />
       </label>
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <label className="toggle">
         <input
           type="checkbox"
           checked={draft.hardStop}

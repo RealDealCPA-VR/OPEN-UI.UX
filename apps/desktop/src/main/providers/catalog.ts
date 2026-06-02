@@ -4,6 +4,7 @@ import { mistralProvider } from '@opencodex/provider-mistral';
 import { ollamaProvider } from '@opencodex/provider-ollama';
 import { openAIProvider } from '@opencodex/provider-openai';
 import { openRouterProvider } from '@opencodex/provider-openrouter';
+import { voyageProvider } from '@opencodex/provider-voyage';
 import { xaiProvider } from '@opencodex/provider-xai';
 import type { ModelCapabilities, ProviderConfig, ProviderFactory } from '@opencodex/core';
 import type { ProviderExtraField, ProviderInfo } from '../../shared/provider-config';
@@ -59,6 +60,7 @@ const XAI_BASE = 'https://api.x.ai/v1';
 const MISTRAL_BASE = 'https://api.mistral.ai/v1';
 const OLLAMA_BASE = 'http://127.0.0.1:11434';
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
+const VOYAGE_BASE = 'https://api.voyageai.com/v1';
 
 function bearer(apiKey: string | undefined): Record<string, string> {
   return apiKey ? { authorization: `Bearer ${apiKey}` } : {};
@@ -250,6 +252,27 @@ export const catalog: CatalogEntry[] = [
       openRouterProvider.create(openRouterProvider.configSchema.parse(config)).listModels(),
     buildPingSpec: ({ apiKey, baseUrl }) => ({
       url: `${stripSlash(baseUrl ?? OPENROUTER_BASE)}/auth/key`,
+      method: 'GET',
+      headers: bearer(apiKey),
+      expectsAuth: true,
+    }),
+  },
+  {
+    // Voyage is embeddings-only (its chat() throws). It is registered here so a
+    // user can configure a Voyage key and the RAG embedding resolver can build
+    // it via the active routing policy's `when: 'embedding'` rule. Its models
+    // all carry embeddings:true / toolUse:false / streaming:false so the model
+    // picker can keep them out of chat selection.
+    id: voyageProvider.id,
+    displayName: voyageProvider.displayName,
+    requiresApiKey: true,
+    defaultBaseUrl: VOYAGE_BASE,
+    extraFields: [],
+    factory: voyageProvider,
+    loadModels: (config) =>
+      voyageProvider.create(voyageProvider.configSchema.parse(config)).listModels(),
+    buildPingSpec: ({ apiKey, baseUrl }) => ({
+      url: `${stripSlash(baseUrl ?? VOYAGE_BASE)}/models`,
       method: 'GET',
       headers: bearer(apiKey),
       expectsAuth: true,

@@ -317,6 +317,10 @@ async function handleRequest(
     res.end();
     return;
   }
+  // Record the attempt for every request that gets past the cheap checks —
+  // including unknown tasks and ones that will fail signature verification —
+  // so repeated floods are throttled before reaching the secret lookup / HMAC.
+  recordTriggerAt(taskId, now);
 
   const lookup = opts.lookupTaskSecret(taskId);
   if (!lookup) {
@@ -355,7 +359,6 @@ async function handleRequest(
     }
   }
 
-  recordTriggerAt(taskId, now);
   try {
     await opts.onTrigger({ taskId, kind: lookup.kind, body: parsedBody });
   } catch (err) {

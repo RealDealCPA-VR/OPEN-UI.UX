@@ -194,6 +194,42 @@ describe('scheduler runtime', () => {
     stopScheduler();
   });
 
+  it('onRunCompleted receives the scheduled-run runId, distinct from agentRunId', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-26T07:59:00Z'));
+    const t = createTask({
+      name: 'notify-runid',
+      trigger: { type: 'manual' },
+      prompt: 'p',
+      providerId: 'openai',
+      model: 'm',
+      workspacePath: '/tmp/ws',
+    });
+    const events: Array<{ taskId: string; runId: string; agentRunId: string; status: string }> = [];
+    startScheduler({
+      fire: vi.fn(async () => ({
+        runId: 'scheduled-run-123',
+        agentRunId: 'agent-run-456',
+        status: 'completed' as const,
+      })),
+      onRunCompleted: (e) => events.push(e),
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    await import('./scheduler').then((m) => m.fireTaskById(t.id));
+    await Promise.resolve();
+    await Promise.resolve();
+    stopScheduler();
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      taskId: t.id,
+      runId: 'scheduled-run-123',
+      agentRunId: 'agent-run-456',
+      status: 'completed',
+    });
+  });
+
   it('caps concurrent in-flight runs per task', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-26T07:59:50Z'));

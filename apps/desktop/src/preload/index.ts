@@ -496,6 +496,7 @@ const workspace = {
   setActive: (req: SetActiveWorkspaceRequest): Promise<WorkspaceState> =>
     ipcRenderer.invoke('workspace:set-active', req),
   browse: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:browse'),
+  pickFolder: (): Promise<string | null> => ipcRenderer.invoke('workspace:pick-folder'),
   remove: (req: RemoveWorkspaceRequest): Promise<WorkspaceState> =>
     ipcRenderer.invoke('workspace:remove', req),
   clearActive: (): Promise<WorkspaceState> => ipcRenderer.invoke('workspace:clear-active'),
@@ -1157,7 +1158,10 @@ const api = {
     ): Promise<{
       entries: Array<{ name: string; path: string; isDirectory: boolean; hasChildren: boolean }>;
       workspaceRoot: string | null;
+      truncated: boolean;
     }> => ipcRenderer.invoke('file-tree:list', { path }),
+    hasChildren: (path: string): Promise<{ hasChildren: boolean }> =>
+      ipcRenderer.invoke('file-tree:has-children', { path }),
   },
 } as const;
 

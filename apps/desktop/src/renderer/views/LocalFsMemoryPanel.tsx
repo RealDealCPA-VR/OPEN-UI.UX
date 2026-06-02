@@ -79,7 +79,7 @@ export function LocalFsMemoryPanel(): JSX.Element {
         prompt.
       </p>
       {path && <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{path}</p>}
-      <label style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0' }}>
+      <label className="toggle" style={{ padding: '6px 0' }}>
         <input
           type="checkbox"
           checked={config.enabled}
@@ -88,7 +88,7 @@ export function LocalFsMemoryPanel(): JSX.Element {
         />
         <span>Enable local memory tools</span>
       </label>
-      <label style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0' }}>
+      <label className="toggle" style={{ padding: '6px 0' }}>
         <input
           type="checkbox"
           checked={config.prependToSystemPrompt}
@@ -97,11 +97,10 @@ export function LocalFsMemoryPanel(): JSX.Element {
         />
         <span>Prepend memory.md to chat system prompt</span>
       </label>
-      <label
-        style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', fontSize: 12 }}
-      >
+      <label className="settings-field-row" style={{ padding: '6px 0', fontSize: 12 }}>
         <span style={{ minWidth: 110 }}>Max prepend bytes</span>
         <input
+          className="settings-input"
           type="number"
           min={256}
           max={65536}
@@ -113,7 +112,7 @@ export function LocalFsMemoryPanel(): JSX.Element {
             if (!Number.isFinite(n) || n < 256) return;
             void save({ ...config, maxPrependBytes: n });
           }}
-          style={{ width: 110 }}
+          style={{ flex: '0 0 auto', width: 110 }}
         />
       </label>
       {error !== null && (
@@ -122,9 +121,9 @@ export function LocalFsMemoryPanel(): JSX.Element {
           style={{
             marginTop: 6,
             padding: 8,
-            background: 'var(--danger-bg, rgba(220,38,38,0.08))',
-            color: 'var(--danger, #dc2626)',
-            border: '1px solid var(--danger-border, rgba(220,38,38,0.3))',
+            background: 'var(--danger-bg)',
+            color: 'var(--danger)',
+            border: '1px solid var(--danger-border)',
             borderRadius: 6,
             fontSize: 12,
           }}

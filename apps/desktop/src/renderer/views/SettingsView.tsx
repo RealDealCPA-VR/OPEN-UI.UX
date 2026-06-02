@@ -17,6 +17,7 @@ import { MemoryPanel } from './MemoryPanel';
 import { PluginsPanel } from './PluginsPanel';
 import { PrivacyPanel } from './PrivacyPanel';
 import { ProvidersPanel } from './ProvidersPanel';
+import { ReplayPanel } from './ReplayPanel';
 import { RoutingPanel } from './RoutingPanel';
 import { ScheduledTasksPanel } from './ScheduledTasksPanel';
 import { SkillsPanel } from './SkillsPanel';
@@ -138,12 +139,12 @@ const ANCHOR_HIGHLIGHT_CSS = `
     border-radius: 6px;
   }
   @keyframes settings-anchor-pulse {
-    0%   { box-shadow: 0 0 0 0 var(--accent-soft, rgba(99,102,241,0.45)); }
-    20%  { box-shadow: 0 0 0 4px var(--accent-soft, rgba(99,102,241,0.45)); }
+    0%   { box-shadow: 0 0 0 0 var(--accent-soft-border); }
+    20%  { box-shadow: 0 0 0 4px var(--accent-soft-border); }
     100% { box-shadow: 0 0 0 0 transparent; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .settings-anchor-highlight { animation: none; outline: 2px solid var(--accent, #6366f1); outline-offset: 2px; }
+    .settings-anchor-highlight { animation: none; outline: 2px solid var(--accent); outline-offset: 2px; }
   }
 `;
 
@@ -224,6 +225,12 @@ function SettingsSectionBody({ section }: { section: SettingsSection }): JSX.Ele
       return (
         <SettingsSectionCard title={section.title} description={section.description}>
           <AuditLogPanel />
+        </SettingsSectionCard>
+      );
+    case 'replay':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <ReplayPanel />
         </SettingsSectionCard>
       );
     case 'indexing':

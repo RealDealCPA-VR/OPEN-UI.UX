@@ -26,20 +26,20 @@ export function IndexingPanel(): JSX.Element {
     <div className="indexing-panel">
       <div className="indexing-row">
         <div>
-          <div className="indexing-label">Read-only chat mode</div>
+          <div className="settings-field-label">Read-only chat mode</div>
           <div className="settings-section-desc">
             Block every write / execute / network tool call automatically. Useful for &ldquo;chat
             with my codebase&rdquo; without giving the agent write access.
           </div>
         </div>
-        <label className="indexing-toggle">
+        <label className="toggle">
           <input type="checkbox" checked={readOnly} onChange={() => void toggle()} />
           <span>{readOnly ? 'On' : 'Off'}</span>
         </label>
       </div>
       <div className="indexing-row indexing-search">
         <div>
-          <div className="indexing-label">Codebase search</div>
+          <div className="settings-field-label">Codebase search</div>
           <div className="settings-section-desc">
             The agent has the <code>search_codebase</code> tool — a ranked grep over the workspace
             that respects <code>.gitignore</code> and <code>.opencodexignore</code>. Vector + AST
@@ -53,9 +53,9 @@ export function IndexingPanel(): JSX.Element {
           style={{
             marginTop: 10,
             padding: 10,
-            background: 'var(--danger-bg, rgba(220,38,38,0.08))',
-            color: 'var(--danger, #dc2626)',
-            border: '1px solid var(--danger-border, rgba(220,38,38,0.3))',
+            background: 'var(--danger-bg)',
+            color: 'var(--danger)',
+            border: '1px solid var(--danger-border)',
             borderRadius: 6,
             fontSize: 13,
           }}

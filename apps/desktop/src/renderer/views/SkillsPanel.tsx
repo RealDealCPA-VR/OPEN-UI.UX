@@ -361,7 +361,7 @@ export function SkillsPanel(): JSX.Element {
                   aria-live="polite"
                   style={{
                     fontSize: 12,
-                    color: 'var(--success, #22c55e)',
+                    color: 'var(--success)',
                     alignSelf: 'center',
                   }}
                 >

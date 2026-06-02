@@ -12,12 +12,14 @@ export const mcpSseConfigSchema = z.object({
   kind: z.literal('sse'),
   url: z.string().url(),
   headers: z.record(z.string()).optional(),
+  hostAllowlist: z.array(z.string()).optional(),
 });
 
 export const mcpHttpConfigSchema = z.object({
   kind: z.literal('http'),
   url: z.string().url(),
   headers: z.record(z.string()).optional(),
+  hostAllowlist: z.array(z.string()).optional(),
 });
 
 export const mcpTransportConfigSchema = z.discriminatedUnion('kind', [

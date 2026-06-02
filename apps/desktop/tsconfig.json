@@ -24,6 +24,8 @@
       "@opencodex/provider-ollama/*": ["../../packages/provider-ollama/src/*"],
       "@opencodex/provider-openrouter": ["../../packages/provider-openrouter/src/index.ts"],
       "@opencodex/provider-openrouter/*": ["../../packages/provider-openrouter/src/*"],
+      "@opencodex/provider-voyage": ["../../packages/provider-voyage/src/index.ts"],
+      "@opencodex/provider-voyage/*": ["../../packages/provider-voyage/src/*"],
       "@opencodex/tools": ["../../packages/tools/src/index.ts"],
       "@opencodex/tools/*": ["../../packages/tools/src/*"],
       "@opencodex/plugin-sdk": ["../../packages/plugin-sdk/src/index.ts"],
