@@ -1,11 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   ApprovalDecision,
+  ApprovalOverride,
   ApprovalRequest,
   ApprovalScope,
   FilePreviewResult,
 } from '../../shared/approvals';
 import { diffLines, type DiffResult } from './line-diff';
+import { applyHunkDecisions, type MonacoDiffHunk } from './monaco-diff-helpers';
 import { getBridge } from '../bridge';
 
 const sessionCommandAllowlist = new Map<string, true>();
@@ -46,7 +48,12 @@ export function ApprovalQueue(): JSX.Element | null {
   }, []);
 
   const respond = useCallback(
-    async (request: ApprovalRequest, decision: ApprovalDecision, scope: ApprovalScope) => {
+    async (
+      request: ApprovalRequest,
+      decision: ApprovalDecision,
+      scope: ApprovalScope,
+      override?: ApprovalOverride,
+    ) => {
       const bridge = getBridge();
       if (!bridge) return;
       try {
@@ -54,6 +61,7 @@ export function ApprovalQueue(): JSX.Element | null {
           requestId: request.requestId,
           decision,
           scope,
+          ...(override ? { override } : {}),
         });
       } finally {
         setQueue((prev) => prev.filter((r) => r.requestId !== request.requestId));
@@ -125,7 +133,10 @@ export function ApprovalQueue(): JSX.Element | null {
           </div>
         </header>
         <p className="approval-modal-description">{current.toolDescription}</p>
-        <ApprovalPreview request={current} />
+        <ApprovalPreview
+          request={current}
+          onApplyOverride={(override) => void respond(current, 'allow', 'once', override)}
+        />
         {queue.length > 1 && (
           <p className="approval-modal-queue">
             {queue.length - 1} more approval{queue.length - 1 === 1 ? '' : 's'} pending
@@ -172,16 +183,29 @@ export function ApprovalQueue(): JSX.Element | null {
   );
 }
 
-function ApprovalPreview({ request }: { request: ApprovalRequest }): JSX.Element {
+function ApprovalPreview({
+  request,
+  onApplyOverride,
+}: {
+  request: ApprovalRequest;
+  onApplyOverride: (override: ApprovalOverride) => void;
+}): JSX.Element {
   switch (request.toolName) {
     case 'write_file': {
       const args = asWriteFileArgs(request.arguments);
-      if (args) return <WriteFilePreview path={args.path} content={args.content} />;
+      if (args)
+        return (
+          <WriteFilePreview
+            path={args.path}
+            content={args.content}
+            onApplyOverride={onApplyOverride}
+          />
+        );
       break;
     }
     case 'edit_file': {
       const args = asEditFileArgs(request.arguments);
-      if (args) return <EditFilePreview args={args} />;
+      if (args) return <EditFilePreview args={args} onApplyOverride={onApplyOverride} />;
       break;
     }
     case 'run_shell': {
@@ -198,7 +222,15 @@ function ApprovalPreview({ request }: { request: ApprovalRequest }): JSX.Element
   return <JsonArgsPreview args={request.arguments} />;
 }
 
-function WriteFilePreview({ path, content }: { path: string; content: string }): JSX.Element {
+function WriteFilePreview({
+  path,
+  content,
+  onApplyOverride,
+}: {
+  path: string;
+  content: string;
+  onApplyOverride: (override: ApprovalOverride) => void;
+}): JSX.Element {
   const [existing, setExisting] = useState<FilePreviewResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [monacoOpen, setMonacoOpen] = useState(false);
@@ -294,6 +326,7 @@ function WriteFilePreview({ path, content }: { path: string; content: string }):
           originalText={existing.exists ? existing.content : ''}
           modifiedText={content}
           language={guessLanguageFromPath(path)}
+          onApplyOverride={onApplyOverride}
           onClose={() => setMonacoOpen(false)}
         />
       ) : null}
@@ -306,11 +339,13 @@ function EditFileMonacoLauncher({
   oldString,
   newString,
   replaceAll,
+  onApplyOverride,
 }: {
   path: string;
   oldString: string;
   newString: string;
   replaceAll?: boolean;
+  onApplyOverride: (override: ApprovalOverride) => void;
 }): JSX.Element {
   const [existing, setExisting] = useState<FilePreviewResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -362,6 +397,7 @@ function EditFileMonacoLauncher({
           originalText={existing.exists ? existing.content : ''}
           modifiedText={modifiedText}
           language={guessLanguageFromPath(path)}
+          onApplyOverride={onApplyOverride}
           onClose={() => setMonacoOpen(false)}
         />
       ) : null}
@@ -374,14 +410,58 @@ function MonacoDiffModal({
   originalText,
   modifiedText,
   language,
+  onApplyOverride,
   onClose,
 }: {
   path: string;
   originalText: string;
   modifiedText: string;
   language?: string;
+  onApplyOverride: (override: ApprovalOverride) => void;
   onClose: () => void;
 }): JSX.Element {
+  const [hunks, setHunks] = useState<MonacoDiffHunk[]>([]);
+  // Per-hunk decisions: indexes that remain ACCEPTED. Default = all accepted.
+  const [accepted, setAccepted] = useState<Set<number>>(new Set());
+
+  const handleHunksChange = useCallback((next: MonacoDiffHunk[]) => {
+    setHunks(next);
+    setAccepted(new Set(next.map((h) => h.index)));
+  }, []);
+
+  const acceptHunk = useCallback((hunkIndex: number) => {
+    setAccepted((prev) => {
+      const out = new Set(prev);
+      out.add(hunkIndex);
+      return out;
+    });
+  }, []);
+
+  const rejectHunk = useCallback((hunkIndex: number) => {
+    setAccepted((prev) => {
+      const out = new Set(prev);
+      out.delete(hunkIndex);
+      return out;
+    });
+  }, []);
+
+  const total = hunks.length;
+  const acceptedCount = hunks.reduce((n, h) => (accepted.has(h.index) ? n + 1 : n), 0);
+  // The override is offered only for a STRICT non-empty subset of a multi-hunk
+  // diff: full-accept routes to plain Allow, full-reject to plain Deny.
+  const isStrictSubset = total > 1 && acceptedCount > 0 && acceptedCount < total;
+
+  const applySelected = useCallback(() => {
+    const reconstruction = applyHunkDecisions({
+      originalText,
+      modifiedText,
+      hunks,
+      acceptedHunkIndexes: hunks.filter((h) => accepted.has(h.index)).map((h) => h.index),
+    });
+    onApplyOverride({ toolName: 'write_file', arguments: { path, content: reconstruction.text } });
+    onClose();
+  }, [originalText, modifiedText, hunks, accepted, onApplyOverride, onClose, path]);
+
   return (
     <div
       className="approval-monaco-backdrop"
@@ -417,8 +497,31 @@ function MonacoDiffModal({
             modifiedText={modifiedText}
             language={language}
             height="60vh"
+            onHunksChange={handleHunksChange}
+            onAcceptHunk={(hunkIndex) => acceptHunk(hunkIndex)}
+            onRejectHunk={(hunkIndex) => rejectHunk(hunkIndex)}
           />
         </Suspense>
+        {total > 1 ? (
+          <footer className="approval-monaco-modal-footer">
+            <span className="approval-monaco-modal-hunk-count">
+              {acceptedCount} of {total} hunks accepted
+            </span>
+            <button
+              type="button"
+              className="approval-modal-apply-selected"
+              disabled={!isStrictSubset}
+              title={
+                isStrictSubset
+                  ? 'Write only the accepted hunks'
+                  : 'Accept a strict subset of hunks to enable'
+              }
+              onClick={applySelected}
+            >
+              Apply selected hunks
+            </button>
+          </footer>
+        ) : null}
       </div>
     </div>
   );
@@ -467,8 +570,10 @@ function guessLanguageFromPath(path: string): string | undefined {
 
 function EditFilePreview({
   args,
+  onApplyOverride,
 }: {
   args: { path: string; oldString: string; newString: string; replaceAll?: boolean };
+  onApplyOverride: (override: ApprovalOverride) => void;
 }): JSX.Element {
   return (
     <section className="approval-preview approval-preview-edit">
@@ -495,6 +600,7 @@ function EditFilePreview({
         path={args.path}
         oldString={args.oldString}
         newString={args.newString}
+        onApplyOverride={onApplyOverride}
         {...(args.replaceAll !== undefined ? { replaceAll: args.replaceAll } : {})}
       />
     </section>

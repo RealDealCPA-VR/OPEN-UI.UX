@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AddToMemoryButton } from '../components/AddToMemoryButton';
+import { CheckpointRestoreButton } from '../components/CheckpointRestoreButton';
 import { ChatBudgetOverride } from '../components/ChatBudgetOverride';
 import { CloudProviderTip } from '../components/CloudProviderTip';
 import { ModelPicker } from '../components/ModelPicker';
@@ -14,6 +15,7 @@ import {
 } from '../components/extract-file-paths';
 import { HoverHint } from '../components/HoverHint';
 import { Markdown } from '../components/Markdown';
+import { MentionPicker } from '../components/MentionPicker';
 import { SlashCommands } from '../components/SlashCommands';
 import { useToast } from '../components/Toasts';
 import {
@@ -25,9 +27,18 @@ import {
   getSlashTrigger,
   type SlashCommandTrigger,
 } from '../components/slash-commands';
+import {
+  buildMentionGroups,
+  getMentionTrigger,
+  removeMentionToken,
+  selectableMentionEntries,
+  type MentionTrigger,
+} from '../components/mention-picker';
+import type { CodebaseSearchHit } from '../../shared/codebase-search';
 import { ToolCallCard } from '../components/ToolCallCard';
 import { groupContentBlocks } from '../components/tool-block-grouping';
-import { useChat, type AssistantDraft } from '../state/chat-context';
+import { useChat, type AssistantDraft, type QueuedMessage } from '../state/chat-context';
+import { useComposerDraft } from '../state/use-composer-draft';
 import { useSelectedModel } from '../state/selected-model-context';
 import { consumeTransfer, pushTransfer, useTransferPending } from '../state/transfer';
 import type { ChatAttachment } from '../../shared/attachments';
@@ -184,7 +195,13 @@ function ChatPane({
   onConsumeScrollTarget,
 }: ChatPaneProps): JSX.Element {
   const navigate = useNavigate();
-  const [input, setInput] = useState('');
+  const {
+    input,
+    setInput,
+    attachments,
+    setAttachments,
+    clear: clearComposerDraft,
+  } = useComposerDraft(chat.activeId);
   const [toolsEnabled, setToolsEnabled] = useState(true);
   const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
   const [mcpPrompts, setMcpPrompts] = useState<McpPromptEntry[]>([]);
@@ -193,9 +210,14 @@ function ChatPane({
   const [branching, setBranching] = useState(false);
   const toast = useToast();
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  // @-mention context picker — a parallel, independent set mirroring the slash
+  // machinery so the two triggers never fight.
+  const [mentionTrigger, setMentionTrigger] = useState<MentionTrigger | null>(null);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+  const [mentionHits, setMentionHits] = useState<CodebaseSearchHit[]>([]);
+  const [mentionLoading, setMentionLoading] = useState(false);
   const [debouncedInput, setDebouncedInput] = useState('');
   const [dismissedHintSkillIds, setDismissedHintSkillIds] = useState<Set<string>>(new Set());
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [preparingAttachments, setPreparingAttachments] = useState(false);
@@ -335,19 +357,69 @@ function ChatPane({
   const flatSlashEntries = useMemo(() => slashGroups.flatMap((g) => g.entries), [slashGroups]);
   const slashOpen = slashTrigger !== null;
 
+  const mentionGroups = useMemo(
+    () => (mentionTrigger ? buildMentionGroups(mentionHits, mentionTrigger.query) : []),
+    [mentionTrigger, mentionHits],
+  );
+  const flatMentionEntries = useMemo(
+    () => selectableMentionEntries(mentionGroups),
+    [mentionGroups],
+  );
+  const mentionOpen = mentionTrigger !== null;
+
+  // Debounced file+folder search scoped to the active workspace. Mirrors the
+  // CodebaseSearchBox debounce; results feed the @-mention dropdown only.
+  const mentionReqRef = useRef(0);
+  const mentionQuery = mentionTrigger?.query ?? null;
+  useEffect(() => {
+    const trimmed = mentionQuery === null ? '' : mentionQuery.trim();
+    if (mentionQuery === null || !activeWorkspace || trimmed.length === 0) {
+      mentionReqRef.current++;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMentionHits([]);
+      setMentionLoading(false);
+      return;
+    }
+    const reqId = ++mentionReqRef.current;
+    setMentionLoading(true);
+    const handle = window.setTimeout(() => {
+      void window.opencodex.codebase
+        .search({ workspaceRoot: activeWorkspace, query: trimmed, mode: 'filename' })
+        .then((res) => {
+          if (mentionReqRef.current !== reqId) return;
+          setMentionHits(res.hits);
+        })
+        .catch(() => {
+          if (mentionReqRef.current !== reqId) return;
+          setMentionHits([]);
+        })
+        .finally(() => {
+          if (mentionReqRef.current === reqId) setMentionLoading(false);
+        });
+    }, 200);
+    return () => window.clearTimeout(handle);
+  }, [mentionQuery, activeWorkspace]);
+
   const [lastSent, setLastSent] = useState<{ text: string; attachments: ChatAttachment[] } | null>(
     null,
   );
 
   const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
-    if (slashOpen) return;
+    if (slashOpen || mentionOpen) return;
     const trimmed = input.trim();
-    if ((!trimmed && attachments.length === 0) || chat.streaming) return;
+    if (!trimmed && attachments.length === 0) return;
     if (preparingAttachments) return;
-    setInput('');
     const sent = attachments;
-    setAttachments([]);
+    // Mid-stream submissions queue as the next FIFO turn rather than starting a
+    // second concurrent stream; the composer still clears so the user can type more.
+    if (chat.streaming) {
+      chat.enqueue({ providerId, model: modelId, text: trimmed, attachments: sent });
+      clearComposerDraft();
+      setAttachmentError(null);
+      return;
+    }
+    clearComposerDraft();
     setAttachmentError(null);
     setLastSent({ text: trimmed, attachments: sent });
     onClearTransferOrigin?.();
@@ -440,6 +512,91 @@ function ChatPane({
     setSlashActiveIndex(0);
   };
 
+  const closeMention = (): void => {
+    setMentionTrigger(null);
+    setMentionActiveIndex(0);
+    mentionReqRef.current++;
+    setMentionHits([]);
+    setMentionLoading(false);
+  };
+
+  const consumeMentionToken = (): void => {
+    if (!mentionTrigger) return;
+    const el = inputRef.current;
+    const caret = el ? (el.selectionEnd ?? input.length) : input.length;
+    const next = removeMentionToken(input, mentionTrigger, caret);
+    setInput(next.value);
+    closeMention();
+    if (el) {
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(next.caret, next.caret);
+      });
+    }
+  };
+
+  const selectMentionFile = (hit: CodebaseSearchHit): void => {
+    if (!activeWorkspace) {
+      consumeMentionToken();
+      return;
+    }
+    const abs = joinWorkspacePath(activeWorkspace, hit.path);
+    consumeMentionToken();
+    setPreparingAttachments(true);
+    setAttachmentError(null);
+    void window.opencodex.attachments
+      .prepare({ paths: [abs] })
+      .then((result) => {
+        if (result.prepared.length > 0) {
+          setAttachments((prev) => [...prev, ...result.prepared]);
+        }
+        if (result.errors.length > 0) {
+          setAttachmentError(
+            result.errors.map((e) => `${e.path.split(/[\\/]/).pop()}: ${e.message}`).join('; '),
+          );
+        }
+      })
+      .catch((err: unknown) => {
+        setAttachmentError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setPreparingAttachments(false));
+  };
+
+  const selectMentionFolder = (hit: CodebaseSearchHit): void => {
+    if (!activeWorkspace) {
+      consumeMentionToken();
+      return;
+    }
+    const workspaceRoot = activeWorkspace;
+    consumeMentionToken();
+    setPreparingAttachments(true);
+    setAttachmentError(null);
+    void window.opencodex.codebase
+      .listDirFiles({ workspaceRoot, path: hit.path })
+      .then(async (listing) => {
+        if (listing.files.length === 0) return;
+        const paths = listing.files.map((rel) => joinWorkspacePath(workspaceRoot, rel));
+        const result = await window.opencodex.attachments.prepare({ paths });
+        if (result.prepared.length > 0) {
+          setAttachments((prev) => [...prev, ...result.prepared]);
+        }
+        const notes: string[] = [];
+        if (result.errors.length > 0) {
+          notes.push(
+            result.errors.map((e) => `${e.path.split(/[\\/]/).pop()}: ${e.message}`).join('; '),
+          );
+        }
+        if (listing.truncated) {
+          notes.push(`${hit.path}/ truncated to first ${listing.files.length} files`);
+        }
+        if (notes.length > 0) setAttachmentError(notes.join('; '));
+      })
+      .catch((err: unknown) => {
+        setAttachmentError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setPreparingAttachments(false));
+  };
+
   const insertPrompt = (entry: McpPromptEntry): void => {
     if (!slashTrigger) return;
     const el = inputRef.current;
@@ -518,15 +675,27 @@ function ChatPane({
     if (!trigger) setSlashActiveIndex(0);
   };
 
+  const updateMentionFromCaret = (value: string, caret: number): void => {
+    const trigger = getMentionTrigger(value, caret);
+    setMentionTrigger(trigger);
+    if (!trigger) {
+      setMentionActiveIndex(0);
+    }
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     const next = e.target.value;
     setInput(next);
-    updateSlashFromCaret(next, e.target.selectionEnd ?? next.length);
+    const caret = e.target.selectionEnd ?? next.length;
+    updateSlashFromCaret(next, caret);
+    updateMentionFromCaret(next, caret);
   };
 
   const handleSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>): void => {
     const el = e.currentTarget;
-    updateSlashFromCaret(el.value, el.selectionEnd ?? el.value.length);
+    const caret = el.selectionEnd ?? el.value.length;
+    updateSlashFromCaret(el.value, caret);
+    updateMentionFromCaret(el.value, caret);
   };
 
   const openSlashMenuManually = (): void => {
@@ -584,6 +753,37 @@ function ChatPane({
         }
       }
     }
+    if (mentionOpen) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeMention();
+        return;
+      }
+      if (flatMentionEntries.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setMentionActiveIndex((i) => (i + 1) % flatMentionEntries.length);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setMentionActiveIndex(
+            (i) => (i - 1 + flatMentionEntries.length) % flatMentionEntries.length,
+          );
+          return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          const idx = Math.min(mentionActiveIndex, flatMentionEntries.length - 1);
+          const entry = flatMentionEntries[idx];
+          if (entry) {
+            if (entry.kind === 'file') selectMentionFile(entry.hit);
+            else if (entry.kind === 'folder') selectMentionFolder(entry.hit);
+          }
+          return;
+        }
+      }
+    }
     if (e.key === 'Escape' && chat.streaming) {
       e.preventDefault();
       void chat.cancel();
@@ -611,15 +811,18 @@ function ChatPane({
   // Stable ref so memoized <MessageBubble /> children don't re-render on every
   // streaming text_delta. Without this, ChatPane's re-render on each delta
   // would invalidate the memo via prop identity change.
-  const handleRerun = useCallback((prompt: string): void => {
-    setInput(prompt);
-    const el = inputRef.current;
-    if (el) {
-      el.focus();
-      const len = prompt.length;
-      el.setSelectionRange(len, len);
-    }
-  }, []);
+  const handleRerun = useCallback(
+    (prompt: string): void => {
+      setInput(prompt);
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        const len = prompt.length;
+        el.setSelectionRange(len, len);
+      }
+    },
+    [setInput],
+  );
 
   const visibleMessages = chat.draft
     ? chat.messages.filter((m) => m.id !== chat.draft?.messageId)
@@ -639,7 +842,7 @@ function ChatPane({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLastAppliedSeed(seededInput);
     setInput(seededInput);
-  }, [seededInput, lastAppliedSeed]);
+  }, [seededInput, lastAppliedSeed, setInput]);
 
   useEffect(() => {
     if (!seededInput || seededInput !== lastAppliedSeed) return;
@@ -771,6 +974,16 @@ function ChatPane({
           </div>
         </div>
         {chat.error ? <div className="chat-error">{chat.error}</div> : null}
+        {!chat.streaming &&
+        chat.activeId !== null &&
+        chat.interruptedConversationId === chat.activeId ? (
+          <div className="chat-interrupted" role="status">
+            <span className="chat-interrupted-label">Interrupted — response was cut off.</span>{' '}
+            <button type="button" className="chat-interrupted-retry" onClick={handleRetry}>
+              Retry
+            </button>
+          </div>
+        ) : null}
       </header>
       <div className="chat-scroll" ref={scrollRef}>
         {visibleMessages.length === 0 && !chat.draft ? (
@@ -829,6 +1042,9 @@ function ChatPane({
       >
         {/* Lane 8 — Cloud provider trust tip; self-suppresses for ollama / once dismissed */}
         <CloudProviderTip providerId={providerId} providerDisplayName={modelName} />
+        {chat.queued.length > 0 ? (
+          <QueueStrip queued={chat.queued} onRemove={chat.removeQueued} />
+        ) : null}
         {attachments.length > 0 || preparingAttachments || attachmentError ? (
           <div className="chat-attachments">
             {attachments.map((att, i) => (
@@ -859,6 +1075,27 @@ function ChatPane({
               onClose={closeSlash}
             />
           ) : null}
+          {mentionTrigger !== null ? (
+            !activeWorkspace ? (
+              <div className="slash-commands slash-commands-empty" role="listbox">
+                <div className="slash-commands-empty-text">Pick a workspace to mention files</div>
+              </div>
+            ) : (
+              <MentionPicker
+                query={mentionTrigger.query}
+                hits={mentionHits}
+                loading={mentionLoading}
+                activeIndex={Math.min(
+                  mentionActiveIndex,
+                  Math.max(0, flatMentionEntries.length - 1),
+                )}
+                onSelectFile={selectMentionFile}
+                onSelectFolder={selectMentionFolder}
+                onActiveIndexChange={setMentionActiveIndex}
+                onClose={closeMention}
+              />
+            )
+          ) : null}
           <textarea
             ref={inputRef}
             className="chat-input"
@@ -867,7 +1104,10 @@ function ChatPane({
             onKeyDown={handleKeyDown}
             onSelect={handleSelect}
             onBlur={() => {
-              setTimeout(() => closeSlash(), 0);
+              setTimeout(() => {
+                closeSlash();
+                closeMention();
+              }, 0);
             }}
             placeholder={composerPlaceholder(modelName, transferOrigin, chat.streaming)}
             rows={5}
@@ -915,17 +1155,28 @@ function ChatPane({
           <div className="chat-composer-actions-right">
             <ModelPicker conversationId={chat.activeId} />
             {chat.streaming ? (
-              <HoverHint hint="Stop streaming (Esc)">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    void chat.cancel();
-                  }}
-                >
-                  Stop
-                </button>
-              </HoverHint>
+              <>
+                <HoverHint hint="Stop streaming (Esc)">
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      void chat.cancel();
+                    }}
+                  >
+                    Stop
+                  </button>
+                </HoverHint>
+                <HoverHint hint="Queue for next turn">
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={input.trim().length === 0 && attachments.length === 0}
+                  >
+                    Send
+                  </button>
+                </HoverHint>
+              </>
             ) : chat.error && lastUserMessageText(chat.messages).length > 0 ? (
               <HoverHint hint="Retry last message">
                 <button type="button" className="btn btn-primary" onClick={handleRetry}>
@@ -1340,6 +1591,7 @@ function MessageBubbleInner({ message, onRerun }: MessageBubbleProps): JSX.Eleme
       {message.role === 'assistant' ? (
         <div className="chat-bubble-actions">
           <AddToMemoryButton content={message.content} defaultHeading={memoryHeading} />
+          <CheckpointRestoreButton messageId={message.id} />
         </div>
       ) : null}
     </article>
@@ -1443,6 +1695,14 @@ function composerPlaceholder(
   return `Ask ${modelName} anything…`;
 }
 
+function joinWorkspacePath(workspaceRoot: string, relativePath: string): string {
+  const sep = workspaceRoot.includes('\\') && !workspaceRoot.includes('/') ? '\\' : '/';
+  const root = workspaceRoot.replace(/[\\/]+$/, '');
+  const rel = relativePath.replace(/^[\\/]+/, '');
+  const normalizedRel = sep === '\\' ? rel.replace(/\//g, '\\') : rel;
+  return `${root}${sep}${normalizedRel}`;
+}
+
 function roleLabel(role: StoredMessage['role']): string {
   switch (role) {
     case 'user':
@@ -1454,6 +1714,54 @@ function roleLabel(role: StoredMessage['role']): string {
     case 'tool':
       return '';
   }
+}
+
+function QueueStrip({
+  queued,
+  onRemove,
+}: {
+  queued: QueuedMessage[];
+  onRemove: (id: string) => void;
+}): JSX.Element {
+  return (
+    <div className="chat-queue" role="list" aria-label="Queued messages">
+      {queued.map((q, i) => {
+        const preview = queuedPreview(q);
+        return (
+          <span
+            key={q.id}
+            className="chat-queue-chip"
+            role="listitem"
+            data-testid={`chat-queue-chip-${i}`}
+          >
+            <span className="chat-queue-chip-index">#{i + 1}</span>
+            <span className="chat-queue-chip-preview" title={preview}>
+              {preview}
+            </span>
+            <button
+              type="button"
+              className="chat-queue-chip-remove"
+              onClick={() => onRemove(q.id)}
+              aria-label={`Remove queued message ${i + 1}`}
+            >
+              ×
+            </button>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function queuedPreview(q: QueuedMessage): string {
+  const trimmed = q.text.trim();
+  if (trimmed.length > 0) return trimmed;
+  if (q.attachments.length > 0) {
+    return q.attachments.length === 1
+      ? (q.attachments[0]?.name ?? '1 attachment')
+      : `${q.attachments.length} attachments`;
+  }
+  return '';
 }
 
 function AttachmentChip({

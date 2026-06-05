@@ -14,6 +14,7 @@ import { McpToolRunner } from './McpToolRunner';
 import { StatusBar } from './StatusBar';
 import { useCollapseState } from '../state/use-collapse-state';
 import { getBridge } from '../bridge';
+import { deriveInbox } from '../views/agent-runs-derive';
 import brandLogoUrl from '../assets/brand.png';
 
 interface NavItem {
@@ -69,6 +70,7 @@ export function AppShell(): JSX.Element {
   const [collapsed, toggleCollapsed] = useCollapseState('left-column', false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
   const activeRoute = useMemo(() => routeFromPathname(location.pathname), [location.pathname]);
@@ -77,6 +79,27 @@ export function AppShell(): JSX.Element {
     const bridge = getBridge();
     if (!bridge) return;
     bridge.getVersion().then(setVersion).catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    const bridge = getBridge();
+    if (!bridge) return;
+    let cancelled = false;
+    bridge.agent
+      .listRuns()
+      .then((runs) => {
+        if (!cancelled) setUnreadCount(deriveInbox(runs).unreadCount);
+      })
+      .catch(() => {
+        // Non-fatal — badge just stays hidden if runs can't load.
+      });
+    const off = bridge.agent.onRunsChanged((payload) => {
+      setUnreadCount(deriveInbox(payload.runs).unreadCount);
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
   }, []);
 
   useEffect(() => {
@@ -195,10 +218,19 @@ export function AppShell(): JSX.Element {
                     className={({ isActive }) =>
                       isActive ? 'sidebar-link active' : 'sidebar-link'
                     }
-                    aria-label={item.label}
+                    aria-label={
+                      item.routeKey === 'agent' && unreadCount > 0
+                        ? `${item.label} (${unreadCount} unread)`
+                        : item.label
+                    }
                     title={item.label}
                   >
                     <span className="sidebar-link-label">{item.label}</span>
+                    {item.routeKey === 'agent' && unreadCount > 0 && (
+                      <span className="badge nav-badge" aria-hidden="true">
+                        {unreadCount}
+                      </span>
+                    )}
                   </NavLink>
                 </HoverHint>
               </li>

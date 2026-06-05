@@ -9,13 +9,24 @@ export interface CodebaseSearchRequest {
 
 export interface CodebaseSearchHit {
   path: string;
-  kind: 'filename' | 'content';
+  kind: 'filename' | 'content' | 'folder';
   line?: number;
   snippet?: string;
 }
 
 export interface CodebaseSearchResponse {
   hits: CodebaseSearchHit[];
+  truncated: boolean;
+}
+
+export interface CodebaseListDirFilesRequest {
+  workspaceRoot: string;
+  path: string;
+  limit?: number;
+}
+
+export interface CodebaseListDirFilesResponse {
+  files: string[];
   truncated: boolean;
 }
 

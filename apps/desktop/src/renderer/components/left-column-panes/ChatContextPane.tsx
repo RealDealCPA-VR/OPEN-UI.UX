@@ -1,22 +1,71 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Conversation } from '../../../shared/conversation';
+import type { ConversationSearchHit } from '../../../shared/conversation-search';
 import { useChat } from '../../state/chat-context';
 import { useSelectedModel } from '../../state/selected-model-context';
 import { MultiWorkspaceSelector } from '../MultiWorkspaceSelector';
 import { SuggestionsPane } from '../SuggestionsPane';
 
+const MESSAGE_SEARCH_DEBOUNCE_MS = 200;
+const MESSAGE_SEARCH_MIN_CHARS = 2;
+const MESSAGE_SEARCH_LIMIT = 20;
+
 export default function ChatContextPane(): JSX.Element {
   const { conversations, activeId, selectConversation, createConversation, deleteConversation } =
     useChat();
   const { selected } = useSelectedModel();
+  const navigate = useNavigate();
   const [query, setQuery] = useState('');
   // Lane 15 — switch between Conversations list and Pair Suggestions
   const [tab, setTab] = useState<'conversations' | 'suggestions'>('conversations');
 
+  const trimmedQuery = query.trim();
+  const messageSearchActive = trimmedQuery.length >= MESSAGE_SEARCH_MIN_CHARS;
+  const [messageHits, setMessageHits] = useState<{
+    query: string;
+    hits: ConversationSearchHit[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!messageSearchActive) return;
+    let cancelled = false;
+    const handle = window.setTimeout(() => {
+      void window.opencodex.conversations
+        .search({ query: trimmedQuery, limit: MESSAGE_SEARCH_LIMIT })
+        .then((res) => {
+          if (!cancelled) setMessageHits({ query: trimmedQuery, hits: res.hits });
+        })
+        .catch(() => {
+          if (!cancelled) setMessageHits({ query: trimmedQuery, hits: [] });
+        });
+    }, MESSAGE_SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [trimmedQuery, messageSearchActive]);
+
+  const currentHits =
+    messageSearchActive && messageHits?.query === trimmedQuery ? messageHits.hits : null;
+
+  const openMessageHit = (hit: ConversationSearchHit): void => {
+    navigate(
+      `/chat?conversationId=${encodeURIComponent(hit.conversationId)}&messageId=${encodeURIComponent(
+        hit.messageId,
+      )}`,
+    );
+    window.dispatchEvent(
+      new CustomEvent('conversation:scroll-to-message', {
+        detail: { conversationId: hit.conversationId, messageId: hit.messageId },
+      }),
+    );
+  };
+
   const filtered =
-    query.trim().length === 0
+    trimmedQuery.length === 0
       ? conversations
-      : conversations.filter((c) => c.title.toLowerCase().includes(query.trim().toLowerCase()));
+      : conversations.filter((c) => c.title.toLowerCase().includes(trimmedQuery.toLowerCase()));
 
   if (tab === 'suggestions') {
     return (
@@ -106,7 +155,7 @@ export default function ChatContextPane(): JSX.Element {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search"
-          aria-label="Search conversations"
+          aria-label="Search conversations and messages"
         />
       </div>
       <ul className="chat-conversation-list">
@@ -130,6 +179,29 @@ export default function ChatContextPane(): JSX.Element {
           ))
         )}
       </ul>
+      {currentHits !== null ? (
+        <div className="chat-message-search" aria-label="Message search results">
+          <div className="chat-message-search-head">Messages</div>
+          {currentHits.length === 0 ? (
+            <p className="chat-message-search-empty">No message matches</p>
+          ) : (
+            <ul className="chat-message-search-list">
+              {currentHits.map((hit) => (
+                <li key={hit.messageId} className="chat-message-search-row">
+                  <button
+                    type="button"
+                    className="chat-message-search-btn"
+                    onClick={() => openMessageHit(hit)}
+                  >
+                    <span className="chat-message-search-title">{hit.conversationTitle}</span>
+                    <span className="chat-message-search-snippet">{hit.snippet}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

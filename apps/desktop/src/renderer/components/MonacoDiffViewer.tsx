@@ -44,6 +44,7 @@ export interface MonacoDiffViewerProps {
   onReject?: () => void;
   onAcceptHunk?: (hunkIndex: number, hunk: MonacoDiffHunk) => void;
   onRejectHunk?: (hunkIndex: number, hunk: MonacoDiffHunk) => void;
+  onHunksChange?: (hunks: MonacoDiffHunk[]) => void;
   initialLayout?: DiffLayout;
   showLayoutToggle?: boolean;
 }
@@ -59,6 +60,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
     onReject,
     onAcceptHunk,
     onRejectHunk,
+    onHunksChange,
     initialLayout = 'side-by-side',
     showLayoutToggle = true,
   } = props;
@@ -68,6 +70,10 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
   const [hunks, setHunks] = useState<MonacoDiffHunk[]>([]);
   const [activeHunkIdx, setActiveHunkIdx] = useState(0);
   const [layout, setLayout] = useState<DiffLayout>(initialLayout);
+  // Local visual decision state — which hunk indexes the user rejected. Drives
+  // the muted/struck row styling. Independent of (and additive to) the
+  // onAcceptHunk/onRejectHunk callbacks; the j/k/a/r dispatch is unchanged.
+  const [rejected, setRejected] = useState<Set<number>>(new Set());
 
   const refreshHunks = useCallback(() => {
     const ed = editorRef.current;
@@ -76,6 +82,26 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
     const next = extractHunksFromLineChanges(changes);
     setHunks(next);
     setActiveHunkIdx((prev) => (prev >= next.length ? 0 : prev));
+    setRejected(new Set());
+    onHunksChange?.(next);
+  }, [onHunksChange]);
+
+  const markAccepted = useCallback((hunkIndex: number) => {
+    setRejected((prev) => {
+      if (!prev.has(hunkIndex)) return prev;
+      const out = new Set(prev);
+      out.delete(hunkIndex);
+      return out;
+    });
+  }, []);
+
+  const markRejected = useCallback((hunkIndex: number) => {
+    setRejected((prev) => {
+      if (prev.has(hunkIndex)) return prev;
+      const out = new Set(prev);
+      out.add(hunkIndex);
+      return out;
+    });
   }, []);
 
   useEffect(() => {
@@ -138,19 +164,21 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
         const hunk = hunks[activeHunkIdx];
         if (hunk) {
           e.preventDefault();
+          markAccepted(hunk.index);
           onAcceptHunk(hunk.index, hunk);
         }
       } else if (e.key === 'r' && onRejectHunk) {
         const hunk = hunks[activeHunkIdx];
         if (hunk) {
           e.preventDefault();
+          markRejected(hunk.index);
           onRejectHunk(hunk.index, hunk);
         }
       }
     };
     node.addEventListener('keydown', onKey);
     return () => node.removeEventListener('keydown', onKey);
-  }, [hunks, activeHunkIdx, onAcceptHunk, onRejectHunk, revealHunk]);
+  }, [hunks, activeHunkIdx, onAcceptHunk, onRejectHunk, revealHunk, markAccepted, markRejected]);
 
   return (
     <div
@@ -316,6 +344,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
               key={hunk.index}
               className="monaco-diff-viewer-hunk"
               data-active={idx === activeHunkIdx ? 'true' : undefined}
+              data-rejected={rejected.has(hunk.index) ? 'true' : undefined}
               style={
                 idx === activeHunkIdx
                   ? { boxShadow: 'var(--focus-ring)', outline: 'none' }
@@ -335,6 +364,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                     className="monaco-diff-viewer-hunk-accept"
                     onClick={() => {
                       setActiveHunkIdx(idx);
+                      markAccepted(hunk.index);
                       onAcceptHunk(hunk.index, hunk);
                     }}
                   >
@@ -347,6 +377,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                     className="monaco-diff-viewer-hunk-reject"
                     onClick={() => {
                       setActiveHunkIdx(idx);
+                      markRejected(hunk.index);
                       onRejectHunk(hunk.index, hunk);
                     }}
                   >

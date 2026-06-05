@@ -731,6 +731,70 @@ body {
   gap: 1px;
 }
 
+.chat-message-search {
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  overflow-y: auto;
+}
+
+.chat-message-search-head {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 0 var(--space-3) var(--space-1);
+}
+
+.chat-message-search-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.chat-message-search-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chat-message-search-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+
+.chat-message-search-btn:hover,
+.chat-message-search-btn:focus-visible {
+  background: var(--bg-row-hover);
+  outline: none;
+}
+
+.chat-message-search-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-message-search-snippet {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-conversation-empty {
   padding: 14px 10px;
   color: var(--text-muted);
@@ -1007,6 +1071,38 @@ body {
   margin-left: auto;
 }
 
+.chat-interrupted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--warn);
+  border: 1px solid var(--warn-border);
+  background: var(--warn-bg);
+  padding: 4px 8px;
+  border-radius: var(--radius-2xs);
+}
+
+.chat-interrupted-label {
+  font-weight: 600;
+}
+
+.chat-interrupted-retry {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--warn);
+  background: transparent;
+  border: 1px solid var(--warn-border);
+  border-radius: var(--radius-2xs);
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.chat-interrupted-retry:hover {
+  background: var(--bg-sunken);
+}
+
 .chat-usage {
   font-size: 12px;
   color: var(--text-secondary);
@@ -1237,6 +1333,51 @@ body {
 
 .chat-attachment-error {
   color: var(--warn);
+}
+
+.chat-queue {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.chat-queue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 280px;
+  padding: 4px 8px 4px 6px;
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  font-size: 12px;
+}
+
+.chat-queue-chip-index {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-queue-chip-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-queue-chip-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.chat-queue-chip-remove:hover {
+  color: var(--text-primary);
 }
 
 .chat-input {
@@ -1818,6 +1959,24 @@ body {
 .badge-dim {
   background: var(--border-strong);
   color: var(--text-secondary);
+}
+
+.nav-badge {
+  margin-left: auto;
+  min-width: 16px;
+  padding: 1px 6px;
+  text-align: center;
+  background: var(--accent);
+  color: var(--accent-on-bg);
+  border: 0;
+}
+
+.unread-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
 }
 
 .chat-controls {
@@ -4005,6 +4164,17 @@ body {
   font-size: 11px;
 }
 
+.statusbar-cache {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-btn);
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+}
+
 .statusbar-workspace {
   display: inline-flex;
   align-items: center;
@@ -5556,6 +5726,21 @@ button.statusbar-workspace {
 .file-tree-context-menu-item:disabled {
   color: var(--text-muted);
   cursor: not-allowed;
+}
+
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.chat-header-actions-secondary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .chat-header-transfer {
@@ -8307,6 +8492,12 @@ mark {
   gap: 12px;
 }
 
+.notifications-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .accessibility-toggle {
   display: inline-flex;
   align-items: flex-start;
@@ -8886,6 +9077,45 @@ mark {
   gap: var(--space-3);
   flex-wrap: wrap;
 }
+.checkpoint-restore-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.checkpoint-restore-btn:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger-border);
+  background: var(--danger-bg-soft);
+}
+.checkpoint-restore-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.checkpoint-restore-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--danger-bg-soft);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+}
+.checkpoint-restore-bar-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
 .approvals-row-tier-hint {
   font-size: 11px;
   color: var(--text-faint);
@@ -8935,4 +9165,46 @@ mark {
   height: 100%;
   background: var(--accent-bg);
   transition: width var(--duration) var(--ease);
+}
+
+/* Per-hunk accept/reject at the approval gate — "Apply selected hunks". */
+.approval-monaco-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.approval-monaco-modal-hunk-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.approval-modal-apply-selected {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.approval-modal-apply-selected:hover:not(:disabled) {
+  background: var(--bg-row-hover);
+  color: var(--text-primary);
+}
+.approval-modal-apply-selected:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* Rejected hunk: muted + struck so the kept subset reads clearly. */
+.monaco-diff-viewer-hunk[data-rejected='true'] {
+  opacity: 0.55;
+}
+.monaco-diff-viewer-hunk[data-rejected='true'] .monaco-diff-viewer-hunk-range,
+.monaco-diff-viewer-hunk[data-rejected='true'] .monaco-diff-viewer-hunk-kind {
+  text-decoration: line-through;
 }

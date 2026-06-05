@@ -18,10 +18,19 @@ export interface ApprovalRequest {
   arguments: unknown;
 }
 
+export interface ApprovalOverride {
+  toolName: 'write_file';
+  arguments: { path: string; content: string };
+}
+
 export interface ApprovalResponse {
   requestId: string;
   decision: ApprovalDecision;
   scope: ApprovalScope;
+  // Per-hunk partial accept: replaces the original tool with a re-validated
+  // write_file of the reconstructed text. Honored ONLY when decision === 'allow'
+  // and never cached as session/always policy (once-only semantics).
+  override?: ApprovalOverride;
 }
 
 export interface SetPolicyRequest {

@@ -16,7 +16,15 @@ import {
   renameConversation,
 } from '../storage/conversations';
 import { getSettings } from '../storage/settings';
-import { cancelChatStream, startChatStream, type ChatStreamSink } from './runner';
+import {
+  cancelChatStream,
+  getActivePartial,
+  listActiveStreams,
+  startChatStream,
+  type ChatStreamSink,
+} from './runner';
+import { chatReattachRequestSchema, type ChatListActiveResponse } from '../../shared/chat';
+import { consumeInterruptedTurn, listInterruptedTurns } from './turn-restore';
 import { prepareAttachments } from './attachments';
 
 const roleSchema = z.enum(['system', 'user', 'assistant', 'tool']);
@@ -197,5 +205,49 @@ export function registerChatHandlers(): void {
 
   registerInvoke('chat:cancel', z.object({ streamId: z.string().min(1) }), (req) => {
     cancelChatStream(req.streamId);
+  });
+
+  // Crash-restore — list streams still live in this process plus turns that a
+  // hard crash interrupted (reconciled at boot). The renderer reattaches to the
+  // former and shows a Retry affordance for the latter.
+  registerInvoke('chat:list-active', z.void(), (): ChatListActiveResponse => {
+    const active = listActiveStreams().map((s) => ({
+      conversationId: s.conversationId,
+      streamId: s.streamId,
+      assistantMessageId: s.assistantMessageId,
+      live: true as const,
+    }));
+    const interrupted = listInterruptedTurns().map((t) => ({
+      conversationId: t.conversationId,
+      assistantMessageId: t.assistantMessageId,
+    }));
+    return { active, interrupted };
+  });
+
+  registerInvoke('chat:reattach', chatReattachRequestSchema, (req) => {
+    const live = listActiveStreams().find((s) => s.conversationId === req.conversationId) ?? null;
+    if (live) {
+      const partial = getActivePartial(req.conversationId);
+      return {
+        live: true,
+        streamId: live.streamId,
+        assistantMessageId: live.assistantMessageId,
+        partial,
+      };
+    }
+    // No live stream — surface (and consume) any interrupted partial persisted
+    // by the boot reconcile, reading the final content back from storage.
+    const interrupted = consumeInterruptedTurn(req.conversationId);
+    if (!interrupted) {
+      return { live: false, streamId: null, assistantMessageId: null, partial: null };
+    }
+    const rows = listMessages(req.conversationId);
+    const partial = rows.find((m) => m.id === interrupted.assistantMessageId) ?? null;
+    return {
+      live: false,
+      streamId: null,
+      assistantMessageId: interrupted.assistantMessageId,
+      partial,
+    };
   });
 }

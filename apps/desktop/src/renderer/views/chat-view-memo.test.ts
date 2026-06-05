@@ -13,8 +13,10 @@ function msg(overrides: Partial<StoredMessage> = {}): StoredMessage {
     modelId: 'gpt-4o',
     inputTokens: 10,
     outputTokens: 5,
+    cachedInputTokens: null,
     costUsd: 0.0001,
     createdAt: '2026-01-01T00:00:00.000Z',
+    turnStatus: 'final',
     ...overrides,
   };
 }

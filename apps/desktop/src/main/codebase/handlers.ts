@@ -10,12 +10,16 @@ import { prepareMergeBundle } from '../agent/merge-review';
 import { listRuns } from '../agent/run-registry';
 import { toFriendlyError } from '../util/friendly-error';
 import type {
+  CodebaseListDirFilesResponse,
   CodebasePendingEditsResponse,
   CodebaseReadFileResponse,
   CodebaseSearchHit,
   CodebaseSearchResponse,
 } from '../../shared/codebase-search';
 import type { PendingEditEntry } from '../../shared/codebase-search';
+
+const DEFAULT_LIST_DIR_LIMIT = 50;
+const MAX_LIST_DIR_LIMIT = 500;
 
 const MAX_PREVIEW_BYTES = 256 * 1024;
 const MAX_FILENAME_MATCHES = 500;
@@ -40,6 +44,12 @@ const readFileSchema = z.object({
 const showItemSchema = z.object({
   workspaceRoot: z.string().min(1),
   path: z.string().min(1),
+});
+
+const listDirFilesSchema = z.object({
+  workspaceRoot: z.string().min(1),
+  path: z.string().min(1),
+  limit: z.number().int().min(1).max(MAX_LIST_DIR_LIMIT).optional(),
 });
 
 async function searchFilenames(
@@ -70,6 +80,10 @@ async function searchFilenames(
       if (entry.name === '.git') continue;
       if (ignore.matches(rel)) continue;
       if (entry.isDirectory()) {
+        if (entry.name.toLowerCase().includes(lower) || rel.toLowerCase().includes(lower)) {
+          hits.push({ path: rel, kind: 'folder' });
+        }
+        if (hits.length >= limit) return;
         await walk(abs, depth + 1);
         continue;
       }
@@ -283,6 +297,43 @@ export function registerCodebaseHandlers(): void {
         }
       }
       return { entries };
+    },
+  );
+
+  registerInvoke(
+    'codebase:list-dir-files',
+    listDirFilesSchema,
+    async (req): Promise<CodebaseListDirFilesResponse> => {
+      const limit = Math.min(req.limit ?? DEFAULT_LIST_DIR_LIMIT, MAX_LIST_DIR_LIMIT);
+      let resolved: string;
+      try {
+        resolved = await resolveWithinWorkspace(req.workspaceRoot, req.path);
+      } catch (err) {
+        throw toFriendlyError(err);
+      }
+      const ignore = readIgnoreMatcherForWorkspace(req.workspaceRoot);
+      let entries: Dirent[];
+      try {
+        entries = await fs.readdir(resolved, { withFileTypes: true });
+      } catch (err) {
+        throw toFriendlyError(err);
+      }
+      const files: string[] = [];
+      let truncated = false;
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const abs = join(resolved, entry.name);
+        const rel = relative(req.workspaceRoot, abs).split(sep).join('/');
+        if (!rel) continue;
+        if (entry.name === '.git') continue;
+        if (ignore.matches(rel)) continue;
+        if (files.length >= limit) {
+          truncated = true;
+          break;
+        }
+        files.push(rel);
+      }
+      return { files, truncated };
     },
   );
 

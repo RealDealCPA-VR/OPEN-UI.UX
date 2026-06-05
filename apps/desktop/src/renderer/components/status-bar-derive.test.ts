@@ -3,6 +3,7 @@ import type { ContentBlock } from '@opencodex/core';
 import {
   computeTokenMeterSegments,
   findRunningToolName,
+  formatCacheSavings,
   formatCostUsd,
   formatTokens,
   workspaceBasename,
@@ -91,6 +92,44 @@ describe('formatCostUsd', () => {
   it('returns null for non-finite cost', () => {
     expect(formatCostUsd(Number.NaN)).toBeNull();
     expect(formatCostUsd(Number.POSITIVE_INFINITY)).toBeNull();
+  });
+});
+
+describe('formatCacheSavings', () => {
+  it('returns null when cached tokens are absent (cold/unsupported)', () => {
+    expect(formatCacheSavings(null, 1000)).toBeNull();
+    expect(formatCacheSavings(undefined, 1000)).toBeNull();
+  });
+
+  it('returns null when there are no input tokens to compare against', () => {
+    expect(formatCacheSavings(500, null)).toBeNull();
+    expect(formatCacheSavings(500, undefined)).toBeNull();
+    expect(formatCacheSavings(500, 0)).toBeNull();
+  });
+
+  it('returns null when cached tokens are zero', () => {
+    expect(formatCacheSavings(0, 1000)).toBeNull();
+  });
+
+  it('returns null for non-finite inputs', () => {
+    expect(formatCacheSavings(Number.NaN, 1000)).toBeNull();
+    expect(formatCacheSavings(500, Number.POSITIVE_INFINITY)).toBeNull();
+  });
+
+  it('formats compact cached tokens and percent share', () => {
+    expect(formatCacheSavings(12_000, 28_000)).toBe('cache 12k · 43%');
+  });
+
+  it('formats sub-thousand cached tokens without a k suffix', () => {
+    expect(formatCacheSavings(500, 1000)).toBe('cache 500 · 50%');
+  });
+
+  it('formats millions with an m suffix', () => {
+    expect(formatCacheSavings(2_000_000, 4_000_000)).toBe('cache 2m · 50%');
+  });
+
+  it('never reports 0% — rounds away tiny non-zero shares to null', () => {
+    expect(formatCacheSavings(1, 1_000_000)).toBeNull();
   });
 });
 

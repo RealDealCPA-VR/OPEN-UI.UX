@@ -294,7 +294,11 @@ export function CodebaseSearchBox({
                 }}
               >
                 <span className={`codebase-search-kind codebase-search-kind-${hit.kind}`}>
-                  {hit.kind === 'filename' ? 'file' : `:${hit.line}`}
+                  {hit.kind === 'filename'
+                    ? 'file'
+                    : hit.kind === 'folder'
+                      ? 'folder'
+                      : `:${hit.line}`}
                 </span>
                 <code className="codebase-search-path">
                   <HighlightedSnippet text={hit.path} query={trimmedQuery} />

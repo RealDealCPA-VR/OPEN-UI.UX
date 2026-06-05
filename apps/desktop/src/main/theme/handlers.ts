@@ -2,15 +2,18 @@ import { BrowserWindow } from 'electron';
 import { z } from 'zod';
 import {
   getRunnerCliPathRequestSchema,
+  setAgentRunNotificationsRequestSchema,
   setHoverHintsRequestSchema,
   setRunnerCliPathRequestSchema,
 } from '../../shared/ipc-types';
 import { emit, registerInvoke } from '../ipc/registry';
 import {
+  getAgentRunNotificationsEnabled,
   getCloudProviderTipShown,
   getHoverHintsEnabled,
   getRunnerCliPath,
   getTheme,
+  setAgentRunNotificationsEnabled,
   setCloudProviderTipShown,
   setHoverHintsEnabled,
   setRunnerCliPath,
@@ -40,6 +43,21 @@ export function registerThemeHandlers(): void {
       emit(win.webContents, 'settings:hover-hints-changed', { enabled: next });
     }
   });
+
+  registerInvoke('settings:get-agent-run-notifications', z.void(), () =>
+    getAgentRunNotificationsEnabled(),
+  );
+
+  registerInvoke(
+    'settings:set-agent-run-notifications',
+    setAgentRunNotificationsRequestSchema,
+    (req) => {
+      const next = setAgentRunNotificationsEnabled(req.enabled);
+      for (const win of BrowserWindow.getAllWindows()) {
+        emit(win.webContents, 'settings:agent-run-notifications-changed', { enabled: next });
+      }
+    },
+  );
 
   registerInvoke('settings:get-runner-cli-path', getRunnerCliPathRequestSchema, (req) =>
     getRunnerCliPath(req.runnerId),

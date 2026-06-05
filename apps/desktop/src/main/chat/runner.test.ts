@@ -12,6 +12,8 @@ import {
   activeStreamCount,
   cancelChatStream,
   expandStoredMessages,
+  getActivePartial,
+  listActiveStreams,
   startChatStream,
 } from './runner';
 import { ApprovalManager } from './approvals';
@@ -527,6 +529,193 @@ describe('startChatStream', () => {
     expect(audit[0]?.isError).toBe(false);
   });
 
+  it('partial override: executes write_file(override.args) instead of edit_file, audits prompt-allowed-partial', async () => {
+    const conv = createConversation({});
+    const registry = new ToolRegistry();
+    let editCalls = 0;
+    let writeArgs: { path: string; content: string } | null = null;
+    registry.register(
+      defineTool({
+        name: 'edit_file',
+        description: 'edit',
+        inputZod: z.object({ path: z.string(), oldString: z.string(), newString: z.string() }),
+        permissionTier: 'write',
+        execute: async () => {
+          editCalls++;
+          return { ok: true };
+        },
+      }),
+    );
+    registry.register(
+      defineTool({
+        name: 'write_file',
+        description: 'write',
+        inputZod: z.object({ path: z.string().min(1), content: z.string() }),
+        permissionTier: 'write',
+        execute: async ({ path, content }) => {
+          writeArgs = { path, content };
+          return { ok: true };
+        },
+      }),
+    );
+
+    const policies = { tierDefaults: { ...DEFAULT_TIER_POLICIES }, toolOverrides: {} };
+    const manager = new ApprovalManager(
+      (req) => {
+        queueMicrotask(() =>
+          manager.respond({
+            requestId: req.requestId,
+            decision: 'allow',
+            scope: 'once',
+            override: {
+              toolName: 'write_file',
+              arguments: { path: 'src/a.ts', content: 'KEPT\nORIGINAL\n' },
+            },
+          }),
+        );
+      },
+      () => policies,
+      () => {},
+    );
+
+    let turn = 0;
+    const provider: LLMProvider = {
+      id: 'fake',
+      displayName: 'Fake',
+      async *chat(): AsyncIterable<ChatEvent> {
+        const t = turn++;
+        if (t === 0) {
+          yield {
+            type: 'tool_call',
+            id: 'e1',
+            name: 'edit_file',
+            arguments: { path: 'src/a.ts', oldString: 'a', newString: 'b' },
+          };
+          yield { type: 'done', stopReason: 'tool_use' };
+        } else {
+          yield { type: 'done', stopReason: 'end_turn' };
+        }
+      },
+      embed: vi.fn(),
+      listModels: vi.fn(),
+      capabilities: vi.fn(),
+    } as unknown as LLMProvider;
+
+    const { sink } = collectSink();
+    const { assistantMessageId } = await startChatStream({
+      conversationId: conv.id,
+      providerId: 'fake',
+      modelId: 'fake-1',
+      userMessage: 'hi',
+      sink,
+      buildProvider: async () => provider,
+      toolRegistry: registry,
+      approvalManager: manager,
+      workspaceRoot: '/tmp',
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(editCalls).toBe(0);
+    expect(writeArgs).toEqual({ path: 'src/a.ts', content: 'KEPT\nORIGINAL\n' });
+
+    const audit = listToolCallsForMessage(assistantMessageId);
+    expect(audit).toHaveLength(1);
+    expect(audit[0]?.decision).toBe('prompt-allowed-partial');
+    expect(audit[0]?.isError).toBe(false);
+    // Audit input reflects the executed override (correct path + content).
+    expect(audit[0]?.input).toEqual({ path: 'src/a.ts', content: 'KEPT\nORIGINAL\n' });
+  });
+
+  it('partial override is re-validated at the tool sink (registry zod rejects bad args → tool error)', async () => {
+    const conv = createConversation({});
+    const registry = new ToolRegistry();
+    registry.register(
+      defineTool({
+        name: 'edit_file',
+        description: 'edit',
+        inputZod: z.object({ path: z.string(), oldString: z.string(), newString: z.string() }),
+        permissionTier: 'write',
+        execute: async () => ({ ok: true }),
+      }),
+    );
+    registry.register(
+      defineTool({
+        name: 'write_file',
+        description: 'write',
+        // Sink requires a non-empty path; an escaping/empty path is rejected here.
+        inputZod: z.object({ path: z.string().min(1), content: z.string() }),
+        permissionTier: 'write',
+        execute: async () => ({ ok: true }),
+      }),
+    );
+
+    const policies = { tierDefaults: { ...DEFAULT_TIER_POLICIES }, toolOverrides: {} };
+    const manager = new ApprovalManager(
+      (req) => {
+        queueMicrotask(() =>
+          manager.respond({
+            requestId: req.requestId,
+            decision: 'allow',
+            scope: 'once',
+            // Empty path: passes the IPC boundary mock here but the registry's
+            // own zod (.min(1)) must reject it at the sink.
+            override: { toolName: 'write_file', arguments: { path: '', content: 'x' } },
+          }),
+        );
+      },
+      () => policies,
+      () => {},
+    );
+
+    let turn = 0;
+    const provider: LLMProvider = {
+      id: 'fake',
+      displayName: 'Fake',
+      async *chat(): AsyncIterable<ChatEvent> {
+        const t = turn++;
+        if (t === 0) {
+          yield {
+            type: 'tool_call',
+            id: 'e1',
+            name: 'edit_file',
+            arguments: { path: 'src/a.ts', oldString: 'a', newString: 'b' },
+          };
+          yield { type: 'done', stopReason: 'tool_use' };
+        } else {
+          yield { type: 'done', stopReason: 'end_turn' };
+        }
+      },
+      embed: vi.fn(),
+      listModels: vi.fn(),
+      capabilities: vi.fn(),
+    } as unknown as LLMProvider;
+
+    const { events, sink } = collectSink();
+    const { assistantMessageId } = await startChatStream({
+      conversationId: conv.id,
+      providerId: 'fake',
+      modelId: 'fake-1',
+      userMessage: 'hi',
+      sink,
+      buildProvider: async () => provider,
+      toolRegistry: registry,
+      approvalManager: manager,
+      workspaceRoot: '/tmp',
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    const toolResult = events.find((e) => e.event.type === 'tool_result');
+    expect(toolResult?.event.type).toBe('tool_result');
+    if (toolResult?.event.type === 'tool_result') {
+      expect(toolResult.event.isError).toBe(true);
+    }
+    const audit = listToolCallsForMessage(assistantMessageId);
+    expect(audit).toHaveLength(1);
+    // Still attributed to the partial path; the error came from sink re-validation.
+    expect(audit[0]?.decision).toBe('prompt-allowed-partial');
+    expect(audit[0]?.isError).toBe(true);
+  });
+
   it('records denied for tools blocked because no approval manager is configured', async () => {
     const conv = createConversation({});
     const registry = new ToolRegistry();
@@ -730,8 +919,10 @@ describe('expandStoredMessages', () => {
     modelId: null,
     inputTokens: null,
     outputTokens: null,
+    cachedInputTokens: null,
     costUsd: null,
     createdAt: '2026-01-01T00:00:00Z',
+    turnStatus: 'final',
     ...overrides,
   });
 
@@ -760,5 +951,168 @@ describe('expandStoredMessages', () => {
     ];
     const expanded = expandStoredMessages(stored);
     expect(expanded.map((m) => m.role)).toEqual(['assistant', 'tool', 'assistant']);
+  });
+});
+
+function ftsRowCount(database: Database.Database, messageId: string): number {
+  const row = database
+    .prepare('SELECT COUNT(*) AS n FROM messages_fts WHERE message_id = ?')
+    .get(messageId) as { n: number };
+  return row.n;
+}
+
+describe('crash-restore checkpoint', () => {
+  it('keeps turn_status streaming while in-flight then flips to final, without thrashing FTS', async () => {
+    const conv = createConversation({});
+    const { sink } = collectSink();
+
+    // A gate the provider awaits between its delta and its done event, so we can
+    // observe the persisted partial mid-stream.
+    const gateControl: { release: () => void } = { release: () => {} };
+    const gate = new Promise<void>((resolve) => {
+      gateControl.release = resolve;
+    });
+
+    const provider: LLMProvider = {
+      id: 'fake',
+      displayName: 'Fake',
+      async *chat(): AsyncIterable<ChatEvent> {
+        yield { type: 'text_delta', delta: 'partial answer' };
+        await gate;
+        yield { type: 'done', stopReason: 'end_turn' };
+      },
+      embed: vi.fn(),
+      listModels: vi.fn(),
+      capabilities: vi.fn(),
+    } as unknown as LLMProvider;
+
+    const result = await startChatStream({
+      conversationId: conv.id,
+      providerId: 'fake',
+      modelId: 'fake-1',
+      userMessage: 'hi',
+      sink,
+      buildProvider: async () => provider,
+    });
+
+    // Give the leading-edge checkpoint time to land the partial.
+    await new Promise((r) => setTimeout(r, 20));
+
+    const midRows = listMessages(conv.id);
+    const midAssistant = midRows.find((m) => m.id === result.assistantMessageId);
+    expect(midAssistant?.turnStatus).toBe('streaming');
+    expect(midAssistant?.content).toBe('partial answer');
+    // Checkpoint must NOT index FTS.
+    expect(ftsRowCount(db, result.assistantMessageId)).toBe(0);
+
+    gateControl.release();
+    await new Promise((r) => setTimeout(r, 20));
+
+    const finalRows = listMessages(conv.id);
+    const finalAssistant = finalRows.find((m) => m.id === result.assistantMessageId);
+    expect(finalAssistant?.turnStatus).toBe('final');
+    expect(finalAssistant?.content).toBe('partial answer');
+    // Terminal write re-indexes FTS exactly once.
+    expect(ftsRowCount(db, result.assistantMessageId)).toBe(1);
+  });
+
+  it('reflects tool_result blocks in the checkpointed partial', async () => {
+    const conv = createConversation({});
+    const { sink } = collectSink();
+    const registry = new ToolRegistry();
+    registry.register(
+      defineTool({
+        name: 'fake_lookup',
+        description: 'canned',
+        inputZod: z.object({ q: z.string() }),
+        permissionTier: 'read',
+        execute: async ({ q }) => ({ answer: `a-${q}` }),
+      }),
+    );
+
+    let turn = 0;
+    const provider: LLMProvider = {
+      id: 'fake',
+      displayName: 'Fake',
+      async *chat(): AsyncIterable<ChatEvent> {
+        const t = turn++;
+        if (t === 0) {
+          yield { type: 'tool_call', id: 'c1', name: 'fake_lookup', arguments: { q: 'x' } };
+          yield { type: 'done', stopReason: 'tool_use' };
+        } else {
+          yield { type: 'text_delta', delta: 'final text' };
+          yield { type: 'done', stopReason: 'end_turn' };
+        }
+      },
+      embed: vi.fn(),
+      listModels: vi.fn(),
+      capabilities: vi.fn(),
+    } as unknown as LLMProvider;
+
+    const result = await startChatStream({
+      conversationId: conv.id,
+      providerId: 'fake',
+      modelId: 'fake-1',
+      userMessage: 'hi',
+      sink,
+      buildProvider: async () => provider,
+      toolRegistry: registry,
+      workspaceRoot: '/tmp',
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    const rows = listMessages(conv.id);
+    const assistant = rows.find((m) => m.id === result.assistantMessageId);
+    expect(assistant?.turnStatus).toBe('final');
+    const blocks = assistant?.contentBlocks ?? [];
+    expect(blocks.some((b) => b.type === 'tool_use')).toBe(true);
+    expect(blocks.some((b) => b.type === 'tool_result')).toBe(true);
+  });
+});
+
+describe('reattach liveness', () => {
+  it('lists an active stream during the turn and removes it after', async () => {
+    const conv = createConversation({});
+    const { sink } = collectSink();
+
+    const gateControl: { release: () => void } = { release: () => {} };
+    const gate = new Promise<void>((resolve) => {
+      gateControl.release = resolve;
+    });
+
+    const provider: LLMProvider = {
+      id: 'fake',
+      displayName: 'Fake',
+      async *chat(): AsyncIterable<ChatEvent> {
+        yield { type: 'text_delta', delta: 'hi' };
+        await gate;
+        yield { type: 'done', stopReason: 'end_turn' };
+      },
+      embed: vi.fn(),
+      listModels: vi.fn(),
+      capabilities: vi.fn(),
+    } as unknown as LLMProvider;
+
+    const result = await startChatStream({
+      conversationId: conv.id,
+      providerId: 'fake',
+      modelId: 'fake-1',
+      userMessage: 'hi',
+      sink,
+      buildProvider: async () => provider,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const duringActive = listActiveStreams();
+    expect(duringActive.some((s) => s.conversationId === conv.id)).toBe(true);
+    const partial = getActivePartial(conv.id);
+    expect(partial?.id).toBe(result.assistantMessageId);
+    expect(partial?.turnStatus).toBe('streaming');
+
+    gateControl.release();
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(listActiveStreams().some((s) => s.conversationId === conv.id)).toBe(false);
+    expect(getActivePartial(conv.id)).toBeNull();
   });
 });

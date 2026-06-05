@@ -39,6 +39,7 @@ export interface AgentRun {
   worktreeRepoRoot: string | null;
   mergeStatus: 'pending' | 'merged' | 'rejected' | null;
   triggerSource: AgentRunTriggerSource;
+  seen: boolean;
   scheduledTaskId: string | null;
   budget?: number;
 }

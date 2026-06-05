@@ -23,6 +23,7 @@ interface RunRow {
   scheduled_task_id: string | null;
   parent_run_id: string | null;
   timeline_json: string;
+  seen: number;
 }
 
 interface TimelinePayload {
@@ -125,6 +126,7 @@ function rowToRun(row: RunRow): AgentRun {
     worktreeRepoRoot: row.repo_root,
     mergeStatus: timeline.mergeStatus,
     triggerSource: row.trigger_source === 'scheduled' ? 'scheduled' : 'user',
+    seen: row.seen === 1,
     scheduledTaskId: row.scheduled_task_id,
   };
   if (timeline.budget !== undefined) run.budget = timeline.budget;
@@ -134,7 +136,7 @@ function rowToRun(row: RunRow): AgentRun {
 const COLUMNS = `id, task, provider_id, model, status, started_at, completed_at,
   tokens_input, tokens_output, cost_usd, stop_reason, worktree_path,
   worktree_branch, repo_root, runner_id, trigger_source, scheduled_task_id,
-  parent_run_id, timeline_json`;
+  parent_run_id, timeline_json, seen`;
 
 export function upsertRun(run: AgentRun, db: Database.Database = getDb()): void {
   withSqliteBusyRetry(() =>
@@ -144,7 +146,7 @@ export function upsertRun(run: AgentRun, db: Database.Database = getDb()): void 
          VALUES (@id, @task, @provider_id, @model, @status, @started_at, @completed_at,
                  @tokens_input, @tokens_output, @cost_usd, @stop_reason, @worktree_path,
                  @worktree_branch, @repo_root, @runner_id, @trigger_source, @scheduled_task_id,
-                 @parent_run_id, @timeline_json)
+                 @parent_run_id, @timeline_json, @seen)
          ON CONFLICT(id) DO UPDATE SET
            task = excluded.task,
            provider_id = excluded.provider_id,
@@ -163,7 +165,8 @@ export function upsertRun(run: AgentRun, db: Database.Database = getDb()): void 
            trigger_source = excluded.trigger_source,
            scheduled_task_id = excluded.scheduled_task_id,
            parent_run_id = excluded.parent_run_id,
-           timeline_json = excluded.timeline_json`,
+           timeline_json = excluded.timeline_json,
+           seen = excluded.seen`,
       )
       .run({
         id: run.id,
@@ -185,6 +188,7 @@ export function upsertRun(run: AgentRun, db: Database.Database = getDb()): void 
         scheduled_task_id: run.scheduledTaskId,
         parent_run_id: null,
         timeline_json: serializeTimeline(run),
+        seen: run.seen ? 1 : 0,
       }),
   );
 }

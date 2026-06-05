@@ -173,6 +173,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     tags: ['template', 'prompt', 'recipe', 'snippet', 'slash command', 'reusable'],
   },
   {
+    slug: 'notifications',
+    title: 'Notifications',
+    description:
+      'OS notifications when an agent run you started finishes, fails, or a worktree run is ready to review. On by default; suppressed while the window is focused.',
+    tags: ['notification', 'notify', 'alert', 'desktop', 'toast', 'os', 'banner', 'agent run'],
+  },
+  {
     slug: 'accessibility',
     title: 'Accessibility',
     description:

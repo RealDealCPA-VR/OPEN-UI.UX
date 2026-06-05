@@ -14,7 +14,7 @@ import {
 } from '../../shared/runner-discovery';
 import { toFriendlyError } from '../util/friendly-error';
 import { acceptMerge, prepareMergeBundle, rejectMerge } from './merge-review';
-import { clear, listRuns, onRunsChanged } from './run-registry';
+import { clear, listRuns, markSeen, onRunsChanged } from './run-registry';
 import { resolveRegisteredRunnerId, runnerRegistry } from './runner-registry-instance';
 import { abortSpawnedRun, spawnFromUiAsync } from './spawn-from-ui';
 import { isGitRepo } from './worktrees';
@@ -80,6 +80,15 @@ export function registerAgentHandlers(): void {
     clear();
     return listRuns();
   });
+
+  registerInvoke(
+    'agent:mark-runs-seen',
+    z.object({ runIds: z.array(z.string().min(1)) }),
+    (req) => {
+      markSeen(req.runIds);
+      return { ok: true as const, runs: listRuns() };
+    },
+  );
 
   registerInvoke('agent:get-merge-bundle', runIdRequest, async (req) => {
     try {

@@ -14,6 +14,7 @@ import { IndexingPanel } from './IndexingPanel';
 import { LocalFsMemoryPanel } from './LocalFsMemoryPanel';
 import { McpServersPanel } from './McpServersPanel';
 import { MemoryPanel } from './MemoryPanel';
+import { NotificationsPanel } from './NotificationsPanel';
 import { PluginsPanel } from './PluginsPanel';
 import { PrivacyPanel } from './PrivacyPanel';
 import { ProvidersPanel } from './ProvidersPanel';
@@ -249,6 +250,12 @@ function SettingsSectionBody({ section }: { section: SettingsSection }): JSX.Ele
       return (
         <SettingsSectionCard title={section.title} description={section.description}>
           <SkillsPanel />
+        </SettingsSectionCard>
+      );
+    case 'notifications':
+      return (
+        <SettingsSectionCard title={section.title} description={section.description}>
+          <NotificationsPanel />
         </SettingsSectionCard>
       );
     case 'accessibility':

@@ -13,6 +13,8 @@ import { registerAgentHandlers } from './agent/handlers';
 import { registerAntiSycophancyHandlers } from './agent/anti-sycophancy-handlers';
 import { registerResumeHandlers } from './agent/resume-handlers';
 import { hydrateRunRegistryFromStore, promptResumeIfNeeded } from './agent/run-resume';
+import { reconcileInterruptedTurns } from './chat/turn-restore';
+import { startRunNotifier, stopRunNotifier } from './agent/run-notifier';
 import { startRunStoreBridge, stopRunStoreBridge } from './agent/run-store-bridge';
 import { runnerRegistry } from './agent/runner-registry-instance';
 import { internalRunner } from './agent/subagent';
@@ -47,6 +49,8 @@ import { setWatchedWorkspace, stopWatchedWorkspace } from './rag/watcher';
 import { RoutingEmbeddingResolver } from './rag/embedding-resolver';
 import { astAwareChunkFn, registerBundledGrammars } from './rag/ast-chunk';
 import { registerReplayHandlers } from './replay/handlers';
+import { registerCheckpointHandlers } from './checkpoints/handlers';
+import { gc as gcCheckpoints } from './checkpoints/manager';
 import { registerReviewHandlers } from './review/handlers';
 import { registerRoutingHandlers } from './routing/handlers';
 import {
@@ -384,12 +388,31 @@ app.whenReady().then(() => {
     logger.warn({ err }, 'WORM mirror init failed');
   }
 
+  // Unified checkpoint manager — retention + orphan-blob GC once at startup.
+  void gcCheckpoints()
+    .then((res) => {
+      if (res.deletedCheckpoints > 0 || res.removedBlobs > 0) {
+        logger.info(res, 'checkpoint gc at startup');
+      }
+    })
+    .catch((err) => logger.warn({ err }, 'checkpoint gc at startup failed'));
+
   // Lane 2 — hydrate persisted agent runs and start the store->registry bridge.
   try {
     hydrateRunRegistryFromStore();
     startRunStoreBridge();
+    startRunNotifier();
   } catch (err) {
     logger.warn({ err }, 'run-store hydration failed');
+  }
+
+  // Crash-restore — flip any assistant rows left mid-stream by a hard crash back
+  // to 'final' (content preserved) and record them for an interrupted+Retry
+  // affordance. Runs before windows load, alongside run-registry hydration.
+  try {
+    reconcileInterruptedTurns();
+  } catch (err) {
+    logger.warn({ err }, 'chat turn reconcile failed');
   }
 
   try {
@@ -505,6 +528,7 @@ app.on('before-quit', () => {
   // Lane 2 — stop run-store bridge so we don't broadcast during shutdown.
   try {
     stopRunStoreBridge();
+    stopRunNotifier();
   } catch {
     // best-effort
   }
@@ -609,6 +633,7 @@ function registerIpcHandlers(): void {
   registerMultiWorkspaceHandlers();
   registerPairHandlers();
   registerReplayHandlers();
+  registerCheckpointHandlers();
   registerReviewHandlers();
   registerRoutingHandlers();
   registerSchedulerHandlers();

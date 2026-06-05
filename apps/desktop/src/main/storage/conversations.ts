@@ -6,6 +6,7 @@ import type {
   ConversationUsage,
   ConversationUsageByModel,
   StoredMessage,
+  TurnStatus,
 } from '../../shared/conversation';
 import type { ContentBlock, Role } from '@opencodex/core';
 import { withSqliteBusyRetry } from '../util/sqlite-retry';
@@ -31,14 +32,21 @@ interface MessageRow {
   model_id: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
+  cached_input_tokens: number | null;
   cost_usd: number | null;
   created_at: string;
+  turn_status: string;
 }
 
 const MESSAGE_COLUMNS = `id, conversation_id, role, content, content_blocks_json,
-                         provider_id, model_id, input_tokens, output_tokens, cost_usd, created_at`;
+                         provider_id, model_id, input_tokens, output_tokens,
+                         cached_input_tokens, cost_usd, created_at, turn_status`;
 
 const VALID_ROLES: ReadonlySet<Role> = new Set(['system', 'user', 'assistant', 'tool']);
+
+function normalizeTurnStatus(raw: string): TurnStatus {
+  return raw === 'streaming' ? 'streaming' : 'final';
+}
 
 function rowToConversation(row: ConversationRow): Conversation {
   return {
@@ -65,8 +73,10 @@ function rowToMessage(row: MessageRow): StoredMessage {
     modelId: row.model_id,
     inputTokens: row.input_tokens,
     outputTokens: row.output_tokens,
+    cachedInputTokens: row.cached_input_tokens ?? null,
     costUsd: row.cost_usd,
     createdAt: row.created_at,
+    turnStatus: normalizeTurnStatus(row.turn_status),
   };
 }
 
@@ -180,8 +190,9 @@ export function appendMessage(
     db.prepare(
       `INSERT INTO messages
         (id, conversation_id, role, content, content_blocks_json,
-         provider_id, model_id, input_tokens, output_tokens, cost_usd, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         provider_id, model_id, input_tokens, output_tokens,
+         cached_input_tokens, cost_usd, created_at, turn_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       req.conversationId,
@@ -192,8 +203,10 @@ export function appendMessage(
       req.modelId ?? null,
       req.inputTokens ?? null,
       req.outputTokens ?? null,
+      req.cachedInputTokens ?? null,
       req.costUsd ?? null,
       now,
+      req.turnStatus ?? 'final',
     );
     try {
       indexMessageInFts(id, req.conversationId, req.content, db);
@@ -216,6 +229,7 @@ interface UsageRow {
   message_count: number;
   input_tokens: number | null;
   output_tokens: number | null;
+  cached_input_tokens: number | null;
   cost_usd: number | null;
 }
 
@@ -229,11 +243,13 @@ export function getConversationUsage(
               COUNT(*) AS message_count,
               COALESCE(SUM(input_tokens), 0) AS input_tokens,
               COALESCE(SUM(output_tokens), 0) AS output_tokens,
+              COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
               COALESCE(SUM(cost_usd), 0) AS cost_usd
          FROM messages
         WHERE conversation_id = ?
           AND (input_tokens IS NOT NULL
             OR output_tokens IS NOT NULL
+            OR cached_input_tokens IS NOT NULL
             OR cost_usd IS NOT NULL)
         GROUP BY provider_id, model_id
         ORDER BY provider_id ASC, model_id ASC`,
@@ -246,11 +262,13 @@ export function getConversationUsage(
     messageCount: r.message_count,
     inputTokens: r.input_tokens ?? 0,
     outputTokens: r.output_tokens ?? 0,
+    cachedInputTokens: r.cached_input_tokens ?? 0,
     costUsd: r.cost_usd ?? 0,
   }));
 
   const totalInputTokens = byModel.reduce((s, r) => s + r.inputTokens, 0);
   const totalOutputTokens = byModel.reduce((s, r) => s + r.outputTokens, 0);
+  const totalCachedInputTokens = byModel.reduce((s, r) => s + r.cachedInputTokens, 0);
   const totalCostUsd = byModel.reduce((s, r) => s + r.costUsd, 0);
   const messageCount = byModel.reduce((s, r) => s + r.messageCount, 0);
 
@@ -259,6 +277,7 @@ export function getConversationUsage(
     messageCount,
     totalInputTokens,
     totalOutputTokens,
+    totalCachedInputTokens,
     totalCostUsd,
     byModel,
   };
@@ -271,7 +290,10 @@ export function updateAssistantMessage(
     contentBlocks?: ContentBlock[] | null;
     inputTokens?: number | null;
     outputTokens?: number | null;
+    cachedInputTokens?: number | null;
     costUsd?: number | null;
+    turnStatus?: TurnStatus;
+    indexFts?: boolean;
   },
   db: Database.Database = getDb(),
 ): StoredMessage {
@@ -283,7 +305,9 @@ export function updateAssistantMessage(
            content_blocks_json = ?,
            input_tokens = COALESCE(?, input_tokens),
            output_tokens = COALESCE(?, output_tokens),
-           cost_usd = COALESCE(?, cost_usd)
+           cached_input_tokens = COALESCE(?, cached_input_tokens),
+           cost_usd = COALESCE(?, cost_usd),
+           turn_status = COALESCE(?, turn_status)
        WHERE id = ?`,
       )
       .run(
@@ -291,7 +315,9 @@ export function updateAssistantMessage(
         serializeContentBlocks(patch.contentBlocks),
         patch.inputTokens ?? null,
         patch.outputTokens ?? null,
+        patch.cachedInputTokens ?? null,
         patch.costUsd ?? null,
+        patch.turnStatus ?? null,
         id,
       ),
   );
@@ -300,11 +326,37 @@ export function updateAssistantMessage(
     | MessageRow
     | undefined;
   if (!row) throw new Error(`message ${id} not found after update`);
-  // Lane 3 — keep FTS in sync after assistant content is finalised.
-  try {
-    indexMessageInFts(id, row.conversation_id, patch.content, db);
-  } catch {
-    // best-effort
+  // Lane 3 — keep FTS in sync after assistant content is finalised. Throttled
+  // crash-restore checkpoints pass indexFts:false so partial writes don't
+  // thrash the FTS table; only the terminal write re-indexes.
+  if (patch.indexFts !== false) {
+    try {
+      indexMessageInFts(id, row.conversation_id, patch.content, db);
+    } catch {
+      // best-effort
+    }
   }
   return rowToMessage(row);
+}
+
+export function setTurnStatus(
+  id: string,
+  status: TurnStatus,
+  db: Database.Database = getDb(),
+): void {
+  withSqliteBusyRetry(() =>
+    db.prepare('UPDATE messages SET turn_status = ? WHERE id = ?').run(status, id),
+  );
+}
+
+export function listStreamingAssistantMessages(db: Database.Database = getDb()): StoredMessage[] {
+  const rows = db
+    .prepare(
+      `SELECT ${MESSAGE_COLUMNS}
+       FROM messages
+       WHERE turn_status = 'streaming' AND role = 'assistant'
+       ORDER BY created_at ASC, rowid ASC`,
+    )
+    .all() as MessageRow[];
+  return rows.map(rowToMessage);
 }

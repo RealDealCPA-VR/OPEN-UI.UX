@@ -22,6 +22,7 @@ import { getToolRegistry } from '../tools/registry';
 import { detectSkillInvocation, resolveSkillInvocation } from '../skills/invoke';
 import { appendMessage, listMessages, updateAssistantMessage } from '../storage/conversations';
 import { recordAppliedDiff } from '../storage/applied-diffs';
+import { captureBeforeMutation, isMutatingTool } from '../checkpoints/manager';
 import { recordToolCall, type ToolCallAuditDecision } from '../storage/tool-audit';
 import { type ApprovalManager, type ApprovalOutcome, getApprovalManager } from './approvals';
 import { BudgetExceededError, getBudgetManager } from './budget-manager';
@@ -30,6 +31,7 @@ import { buildChatSystemPrompt } from './system-prompt-builder';
 const MAX_TOOL_ITERATIONS = 10;
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_BASE_MS = 1000;
+const CHECKPOINT_MS = 750;
 
 interface RetryableErrorInfo {
   message: string;
@@ -108,9 +110,39 @@ export interface StartChatStreamOptions {
 
 interface ActiveStream {
   controller: AbortController;
+  conversationId: string;
+  assistantMessageId: string;
 }
 
 const active = new Map<string, ActiveStream>();
+// Crash-restore — index of live streams keyed by conversation so the renderer
+// can ask "is conversation X still streaming?" on reattach.
+const activeByConversation = new Map<string, ActiveStream>();
+
+export interface ActiveStreamSummary {
+  conversationId: string;
+  streamId: string;
+  assistantMessageId: string;
+}
+
+export function listActiveStreams(): ActiveStreamSummary[] {
+  const out: ActiveStreamSummary[] = [];
+  for (const [streamId, entry] of active) {
+    out.push({
+      streamId,
+      conversationId: entry.conversationId,
+      assistantMessageId: entry.assistantMessageId,
+    });
+  }
+  return out;
+}
+
+export function getActivePartial(conversationId: string): StoredMessage | null {
+  const entry = activeByConversation.get(conversationId);
+  if (!entry) return null;
+  const rows = listMessages(conversationId);
+  return rows.find((m) => m.id === entry.assistantMessageId) ?? null;
+}
 
 export async function startChatStream(opts: StartChatStreamOptions): Promise<ChatStartResponse> {
   const builder = opts.buildProvider ?? defaultBuildProvider;
@@ -169,6 +201,7 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
     content: '',
     providerId: opts.providerId,
     modelId: opts.modelId,
+    turnStatus: 'streaming',
   });
 
   const history = listMessages(opts.conversationId);
@@ -176,7 +209,13 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
 
   const streamId = randomUUID();
   const controller = new AbortController();
-  active.set(streamId, { controller });
+  const activeEntry: ActiveStream = {
+    controller,
+    conversationId: opts.conversationId,
+    assistantMessageId: assistantRow.id,
+  };
+  active.set(streamId, activeEntry);
+  activeByConversation.set(opts.conversationId, activeEntry);
 
   const workspaceRoot = opts.workspaceRoot ?? process.cwd();
 
@@ -226,6 +265,9 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
     routingTracker,
   }).finally(() => {
     active.delete(streamId);
+    if (activeByConversation.get(opts.conversationId) === activeEntry) {
+      activeByConversation.delete(opts.conversationId);
+    }
     approvals?.clearSession(streamId);
   });
 
@@ -280,6 +322,7 @@ async function runStream(args: RunStreamArgs): Promise<void> {
   let buffer = '';
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
+  let cachedInputTokens: number | null = null;
   let costUsd: number | null = null;
   let emittedDoneOrError = false;
   const messages: Message[] = [...args.messages];
@@ -290,6 +333,60 @@ async function runStream(args: RunStreamArgs): Promise<void> {
     if (event.type === 'done' || event.type === 'error') {
       emittedDoneOrError = true;
     }
+  };
+
+  // Crash-restore — throttled (leading + trailing) checkpoint of the in-flight
+  // partial. Writes buffer + blocks WITHOUT flipping turn_status and WITHOUT
+  // re-indexing FTS, so a hard crash mid-turn leaves the latest partial on disk.
+  let checkpointTimer: ReturnType<typeof setTimeout> | null = null;
+  let checkpointPendingTrailing = false;
+
+  const writeCheckpoint = (): void => {
+    try {
+      const hasToolBlocks = allBlocks.some(
+        (b) => b.type === 'tool_use' || b.type === 'tool_result',
+      );
+      updateAssistantMessage(args.assistantMessageId, {
+        content: buffer,
+        contentBlocks: hasToolBlocks ? allBlocks : null,
+        inputTokens,
+        outputTokens,
+        cachedInputTokens,
+        costUsd,
+        indexFts: false,
+      });
+    } catch (err) {
+      logger.warn(
+        { err, assistantMessageId: args.assistantMessageId },
+        'chat checkpoint write failed',
+      );
+    }
+  };
+
+  const checkpoint = (): void => {
+    if (checkpointTimer !== null) {
+      // Within the throttle window — remember to flush once it elapses.
+      checkpointPendingTrailing = true;
+      return;
+    }
+    // Leading edge — write immediately, then open the window.
+    writeCheckpoint();
+    checkpointPendingTrailing = false;
+    checkpointTimer = setTimeout(() => {
+      checkpointTimer = null;
+      if (checkpointPendingTrailing) {
+        checkpointPendingTrailing = false;
+        writeCheckpoint();
+      }
+    }, CHECKPOINT_MS);
+  };
+
+  const cancelCheckpointTimer = (): void => {
+    if (checkpointTimer !== null) {
+      clearTimeout(checkpointTimer);
+      checkpointTimer = null;
+    }
+    checkpointPendingTrailing = false;
   };
 
   const toolDefs = args.toolRegistry?.list() ?? [];
@@ -329,12 +426,16 @@ async function runStream(args: RunStreamArgs): Promise<void> {
             buffer += event.delta;
             iterText += event.delta;
             emit(event);
+            checkpoint();
           } else if (event.type === 'tool_call') {
             iterToolCalls.push(event);
             emit(event);
           } else if (event.type === 'usage') {
             inputTokens = (inputTokens ?? 0) + event.inputTokens;
             outputTokens = (outputTokens ?? 0) + event.outputTokens;
+            if (event.cachedInputTokens !== undefined) {
+              cachedInputTokens = (cachedInputTokens ?? 0) + event.cachedInputTokens;
+            }
             if (event.costUsd !== undefined) costUsd = (costUsd ?? 0) + event.costUsd;
             // Lane: phase14-tier1-cost-ceiling — accrue actual spend.
             if (event.costUsd !== undefined && event.costUsd > 0) {
@@ -392,6 +493,9 @@ async function runStream(args: RunStreamArgs): Promise<void> {
       }
 
       if (args.signal.aborted) {
+        // On user cancel, persist whatever partial we have before the terminal
+        // write flips turn_status to 'final'.
+        checkpoint();
         if (!emittedDoneOrError) emit({ type: 'done', stopReason: 'end_turn' });
         return;
       }
@@ -437,6 +541,7 @@ async function runStream(args: RunStreamArgs): Promise<void> {
         };
         toolBlocks.push(toolResultBlock);
         allBlocks.push(toolResultBlock);
+        checkpoint();
       }
       messages.push({ role: 'tool', content: toolBlocks });
     }
@@ -455,6 +560,10 @@ async function runStream(args: RunStreamArgs): Promise<void> {
       emit({ type: 'error', message, retryable: false });
     }
   } finally {
+    // Terminal write — flips turn_status back to 'final' and re-indexes FTS.
+    // This is the single authoritative persist; checkpoints above only ever
+    // wrote partials with indexFts:false and never touched turn_status.
+    cancelCheckpointTimer();
     try {
       const hasToolBlocks = allBlocks.some(
         (b) => b.type === 'tool_use' || b.type === 'tool_result',
@@ -464,7 +573,9 @@ async function runStream(args: RunStreamArgs): Promise<void> {
         contentBlocks: hasToolBlocks ? allBlocks : null,
         inputTokens,
         outputTokens,
+        cachedInputTokens,
         costUsd,
+        turnStatus: 'final',
       });
     } catch (err) {
       logger.error(
@@ -595,22 +706,58 @@ async function executeToolCall(
       return { output, isError: true };
     }
   }
+  // Per-hunk partial accept: the user kept a strict subset of hunks at the gate.
+  // The reconstructed content collapses to write_file{path, content} against the
+  // SAME path, replacing the original tool. Re-check the write tier at the sink
+  // (write_file's zod + resolveWithinWorkspace re-validate inside registry.execute,
+  // the SECOND zod boundary). If the override is present but write_file is not a
+  // write-tier tool, deny rather than silently downgrade.
+  const override = outcome.override;
+  if (override) {
+    const writeTool = registry.get('write_file');
+    if (!writeTool || writeTool.permissionTier !== 'write') {
+      const output = `Partial-accept override rejected: write_file is not available as a write-tier tool`;
+      auditToolCall(args, tc, { output, isError: true, decision: 'denied', durationMs: null });
+      return { output, isError: true };
+    }
+  }
+  const execName = override ? override.toolName : tc.name;
+  const execArgs: unknown = override ? override.arguments : tc.arguments;
+  const auditInput: unknown = override ? override.arguments : tc.arguments;
+
+  // Unified checkpoint manager — capture the pre-image of every file this
+  // mutating tool is about to touch BEFORE the edit lands. Per-turn scope,
+  // keyed by assistantMessageId. Capture failures are logged + swallowed inside
+  // captureBeforeMutation so they can never block the edit. run_shell is out of
+  // scope (shell-side edits are not tracked). The override writes the SAME path,
+  // so the original-tool pre-image capture remains valid — capture from tc.
+  if (isMutatingTool(tc.name) && !args.signal.aborted) {
+    await captureBeforeMutation({
+      scope: 'turn',
+      conversationId: args.conversationId,
+      assistantMessageId: args.assistantMessageId,
+      workspaceRoot: args.workspaceRoot,
+      toolName: tc.name,
+      args: tc.arguments,
+    });
+  }
   const startedAt = Date.now();
+  const auditDecision = override ? 'prompt-allowed-partial' : outcomeToAuditDecision(outcome);
   try {
-    const output = await registry.execute(tc.name, tc.arguments, {
+    const output = await registry.execute(execName, execArgs, {
       workspaceRoot: args.workspaceRoot,
       signal: args.signal,
       logger: {
-        info: (msg, meta) => logger.info({ tool: tc.name, meta }, msg),
-        error: (msg, meta) => logger.error({ tool: tc.name, meta }, msg),
+        info: (msg, meta) => logger.info({ tool: execName, meta }, msg),
+        error: (msg, meta) => logger.error({ tool: execName, meta }, msg),
       },
     });
     // Lane 6 — record diff-producing tool calls for replay / provenance.
-    if (isDiffProducingTool(tc.name) && !args.signal.aborted) {
+    if (isDiffProducingTool(execName) && !args.signal.aborted) {
       try {
-        const argsRecord = (tc.arguments ?? {}) as Record<string, unknown>;
+        const argsRecord = (execArgs ?? {}) as Record<string, unknown>;
         const filePath = typeof argsRecord.path === 'string' ? argsRecord.path : '<unknown>';
-        const diffText = buildDiffSummaryFromToolCall(tc.name, argsRecord, output);
+        const diffText = buildDiffSummaryFromToolCall(execName, argsRecord, output);
         recordAppliedDiff({
           conversationId: args.conversationId,
           messageId: args.assistantMessageId,
@@ -623,25 +770,27 @@ async function executeToolCall(
         });
       } catch (err) {
         logger.error(
-          { err, tool: tc.name, streamId: args.streamId },
+          { err, tool: execName, streamId: args.streamId },
           'failed to record applied diff',
         );
       }
     }
     auditToolCall(args, tc, {
+      input: auditInput,
       output,
       isError: false,
-      decision: outcomeToAuditDecision(outcome),
+      decision: auditDecision,
       durationMs: Date.now() - startedAt,
     });
     return { output, isError: false };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ err, tool: tc.name, streamId: args.streamId }, 'tool execution failed');
+    logger.error({ err, tool: execName, streamId: args.streamId }, 'tool execution failed');
     auditToolCall(args, tc, {
+      input: auditInput,
       output: msg,
       isError: true,
-      decision: outcomeToAuditDecision(outcome),
+      decision: auditDecision,
       durationMs: Date.now() - startedAt,
     });
     return { output: msg, isError: true };
@@ -663,6 +812,9 @@ function outcomeToAuditDecision(outcome: ApprovalOutcome): ToolCallAuditDecision
 }
 
 interface AuditPatch {
+  // When a per-hunk partial override executed, the recorded input is the
+  // override's write_file args (so the audit reflects what actually ran).
+  input?: unknown;
   output: unknown;
   isError: boolean;
   decision: ToolCallAuditDecision;
@@ -783,7 +935,7 @@ function auditToolCall(args: RunStreamArgs, tc: ToolCallEvent, patch: AuditPatch
     recordToolCall({
       messageId: args.assistantMessageId,
       toolName: tc.name,
-      input: tc.arguments,
+      input: patch.input !== undefined ? patch.input : tc.arguments,
       output: patch.output,
       decision: patch.decision,
       isError: patch.isError,

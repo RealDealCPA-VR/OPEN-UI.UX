@@ -30,6 +30,7 @@ const DECISION_LABELS: Record<ToolCallAuditDecision, string> = {
   'prompt-allowed': 'Prompt → allow once',
   'prompt-allowed-session': 'Prompt → session',
   'prompt-allowed-always': 'Prompt → always',
+  'prompt-allowed-partial': 'Prompt → partial hunks',
   denied: 'Denied',
 };
 

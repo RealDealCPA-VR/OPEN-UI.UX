@@ -14,8 +14,10 @@ function makeMsg(content: string, role: StoredMessage['role'] = 'assistant'): St
     modelId: null,
     inputTokens: null,
     outputTokens: null,
+    cachedInputTokens: null,
     costUsd: null,
     createdAt: new Date().toISOString(),
+    turnStatus: 'final',
   };
 }
 

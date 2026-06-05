@@ -7,6 +7,7 @@ import { isUtilityProcessAvailable, runSubagentInline, runSubagentInWorker } fro
 import { createWorktree, isGitRepo } from './worktrees';
 import { classifyRunnerError } from './runner-friendly-errors';
 import { runnerFriendlyErrorChannel } from '../../shared/ipc-types';
+import { createRunCheckpoint } from '../checkpoints/manager';
 
 export interface SpawnFromUiOptions {
   task: string;
@@ -52,6 +53,21 @@ export async function spawnFromUiAsync(opts: SpawnFromUiOptions): Promise<{ runI
     ...(ctx.repoRoot ? { worktreeRepoRoot: ctx.repoRoot } : {}),
   });
   active.set(runId, { controller });
+
+  // Unified checkpoint manager — pre-run rollback. Only in-place runs (NO
+  // worktreePath) get a per-run checkpoint; worktree runs keep the existing
+  // merge flow and create NO per-run checkpoint. Failure is non-fatal: the run
+  // proceeds, just without a restore point.
+  if (!ctx.worktreePath) {
+    try {
+      await createRunCheckpoint({ runId, workspaceRoot: opts.workspaceRoot });
+    } catch (err) {
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err), runId },
+        'spawn-from-ui: pre-run checkpoint failed; run will be non-restorable',
+      );
+    }
+  }
 
   void (async () => {
     const workRoot = ctx.worktreePath ?? opts.workspaceRoot;

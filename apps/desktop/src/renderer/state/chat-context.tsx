@@ -26,7 +26,16 @@ export interface AssistantDraft {
   error: string | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  cachedInputTokens: number | null;
   costUsd: number | null;
+}
+
+export interface QueuedMessage {
+  id: string;
+  providerId: string;
+  model: string;
+  text: string;
+  attachments: ChatAttachment[];
 }
 
 interface ChatContextValue {
@@ -39,6 +48,10 @@ interface ChatContextValue {
   error: string | null;
   loading: boolean;
   usage: ConversationUsage | null;
+  queued: QueuedMessage[];
+  interruptedConversationId: string | null;
+  enqueue(message: Omit<QueuedMessage, 'id'>): void;
+  removeQueued(id: string): void;
   selectConversation(id: string | null): void;
   createConversation(providerId: string | null, modelId: string | null): Promise<Conversation>;
   deleteConversation(id: string): Promise<void>;
@@ -61,9 +74,33 @@ interface ActiveStream {
   userMessageId: string;
   assistantMessageId: string;
   workspaceRoot: string;
+  // Crash-restore — set when this ref was rebuilt by chat.reattach() after a
+  // renderer reload. finalizeStream must NOT auto-fire the queue for these:
+  // only the window that performed chat:start owns the queue.
+  reattached?: boolean;
 }
 
 const EMPTY_MESSAGES: StoredMessage[] = [];
+
+function draftFromPartial(partial: StoredMessage): AssistantDraft {
+  const blocks: ContentBlock[] =
+    partial.contentBlocks && partial.contentBlocks.length > 0
+      ? partial.contentBlocks
+      : partial.content.length > 0
+        ? [{ type: 'text', text: partial.content }]
+        : [];
+  return {
+    messageId: partial.id,
+    text: partial.content,
+    blocks,
+    done: false,
+    error: null,
+    inputTokens: partial.inputTokens,
+    outputTokens: partial.outputTokens,
+    cachedInputTokens: partial.cachedInputTokens,
+    costUsd: partial.costUsd,
+  };
+}
 
 function appendDeltaBlock(blocks: ContentBlock[], delta: string): ContentBlock[] {
   const lastIdx = blocks.length - 1;
@@ -86,10 +123,18 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
   const [streamWorkspaceRoot, setStreamWorkspaceRoot] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [queued, setQueued] = useState<QueuedMessage[]>([]);
+  const [interruptedConversationId, setInterruptedConversationId] = useState<string | null>(null);
+  const reattachedConvRef = useRef<Set<string>>(new Set());
 
   const activeStreamRef = useRef<ActiveStream | null>(null);
   const pendingDeltaRef = useRef<string>('');
   const deltaFlushRafRef = useRef<number | null>(null);
+  const queueIdRef = useRef(0);
+  // Holds the latest send() so finalizeStream can auto-fire the queue head
+  // without re-subscribing the chat event listener on every send identity change.
+  const sendRef = useRef<ChatContextValue['send'] | null>(null);
+  const queuedRef = useRef<QueuedMessage[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,13 +180,69 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
     };
   }, [activeId]);
 
+  // Crash-restore — once conversations are loaded, ask main which turns are
+  // still live (renderer reload) or were interrupted by a hard crash. For the
+  // active conversation: a LIVE entry rebuilds the draft + activeStreamRef
+  // (reattached) and flips streaming on so the existing onEvent listener
+  // resumes deltas; an INTERRUPTED entry arms a one-shot banner. Never auto-
+  // fires the queue and never starts a second stream.
+  useEffect(() => {
+    if (conversations === null || !activeId) return;
+    if (reattachedConvRef.current.has(activeId)) return;
+    if (activeStreamRef.current?.conversationId === activeId) return;
+    const reattach = window.opencodex.chat.reattach;
+    if (!reattach) return;
+    const targetId = activeId;
+    reattachedConvRef.current.add(targetId);
+    let cancelled = false;
+    void reattach({ conversationId: targetId })
+      .then((res) => {
+        if (cancelled) return;
+        if (res.live && res.streamId && res.assistantMessageId) {
+          activeStreamRef.current = {
+            streamId: res.streamId,
+            conversationId: targetId,
+            userMessageId: '',
+            assistantMessageId: res.assistantMessageId,
+            workspaceRoot: '',
+            reattached: true,
+          };
+          setDraft(res.partial ? draftFromPartial(res.partial) : null);
+          setStreaming(true);
+          setError(null);
+          return;
+        }
+        if (!res.live && res.assistantMessageId) {
+          setInterruptedConversationId(targetId);
+        }
+      })
+      .catch(() => {
+        // Reattach is advisory; a failure just means no resume affordance.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversations, activeId]);
+
   // Lane 15 — pair suggestions engine wants to scope by active conversation.
   useEffect(() => {
     void window.opencodex.pair?.setActiveConversation({ conversationId: activeId }).catch(() => {});
   }, [activeId]);
 
+  // A queued follow-up is bound to whatever conversation was active when it was
+  // typed; drop the queue whenever the active conversation changes or is deleted.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQueued([]);
+  }, [activeId]);
+
+  useEffect(() => {
+    queuedRef.current = queued;
+  }, [queued]);
+
   const finalizeStream = useCallback(async (errorMessage: string | null): Promise<void> => {
     const stream = activeStreamRef.current;
+    const wasReattached = stream?.reattached === true;
     activeStreamRef.current = null;
     setStreaming(false);
     setStreamWorkspaceRoot(null);
@@ -164,7 +265,25 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
     } finally {
       setDraft(null);
     }
-    if (errorMessage) setError(errorMessage);
+    if (errorMessage) {
+      setError(errorMessage);
+      return;
+    }
+    // Reattached streams belong to the window that performed chat:start; the
+    // reattaching window must not auto-fire its own queue when one resolves.
+    if (wasReattached) return;
+    // Clean done — fire the FIFO head of the queue as the next turn, carrying
+    // its captured provider/model/attachments. Error/cancel preserve the queue.
+    const head = queuedRef.current[0];
+    if (head) {
+      setQueued((prev) => prev.slice(1));
+      void sendRef.current?.({
+        providerId: head.providerId,
+        modelId: head.model,
+        userMessage: head.text,
+        ...(head.attachments.length > 0 ? { attachments: head.attachments } : {}),
+      });
+    }
   }, []);
 
   const flushPendingDelta = useCallback((): void => {
@@ -232,6 +351,7 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
               ...prev,
               inputTokens: event.inputTokens,
               outputTokens: event.outputTokens,
+              cachedInputTokens: event.cachedInputTokens ?? prev.cachedInputTokens,
               costUsd: event.costUsd ?? prev.costUsd,
             };
           case 'done':
@@ -251,6 +371,7 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
     setActiveId(id);
     setDraft(null);
     setError(null);
+    setInterruptedConversationId(null);
   }, []);
 
   const createConversation = useCallback(
@@ -318,6 +439,7 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
       }
       setStreaming(true);
       setError(null);
+      setInterruptedConversationId((prev) => (prev === conversationId ? null : prev));
       try {
         const result = await window.opencodex.chat.start({
           conversationId,
@@ -346,6 +468,7 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
           error: null,
           inputTokens: null,
           outputTokens: null,
+          cachedInputTokens: null,
           costUsd: null,
         });
       } catch (err) {
@@ -357,6 +480,20 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
     },
     [activeId],
   );
+
+  useEffect(() => {
+    sendRef.current = send;
+  }, [send]);
+
+  const enqueue = useCallback((message: Omit<QueuedMessage, 'id'>): void => {
+    queueIdRef.current += 1;
+    const id = `q${queueIdRef.current}`;
+    setQueued((prev) => [...prev, { ...message, id }]);
+  }, []);
+
+  const removeQueued = useCallback((id: string): void => {
+    setQueued((prev) => prev.filter((q) => q.id !== id));
+  }, []);
 
   const cancel = useCallback(async (): Promise<void> => {
     const stream = activeStreamRef.current;
@@ -381,6 +518,10 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
       error,
       loading: conversations === null,
       usage,
+      queued,
+      interruptedConversationId,
+      enqueue,
+      removeQueued,
       selectConversation,
       createConversation,
       deleteConversation,
@@ -399,6 +540,10 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
       streamWorkspaceRoot,
       error,
       usage,
+      queued,
+      interruptedConversationId,
+      enqueue,
+      removeQueued,
       selectConversation,
       createConversation,
       deleteConversation,

@@ -178,6 +178,15 @@ export function AgentRunDrawer({
     setShowRawError(false);
   }, [run.id]);
 
+  useEffect(() => {
+    if (run.seen) return;
+    const bridge = getBridge();
+    if (!bridge) return;
+    void bridge.agent.markRunsSeen([run.id]).catch(() => {
+      // Non-fatal — badge will clear on next interaction.
+    });
+  }, [run.id, run.seen]);
+
   const handleRespawn = useCallback(
     async (mode: 'same' | 'internal') => {
       setRespawnBusy(mode);
@@ -378,6 +387,8 @@ export function AgentRunDrawer({
             <span>Stopped: {stopReasonLabel(run.stopReason)}</span>
           </div>
         </header>
+
+        {run.worktreePath === null && <RunCheckpointRestoreBar runId={run.id} />}
 
         {run.stopReason === 'runner_not_installed' && (
           <div className="agent-run-drawer-section agent-run-drawer-callout">
@@ -647,6 +658,76 @@ function ToolEventRow({ idx, evt, startedAt, expanded }: ToolEventRowProps): JSX
         </div>
       )}
     </>
+  );
+}
+
+interface CheckpointsBridge {
+  listForRun: (
+    runId: string,
+  ) => Promise<{ items: Array<{ checkpoint: { id: string; status: string } }> }>;
+  restore: (checkpointId: string) => Promise<unknown>;
+  onChanged: (listener: () => void) => () => void;
+}
+
+function checkpointsBridge(): CheckpointsBridge | null {
+  const bridge = (window as unknown as { opencodex?: { checkpoints?: CheckpointsBridge } })
+    .opencodex;
+  return bridge?.checkpoints ?? null;
+}
+
+function RunCheckpointRestoreBar({ runId }: { runId: string }): JSX.Element | null {
+  const [checkpointId, setCheckpointId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(() => {
+    const bridge = checkpointsBridge();
+    if (!bridge) return;
+    void bridge
+      .listForRun(runId)
+      .then((res) => {
+        const active = res.items.find((i) => i.checkpoint.status === 'active');
+        setCheckpointId(active ? active.checkpoint.id : null);
+      })
+      .catch(() => setCheckpointId(null));
+  }, [runId]);
+
+  useEffect(() => {
+    refresh();
+    const bridge = checkpointsBridge();
+    if (!bridge) return;
+    const off = bridge.onChanged(() => refresh());
+    return () => off();
+  }, [refresh]);
+
+  const onRestore = useCallback(() => {
+    if (!checkpointId) return;
+    const bridge = checkpointsBridge();
+    if (!bridge) return;
+    setBusy(true);
+    void Promise.resolve(bridge.restore(checkpointId))
+      .catch(() => undefined)
+      .finally(() => {
+        setBusy(false);
+        refresh();
+      });
+  }, [checkpointId, refresh]);
+
+  if (!checkpointId) return null;
+
+  return (
+    <div className="checkpoint-restore-bar" data-testid="checkpoint-restore-run">
+      <span className="checkpoint-restore-bar-label">This run edited your workspace in place.</span>
+      <button
+        type="button"
+        className="checkpoint-restore-btn"
+        aria-label="Restore workspace to before this run"
+        title="Reverts the in-place edits this run made to your workspace. Shell-side edits are not tracked."
+        disabled={busy}
+        onClick={onRestore}
+      >
+        {busy ? 'Restoring…' : 'Restore workspace to before this run'}
+      </button>
+    </div>
   );
 }
 

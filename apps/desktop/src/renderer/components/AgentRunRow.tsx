@@ -60,6 +60,9 @@ export function AgentRunRow({
           aria-label={`${expanded ? 'Collapse' : 'Expand'} subagent run ${run.id}`}
           onClick={onToggle}
         >
+          {run.seen === false && run.status !== 'running' && (
+            <span className="unread-dot" aria-label="Unread" title="Unread" />
+          )}
           <span className="audit-row-time">{new Date(run.startedAt).toLocaleTimeString()}</span>
           <span className="audit-row-tool">
             <code className="approvals-tool-name">{truncate(run.task, 80)}</code>

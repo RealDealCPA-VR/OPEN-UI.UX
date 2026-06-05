@@ -5,6 +5,7 @@ import { BudgetSpendIndicator } from './BudgetSpendIndicator';
 import {
   computeTokenMeterSegments,
   findRunningToolName,
+  formatCacheSavings,
   formatCostUsd,
   formatTokens,
   workspaceBasename,
@@ -52,6 +53,16 @@ export function StatusBar(): JSX.Element {
   const costText = (() => {
     if (draft && draft.costUsd !== null) return formatCostUsd(draft.costUsd);
     if (usage && usage.totalCostUsd > 0) return formatCostUsd(usage.totalCostUsd);
+    return null;
+  })();
+
+  const cacheText = (() => {
+    if (draft && draft.cachedInputTokens !== null) {
+      return formatCacheSavings(draft.cachedInputTokens, draft.inputTokens);
+    }
+    if (usage && usage.messageCount > 0) {
+      return formatCacheSavings(usage.totalCachedInputTokens, usage.totalInputTokens);
+    }
     return null;
   })();
 
@@ -117,6 +128,14 @@ export function StatusBar(): JSX.Element {
           <span className="statusbar-tokens" title="Tokens since session start">
             <span className="statusbar-mono">{tokensText}</span>
             {costText ? <span className="statusbar-mono"> · {costText}</span> : null}
+          </span>
+        ) : null}
+        {cacheText ? (
+          <span
+            className="statusbar-cache"
+            title="Prompt-cache hit (cached input tokens · share of input)"
+          >
+            <span className="statusbar-mono">{cacheText}</span>
           </span>
         ) : null}
         <BudgetSpendIndicator />

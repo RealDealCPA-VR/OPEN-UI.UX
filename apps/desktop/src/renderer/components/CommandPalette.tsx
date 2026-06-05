@@ -11,8 +11,10 @@ import {
   groupByCategory,
   mergePaletteResults,
   type PaletteCategory,
+  type PaletteConversation,
   type PaletteEntry,
   type PaletteMcpTool,
+  type PaletteWorkspaceTarget,
 } from './command-palette-derive';
 
 export interface CommandPaletteProps {
@@ -26,6 +28,8 @@ const SEARCH_LIMIT = 20;
 
 const CATEGORY_LABELS: Record<PaletteCategory, string> = {
   action: 'Actions',
+  conversation: 'Conversations',
+  'switch-workspace': 'Projects',
   message: 'Messages',
   file: 'Files',
   skill: 'Skills',
@@ -71,6 +75,8 @@ export function CommandPalette({
   const [fileHits, setFileHits] = useState<CodebaseSearchHit[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [mcpTools, setMcpTools] = useState<PaletteMcpTool[]>([]);
+  const [conversations, setConversations] = useState<PaletteConversation[]>([]);
+  const [workspaceTargets, setWorkspaceTargets] = useState<PaletteWorkspaceTarget[]>([]);
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -88,6 +94,8 @@ export function CommandPalette({
       setDebouncedQuery('');
       setMessageHits([]);
       setFileHits([]);
+      setConversations([]);
+      setWorkspaceTargets([]);
       setActiveIndex(0);
     });
   }, [open]);
@@ -108,7 +116,32 @@ export function CommandPalette({
       void bridge.workspace
         .get()
         .then((s) => {
-          if (!cancelled) setWorkspaceRoot(s.active);
+          if (cancelled) return;
+          setWorkspaceRoot(s.active);
+          setWorkspaceTargets(s.history.filter((p) => p !== s.active).map((path) => ({ path })));
+        })
+        .catch(() => undefined);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const bridge = getBridge();
+    if (!bridge) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      void bridge.conversations
+        .list()
+        .then((list) => {
+          if (cancelled) return;
+          const sorted = [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+          setConversations(
+            sorted.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updatedAt })),
+          );
         })
         .catch(() => undefined);
     });
@@ -231,8 +264,19 @@ export function CommandPalette({
       mergePaletteResults(messageHits, fileHits, skills, debouncedQuery, {
         mcpTools,
         actions,
+        conversations,
+        workspaces: workspaceTargets,
       }),
-    [messageHits, fileHits, skills, debouncedQuery, mcpTools, actions],
+    [
+      messageHits,
+      fileHits,
+      skills,
+      debouncedQuery,
+      mcpTools,
+      actions,
+      conversations,
+      workspaceTargets,
+    ],
   );
 
   const navEntries = useMemo(() => flattenForKeyboardNav(entries), [entries]);
@@ -252,6 +296,18 @@ export function CommandPalette({
             detail: { conversationId: hit.conversationId, messageId: hit.messageId },
           }),
         );
+        onClose();
+        return;
+      }
+      if (entry.conversation) {
+        navigate(`/chat?conversationId=${encodeURIComponent(entry.conversation.id)}`);
+        onClose();
+        return;
+      }
+      if (entry.workspaceTarget) {
+        const { path } = entry.workspaceTarget;
+        const bridge = getBridge();
+        if (bridge) void bridge.workspace.setActive({ path }).catch(() => undefined);
         onClose();
         return;
       }
