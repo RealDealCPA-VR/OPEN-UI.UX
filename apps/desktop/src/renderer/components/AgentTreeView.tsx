@@ -171,12 +171,14 @@ function AgentTreeRow({ node, now, paused, onSelectRun }: AgentTreeRowProps): JS
           gap: 8,
           padding: '6px 8px',
           border: '1px solid var(--border-row-divider)',
-          borderRadius: 6,
+          borderRadius: 'var(--radius-sm)',
           background: 'var(--bg-panel)',
+          boxShadow: 'var(--shadow-card)',
         }}
       >
         <button
           type="button"
+          className="btn"
           aria-label={hasChildren ? (expanded ? 'Collapse' : 'Expand') : 'Leaf node'}
           onClick={() => setExpanded((v) => !v)}
           disabled={!hasChildren}
@@ -185,11 +187,38 @@ function AgentTreeRow({ node, now, paused, onSelectRun }: AgentTreeRowProps): JS
             border: 'none',
             color: 'var(--text-faint)',
             cursor: hasChildren ? 'pointer' : 'default',
-            fontSize: 11,
+            padding: 0,
             width: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
-          {hasChildren ? (expanded ? '▾' : '▸') : '·'}
+          {hasChildren ? (
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 10 10"
+              fill="none"
+              aria-hidden="true"
+              style={{
+                transition: `transform var(--duration-fast, 100ms) var(--ease, cubic-bezier(.4,0,.2,1))`,
+                transform: expanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+              }}
+            >
+              <path
+                d="M1.5 3.5L5 7L8.5 3.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : (
+            <span aria-hidden="true" style={{ fontSize: 11 }}>
+              ·
+            </span>
+          )}
         </button>
         <span className={statusPillClass(run.status)} aria-label={statusLabel(run.status)}>
           <span className="pill-icon" aria-hidden="true">
@@ -204,7 +233,7 @@ function AgentTreeRow({ node, now, paused, onSelectRun }: AgentTreeRowProps): JS
         )}
         <button
           type="button"
-          className="agent-tree-task"
+          className="agent-tree-task btn"
           onClick={() => onSelectRun(node.run.id)}
           title="Open run detail"
           style={{
@@ -262,6 +291,7 @@ function AgentTreeRow({ node, now, paused, onSelectRun }: AgentTreeRowProps): JS
               borderRadius: 4,
               background: 'var(--accent-soft-bg)',
               color: 'var(--accent-text)',
+              border: '1px solid var(--accent-soft-border)',
             }}
             title="Currently running tool"
           >
@@ -314,7 +344,7 @@ function AgentTreeRow({ node, now, paused, onSelectRun }: AgentTreeRowProps): JS
           style={{
             margin: '4px 0 0 32px',
             border: '1px solid var(--border-row-divider)',
-            borderRadius: 6,
+            borderRadius: 'var(--radius-sm)',
             background: 'var(--bg-sunken)',
             padding: 8,
             fontFamily: 'var(--font-mono, ui-monospace, monospace)',

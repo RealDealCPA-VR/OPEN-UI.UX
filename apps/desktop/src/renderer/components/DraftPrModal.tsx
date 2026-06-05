@@ -108,42 +108,33 @@ export function DraftPrModal({
             </>
           ) : null}
         </p>
-        {generating && <p>Drafting with provider…</p>}
+        {generating && <p className="approvals-loading">Generating pull request draft…</p>}
         {error && <p className="approvals-save-error">{error}</p>}
         {draft && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Title</span>
+            <div className="field">
+              <label className="field-label" htmlFor="draft-pr-title">
+                Title
+              </label>
               <input
+                id="draft-pr-title"
                 type="text"
                 value={draft.title}
                 onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-                style={{
-                  padding: '6px 8px',
-                  background: 'var(--bg-sunken)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 4,
-                  color: 'var(--text-primary)',
-                }}
               />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Body</span>
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="draft-pr-body">
+                Body
+              </label>
               <textarea
+                id="draft-pr-body"
                 value={draft.body}
                 onChange={(e) => setDraft({ ...draft, body: e.target.value })}
                 rows={16}
-                style={{
-                  padding: '8px',
-                  background: 'var(--bg-sunken)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 4,
-                  color: 'var(--text-primary)',
-                  fontFamily: 'var(--font-mono, monospace)',
-                  fontSize: 13,
-                }}
+                style={{ fontFamily: 'var(--font-mono)' }}
               />
-            </label>
+            </div>
           </div>
         )}
         <div className="approval-modal-actions">

@@ -70,8 +70,8 @@ export function RunnersStep({
             return (
               <li key={runner.id}>
                 <div className="onboarding-provider-row">
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div className="onboarding-runner-row-body">
+                    <div className="onboarding-runner-row-head">
                       <span className="pill">{sourceLabel}</span>
                       <strong>{runner.displayName}</strong>
                       {installed ? (
@@ -85,12 +85,7 @@ export function RunnersStep({
                       )}
                     </div>
                     {!installed && (
-                      <span
-                        className="settings-section-desc"
-                        style={{ marginLeft: 0, fontSize: 12 }}
-                      >
-                        {describeRunner(runner)}
-                      </span>
+                      <span className="settings-section-desc">{describeRunner(runner)}</span>
                     )}
                   </div>
                   {!installed && (

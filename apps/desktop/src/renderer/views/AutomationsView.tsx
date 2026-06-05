@@ -260,7 +260,22 @@ export function AutomationsView(): JSX.Element {
             onClick={() => setEditing('new')}
             disabled={editing !== null}
           >
-            + New automation
+            <svg
+              aria-hidden="true"
+              width="11"
+              height="11"
+              viewBox="0 0 11 11"
+              fill="none"
+              style={{ marginRight: 6, verticalAlign: 'middle', flexShrink: 0 }}
+            >
+              <path
+                d="M5.5 1v9M1 5.5h9"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+              />
+            </svg>
+            New automation
           </button>
         </div>
       </header>
@@ -272,12 +287,7 @@ export function AutomationsView(): JSX.Element {
         <div
           role="tablist"
           aria-label="Filter automations by trigger"
-          style={{
-            display: 'flex',
-            gap: 6,
-            flexWrap: 'wrap',
-            marginBottom: 12,
-          }}
+          className="automation-filter-bar"
         >
           {TRIGGER_FILTERS.map((f) => {
             const count = triggerCounts[f];
@@ -290,16 +300,7 @@ export function AutomationsView(): JSX.Element {
                 aria-selected={active}
                 disabled={f !== 'all' && count === 0}
                 onClick={() => setTriggerFilter(f)}
-                style={{
-                  padding: '4px 12px',
-                  borderRadius: 999,
-                  border: `1px solid ${active ? 'var(--accent-border)' : 'var(--border-strong)'}`,
-                  background: active ? 'var(--accent-soft-bg)' : 'transparent',
-                  color: active ? 'var(--accent-text)' : 'var(--text-secondary)',
-                  fontSize: 12,
-                  cursor: f !== 'all' && count === 0 ? 'not-allowed' : 'pointer',
-                  opacity: f !== 'all' && count === 0 ? 0.4 : 1,
-                }}
+                className={`automation-filter-chip${active ? ' automation-filter-chip--active' : ''}`}
               >
                 {TRIGGER_FILTER_LABEL[f]} ({count})
               </button>
@@ -309,7 +310,22 @@ export function AutomationsView(): JSX.Element {
       )}
 
       {tasks === null ? (
-        <p className="audit-empty">Loading…</p>
+        <ul className="audit-list" aria-label="Loading automations" aria-busy="true">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <li
+              key={i}
+              className="settings-skeleton-pulse"
+              style={{
+                height: 64,
+                borderRadius: 'var(--radius)',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                marginBottom: 8,
+                listStyle: 'none',
+              }}
+            />
+          ))}
+        </ul>
       ) : tasks.length === 0 ? (
         <div
           style={{
@@ -323,30 +339,13 @@ export function AutomationsView(): JSX.Element {
             No automations yet. Start from a template, or click <strong>New automation</strong> for
             a blank one.
           </p>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-              gap: 12,
-            }}
-          >
+          <div className="automation-template-grid">
             {TEMPLATES.map((tpl) => (
               <button
                 key={tpl.name}
                 type="button"
                 onClick={() => applyTemplate(tpl)}
-                style={{
-                  textAlign: 'left',
-                  border: '1px solid var(--border-strong)',
-                  borderRadius: 8,
-                  padding: '12px 14px',
-                  background: 'var(--bg-elevated)',
-                  color: 'var(--text-primary)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 6,
-                  cursor: 'pointer',
-                }}
+                className="template-card-btn"
               >
                 <span style={{ fontWeight: 600, fontSize: 13 }}>{tpl.name}</span>
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>

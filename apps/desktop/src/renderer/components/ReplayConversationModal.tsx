@@ -103,7 +103,8 @@ export function ReplayConversationModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.4)',
+        background: 'var(--shadow-overlay)',
+        backdropFilter: 'var(--glass-blur-soft)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -117,7 +118,7 @@ export function ReplayConversationModal({
         style={{
           background: 'var(--bg-panel)',
           border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-lg, 12px)',
+          borderRadius: 'var(--radius-xl)',
           padding: 20,
           width: 'min(620px, 90vw)',
           maxHeight: '90vh',
@@ -177,10 +178,10 @@ export function ReplayConversationModal({
             <div
               role="alert"
               style={{
-                background: 'var(--danger-bg, #fee)',
-                border: '1px solid var(--danger-border, #fcc)',
-                color: 'var(--danger, #900)',
-                borderRadius: 6,
+                background: 'var(--danger-bg)',
+                border: '1px solid var(--danger-border)',
+                color: 'var(--danger)',
+                borderRadius: 'var(--radius-sm)',
                 padding: 8,
                 fontSize: 13,
               }}
@@ -194,7 +195,7 @@ export function ReplayConversationModal({
               style={{
                 background: 'var(--bg-elevated)',
                 border: '1px solid var(--border)',
-                borderRadius: 6,
+                borderRadius: 'var(--radius-sm)',
                 padding: 10,
               }}
             >
@@ -212,7 +213,7 @@ export function ReplayConversationModal({
                   style={{
                     background: 'var(--bg-sunken)',
                     height: 6,
-                    borderRadius: 4,
+                    borderRadius: 'var(--radius-2xs)',
                     overflow: 'hidden',
                   }}
                 >
@@ -234,7 +235,7 @@ export function ReplayConversationModal({
               style={{
                 background: 'var(--bg-elevated)',
                 border: '1px solid var(--border)',
-                borderRadius: 6,
+                borderRadius: 'var(--radius-sm)',
                 padding: 12,
                 display: 'grid',
                 gap: 8,

@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
-  <title id="title">Subagent tree view — placeholder</title>
-  <desc id="desc">Placeholder hero asset for the OpenCodex landing page. Replace with a real screenshot of the subagent tree view (AgentRunDrawer) before the v0.1 marketing push.</desc>
+  <title id="title">Subagent tree view</title>
+  <desc id="desc">Hero asset for the OpenCodex landing page showing the subagent tree view with a root agent spawning four parallel worker agents, each in its own git worktree.</desc>
 
   <defs>
+    <!-- ── Background / surface gradients ── -->
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#0f1117"/>
       <stop offset="1" stop-color="#161a23"/>
@@ -16,116 +17,186 @@
       <stop offset="0" stop-color="#7c5cff"/>
       <stop offset="1" stop-color="#3ecbff"/>
     </linearGradient>
+
+    <!-- ── Named palette ── -->
+    <!-- surface tokens -->
+    <!-- clr-bg-base   : #0f1117  (window bg) -->
+    <!-- clr-panel     : #1b1f2a  (panel top) -->
+    <!-- clr-panel-bot : #141823  (panel bottom) -->
+    <!-- clr-card      : #202637  (run-list / worker cards) -->
+    <!-- clr-log       : #161a25  (log strip) -->
+    <!-- clr-card-str  : #2f3850  (card stroke) -->
+    <!-- clr-panel-str : #2a3142  (panel stroke) -->
+    <!-- clr-icon-fill : #3a4252  (idle icon fill) -->
+    <!-- text tokens -->
+    <!-- clr-text-hi   : #e6ecf5  (high-emphasis text) -->
+    <!-- clr-text-body : #cdd5e0  (body text) -->
+    <!-- clr-text-dim  : #9aa3b2  (dim / meta text) -->
+    <!-- clr-text-log  : #7c8595  (log text) -->
+    <!-- status tokens -->
+    <!-- clr-blue      : #3ecbff  (running / info) -->
+    <!-- clr-purple    : #7c5cff  (internal) -->
+    <!-- clr-green     : #28c840  (success / done) -->
+    <!-- clr-yellow    : #febc2e  (pending / warn) -->
+    <!-- macOS traffic lights -->
+    <!-- clr-mac-red   : #ff5f57 -->
+    <!-- clr-mac-yel   : #febc2e -->
+    <!-- clr-mac-grn   : #28c840 -->
+
+    <!-- ── Panel drop-shadow filter ── -->
+    <filter id="panelShadow" x="-4%" y="-4%" width="108%" height="116%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+
+    <!-- ── Card drop-shadow (slightly lighter) ── -->
+    <filter id="cardShadow" x="-6%" y="-6%" width="112%" height="120%">
+      <feDropShadow dx="0" dy="1" stdDeviation="3" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+
+    <!-- ── Root-node accent glow ── -->
+    <filter id="accentGlow" x="-8%" y="-16%" width="116%" height="132%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#7c5cff" flood-opacity="0.40"/>
+    </filter>
   </defs>
 
+  <!-- Window background -->
   <rect width="1280" height="720" fill="url(#bg)"/>
 
-  <!-- title strip -->
-  <rect x="40" y="40" width="1200" height="48" rx="8" fill="url(#panel)" stroke="#2a3142" stroke-width="1"/>
+  <!-- ── Title / toolbar strip ── -->
+  <rect x="40" y="40" width="1200" height="48" rx="8" fill="url(#panel)" filter="url(#panelShadow)"/>
   <circle cx="68" cy="64" r="6" fill="#ff5f57"/>
   <circle cx="88" cy="64" r="6" fill="#febc2e"/>
   <circle cx="108" cy="64" r="6" fill="#28c840"/>
   <text x="140" y="69" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" fill="#9aa3b2">opencodex — Agent / Subagent tree</text>
 
-  <!-- nav rail -->
-  <rect x="40" y="104" width="56" height="576" rx="8" fill="url(#panel)" stroke="#2a3142" stroke-width="1"/>
-  <g fill="#3a4252">
-    <rect x="56" y="124" width="24" height="24" rx="6"/>
-    <rect x="56" y="160" width="24" height="24" rx="6"/>
-    <rect x="56" y="196" width="24" height="24" rx="6"/>
-    <rect x="56" y="232" width="24" height="24" rx="6"/>
-    <rect x="56" y="268" width="24" height="24" rx="6"/>
-    <rect x="56" y="304" width="24" height="24" rx="6"/>
+  <!-- ── Nav rail ── -->
+  <rect x="40" y="104" width="56" height="576" rx="8" fill="url(#panel)" filter="url(#panelShadow)"/>
+
+  <!-- Nav icon silhouettes (stroked, not filled rectangles) -->
+  <!-- icon-0: home / grid -->
+  <g stroke="#4a5568" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Home icon -->
+    <path d="M60 131 L68 124 L76 131 L76 145 L64 145 L64 138 L72 138 L72 145 L76 145" transform="translate(0,0)"/>
+    <!-- layers / tree icon -->
+    <rect x="58" y="160" width="8" height="6" rx="1.5"/>
+    <rect x="70" y="160" width="8" height="6" rx="1.5"/>
+    <rect x="58" y="170" width="8" height="6" rx="1.5"/>
+    <rect x="70" y="170" width="8" height="6" rx="1.5"/>
+    <!-- file / doc icon -->
+    <path d="M60 196 L60 218 L76 218 L76 200 L72 196 Z"/>
+    <path d="M72 196 L72 200 L76 200"/>
+    <line x1="64" y1="205" x2="72" y2="205"/>
+    <line x1="64" y1="209" x2="72" y2="209"/>
+    <line x1="64" y1="213" x2="70" y2="213"/>
+    <!-- terminal icon -->
+    <rect x="58" y="232" width="20" height="14" rx="2"/>
+    <path d="M62 238 L66 241 L62 244"/>
+    <line x1="68" y1="244" x2="73" y2="244"/>
+    <!-- settings / gear icon -->
+    <circle cx="68" cy="279" r="4"/>
+    <circle cx="68" cy="279" r="7" stroke-dasharray="3.5 2.5"/>
+    <!-- plugin / puzzle icon -->
+    <path d="M60 305 L60 317 L66 317 L66 320 Q68 322 70 320 L70 317 L76 317 L76 305 L70 305 L70 302 Q68 300 66 302 L66 305 Z"/>
   </g>
 
-  <!-- context pane -->
-  <rect x="108" y="104" width="244" height="576" rx="8" fill="url(#panel)" stroke="#2a3142" stroke-width="1"/>
+  <!-- Active indicator on icon-0 -->
+  <rect x="38" y="124" width="3" height="18" rx="1.5" fill="#7c5cff"/>
+
+  <!-- ── Context / runs pane ── -->
+  <rect x="108" y="104" width="244" height="576" rx="8" fill="url(#panel)" filter="url(#panelShadow)"/>
   <text x="128" y="134" font-family="system-ui, -apple-system, Segoe UI, Roboto, sans-serif" font-size="13" fill="#cdd5e0" font-weight="600">Active runs (3)</text>
 
   <g font-family="system-ui, sans-serif" font-size="12" fill="#9aa3b2">
-    <rect x="124" y="148" width="212" height="64" rx="8" fill="#202637" stroke="#2f3850"/>
+    <rect x="124" y="148" width="212" height="64" rx="8" fill="#202637" filter="url(#cardShadow)"/>
     <circle cx="140" cy="170" r="5" fill="#3ecbff"/>
     <text x="156" y="174" fill="#e6ecf5">run-94c2 · refactor auth</text>
     <text x="156" y="192" font-size="11">claude-code · worktree · 12k tok</text>
 
-    <rect x="124" y="220" width="212" height="64" rx="8" fill="#202637" stroke="#2f3850"/>
+    <rect x="124" y="220" width="212" height="64" rx="8" fill="#202637" filter="url(#cardShadow)"/>
     <circle cx="140" cy="242" r="5" fill="#7c5cff"/>
     <text x="156" y="246" fill="#e6ecf5">run-a13f · add dark mode</text>
     <text x="156" y="264" font-size="11">internal · worktree · 8.4k tok</text>
 
-    <rect x="124" y="292" width="212" height="64" rx="8" fill="#202637" stroke="#2f3850"/>
+    <rect x="124" y="292" width="212" height="64" rx="8" fill="#202637" filter="url(#cardShadow)"/>
     <circle cx="140" cy="314" r="5" fill="#28c840"/>
     <text x="156" y="318" fill="#e6ecf5">run-7e02 · update tests</text>
     <text x="156" y="336" font-size="11">aider · worktree · 4.1k tok</text>
   </g>
 
-  <!-- main: subagent tree -->
-  <rect x="364" y="104" width="876" height="576" rx="8" fill="url(#panel)" stroke="#2a3142" stroke-width="1"/>
+  <!-- ── Main: subagent tree ── -->
+  <rect x="364" y="104" width="876" height="576" rx="8" fill="url(#panel)" filter="url(#panelShadow)"/>
   <text x="384" y="134" font-family="system-ui, sans-serif" font-size="14" fill="#e6ecf5" font-weight="700">Subagent tree — run-94c2</text>
   <text x="384" y="154" font-family="system-ui, sans-serif" font-size="12" fill="#9aa3b2">root spawned 4 workers · each in its own git worktree · merges reviewable per worker</text>
 
-  <!-- root node -->
-  <g>
+  <!-- Root node (accent-bordered + glow) -->
+  <g filter="url(#accentGlow)">
     <rect x="560" y="180" width="240" height="60" rx="10" fill="#1f2638" stroke="url(#accent)" stroke-width="2"/>
-    <text x="580" y="206" font-family="system-ui, sans-serif" font-size="13" fill="#e6ecf5" font-weight="600">root · refactor auth</text>
-    <text x="580" y="226" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">claude-code · 12,431 tok · 00:04:12</text>
   </g>
+  <text x="580" y="206" font-family="system-ui, sans-serif" font-size="13" fill="#e6ecf5" font-weight="600">root · refactor auth</text>
+  <text x="580" y="226" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">claude-code · 12,431 tok · 00:04:12</text>
 
-  <!-- connectors -->
+  <!-- Tree connectors -->
   <g stroke="#3a4252" stroke-width="1.5" fill="none">
     <path d="M680 240 L680 290 L460 290 L460 340"/>
     <path d="M680 240 L680 290 L620 290 L620 340"/>
     <path d="M680 240 L680 290 L780 290 L780 340"/>
     <path d="M680 240 L680 290 L940 290 L940 340"/>
   </g>
-
-  <!-- worker nodes -->
-  <g font-family="system-ui, sans-serif" font-size="12" fill="#cdd5e0">
-    <rect x="364" y="340" width="192" height="92" rx="10" fill="#202637" stroke="#2f3850"/>
-    <circle cx="382" cy="362" r="5" fill="#3ecbff"/>
-    <text x="396" y="366" font-weight="600" fill="#e6ecf5">worker-1 · jwt</text>
-    <text x="380" y="388" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">claude-code · running</text>
-    <text x="380" y="406" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">3,204 tok · 8 tool calls</text>
-    <text x="380" y="424" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">diff: +124 -47</text>
-
-    <rect x="572" y="340" width="192" height="92" rx="10" fill="#202637" stroke="#2f3850"/>
-    <circle cx="590" cy="362" r="5" fill="#7c5cff"/>
-    <text x="604" y="366" font-weight="600" fill="#e6ecf5">worker-2 · session</text>
-    <text x="588" y="388" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">internal · running</text>
-    <text x="588" y="406" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">2,810 tok · 6 tool calls</text>
-    <text x="588" y="424" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">diff: +88 -22</text>
-
-    <rect x="780" y="340" width="192" height="92" rx="10" fill="#202637" stroke="#2f3850"/>
-    <circle cx="798" cy="362" r="5" fill="#28c840"/>
-    <text x="812" y="366" font-weight="600" fill="#e6ecf5">worker-3 · tests</text>
-    <text x="796" y="388" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">aider · awaiting merge</text>
-    <text x="796" y="406" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">3,892 tok · 14 tool calls</text>
-    <text x="796" y="424" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">diff: +201 -3</text>
-
-    <rect x="988" y="340" width="220" height="92" rx="10" fill="#202637" stroke="#2f3850"/>
-    <circle cx="1006" cy="362" r="5" fill="#febc2e"/>
-    <text x="1020" y="366" font-weight="600" fill="#e6ecf5">worker-4 · migration</text>
-    <text x="1004" y="388" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">opencode · approval pending</text>
-    <text x="1004" y="406" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">2,525 tok · 4 tool calls</text>
-    <text x="1004" y="424" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">diff: +57 -9</text>
+  <!-- Connector dots at branch points -->
+  <g fill="#3a4252">
+    <circle cx="460" cy="290" r="2.5"/>
+    <circle cx="620" cy="290" r="2.5"/>
+    <circle cx="780" cy="290" r="2.5"/>
+    <circle cx="940" cy="290" r="2.5"/>
   </g>
 
-  <!-- footer log strip -->
-  <rect x="384" y="468" width="836" height="184" rx="10" fill="#161a25" stroke="#2a3142"/>
+  <!-- ── Worker cards (all 192px wide, uniform padding) ── -->
+  <!-- Horizontal layout: workers at x=364,572,780,988; width=192 each; gap=16 -->
+  <g font-family="system-ui, sans-serif" font-size="12" fill="#cdd5e0">
+
+    <!-- worker-1: jwt (running, blue) -->
+    <rect x="364" y="340" width="192" height="92" rx="10" fill="#202637" filter="url(#cardShadow)"/>
+    <circle cx="382" cy="362" r="5" fill="#3ecbff"/>
+    <text x="396" y="366" font-weight="600" fill="#e6ecf5">worker-1 · jwt</text>
+    <text x="382" y="388" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">claude-code · running</text>
+    <text x="382" y="406" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">3,204 tok · 8 tool calls</text>
+    <text x="382" y="424" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">diff: +124 −47</text>
+
+    <!-- worker-2: session (running, purple) -->
+    <rect x="572" y="340" width="192" height="92" rx="10" fill="#202637" filter="url(#cardShadow)"/>
+    <circle cx="590" cy="362" r="5" fill="#7c5cff"/>
+    <text x="604" y="366" font-weight="600" fill="#e6ecf5">worker-2 · session</text>
+    <text x="590" y="388" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">internal · running</text>
+    <text x="590" y="406" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">2,810 tok · 6 tool calls</text>
+    <text x="590" y="424" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">diff: +88 −22</text>
+
+    <!-- worker-3: tests (done, green) -->
+    <rect x="780" y="340" width="192" height="92" rx="10" fill="#202637" filter="url(#cardShadow)"/>
+    <circle cx="798" cy="362" r="5" fill="#28c840"/>
+    <text x="812" y="366" font-weight="600" fill="#e6ecf5">worker-3 · tests</text>
+    <text x="798" y="388" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">aider · awaiting merge</text>
+    <text x="798" y="406" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">3,892 tok · 14 tool calls</text>
+    <text x="798" y="424" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">diff: +201 −3</text>
+
+    <!-- worker-4: migration (approval pending, yellow) — now 192px wide, matching peers -->
+    <rect x="988" y="340" width="192" height="92" rx="10" fill="#202637" filter="url(#cardShadow)"/>
+    <circle cx="1006" cy="362" r="5" fill="#febc2e"/>
+    <text x="1020" y="366" font-weight="600" fill="#e6ecf5">worker-4 · migration</text>
+    <text x="1006" y="388" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">opencode · approval pending</text>
+    <text x="1006" y="406" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">2,525 tok · 4 tool calls</text>
+    <text x="1006" y="424" font-family="ui-monospace, monospace" font-size="11" fill="#9aa3b2">diff: +57 −9</text>
+  </g>
+
+  <!-- ── Footer log strip ── -->
+  <rect x="384" y="468" width="836" height="184" rx="10" fill="#161a25" filter="url(#cardShadow)"/>
   <text x="404" y="494" font-family="system-ui, sans-serif" font-size="12" fill="#9aa3b2" font-weight="600">Live event log</text>
   <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#7c8595">
-    <text x="404" y="516">14:02:48  worker-1  tool_call  edit_file  src/auth/jwt.ts  +12 -3</text>
+    <text x="404" y="516">14:02:48  worker-1  tool_call  edit_file  src/auth/jwt.ts  +12 −3</text>
     <text x="404" y="534">14:02:51  worker-2  tool_call  write_file src/auth/session.ts  new</text>
     <text x="404" y="552">14:02:55  worker-3  tool_call  run_shell  pnpm test src/auth          ok</text>
     <text x="404" y="570">14:02:59  worker-4  approval   write_file db/migrations/0009.sql  prompt</text>
     <text x="404" y="588">14:03:02  worker-1  tool_call  grep       "jwt.verify"                 18 hits</text>
     <text x="404" y="606">14:03:06  worker-3  tool_call  run_shell  pnpm test:all                ok</text>
     <text x="404" y="624">14:03:11  root      decision   merge-review worker-3 → main           accepted</text>
-  </g>
-
-  <!-- placeholder watermark -->
-  <g opacity="0.5">
-    <rect x="380" y="664" width="860" height="36" rx="6" fill="#241a36" stroke="#7c5cff" stroke-dasharray="4 4"/>
-    <text x="400" y="688" font-family="system-ui, sans-serif" font-size="13" fill="#cdb6ff" font-weight="600">Placeholder — TODO: replace with a real screenshot of the AgentRunDrawer subagent tree view before v0.1 marketing.</text>
   </g>
 </svg>

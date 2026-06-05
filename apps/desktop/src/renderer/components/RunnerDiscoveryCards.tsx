@@ -25,10 +25,15 @@ const STYLES = `
     padding: 4px 2px 12px;
     margin: 0;
     list-style: none;
+    scroll-snap-type: x mandatory;
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 40px), transparent 100%);
+    mask-image: linear-gradient(to right, black calc(100% - 40px), transparent 100%);
   }
   .runner-discovery-row.runner-discovery-wrap {
     flex-wrap: wrap;
     overflow-x: visible;
+    -webkit-mask-image: none;
+    mask-image: none;
   }
   .runner-discovery-card {
     flex: 0 0 240px;
@@ -36,9 +41,15 @@ const STYLES = `
     flex-direction: column;
     gap: 8px;
     padding: 12px;
-    border: 1px solid var(--border, #2a2a32);
-    border-radius: 8px;
-    background: var(--bg-pill, rgba(255, 255, 255, 0.02));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-sunken);
+    box-shadow: var(--shadow-card);
+    scroll-snap-align: start;
+    transition: border-color var(--duration) var(--ease);
+  }
+  .runner-discovery-card:hover {
+    border-color: var(--border-strong);
   }
   .runner-discovery-card-head {
     display: flex;
@@ -52,7 +63,7 @@ const STYLES = `
   }
   .runner-discovery-card-desc {
     font-size: 12px;
-    color: var(--text-muted, #98a0aa);
+    color: var(--text-muted);
     line-height: 1.4;
     flex: 1;
   }

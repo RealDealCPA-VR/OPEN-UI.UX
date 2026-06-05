@@ -479,7 +479,11 @@ export function MergeReviewModal({
 
         {loadError && <p className="approvals-save-error">Failed to load diff: {loadError}</p>}
 
-        {!bundle && !loadError && <p>Loading diff…</p>}
+        {!bundle && !loadError && (
+          <p className="approvals-loading" aria-busy="true">
+            Loading diff…
+          </p>
+        )}
 
         {bundle && (
           <>
@@ -508,7 +512,7 @@ export function MergeReviewModal({
                     margin: 0,
                     padding: 0,
                     border: '1px solid var(--border-strong)',
-                    borderRadius: 6,
+                    borderRadius: 'var(--radius-sm)',
                     overflowY: 'auto',
                     background: 'var(--bg-sunken)',
                   }}
@@ -531,8 +535,10 @@ export function MergeReviewModal({
                             background: isActive ? 'var(--bg-selected)' : 'transparent',
                             border: 'none',
                             borderLeft: isActive
-                              ? '3px solid var(--accent-border, var(--accent, #6366f1))'
+                              ? '3px solid var(--accent)'
                               : '3px solid transparent',
+                            transition:
+                              'background var(--duration) var(--ease), border-color var(--duration-fast) var(--ease)',
                             borderBottom: '1px solid var(--border-row-divider)',
                             color: 'var(--text-primary)',
                             cursor: 'pointer',
@@ -643,7 +649,7 @@ export function MergeReviewModal({
                   disabled={!bundle || busy !== null}
                   onClick={() => setConfirm('accept')}
                 >
-                  Accept (merge)
+                  Merge changes
                 </button>
                 <button
                   type="button"
@@ -651,7 +657,7 @@ export function MergeReviewModal({
                   disabled={!bundle || busy !== null}
                   onClick={() => setConfirm('reject')}
                 >
-                  Reject (discard)
+                  Discard changes
                 </button>
                 <button
                   type="button"
@@ -665,12 +671,8 @@ export function MergeReviewModal({
                 {conflictError && (
                   <button
                     type="button"
-                    className="btn"
+                    className="btn btn-warn"
                     onClick={() => setShowConflicts(true)}
-                    style={{
-                      borderColor: 'var(--warn)',
-                      color: 'var(--warn)',
-                    }}
                   >
                     Resolve conflicts
                   </button>
@@ -728,6 +730,7 @@ export function MergeReviewModal({
             )}
             <button
               type="button"
+              className="btn"
               disabled={busy !== null}
               onClick={onClose}
               style={{ marginLeft: 'auto' }}
@@ -749,20 +752,14 @@ export function MergeReviewModal({
               Regenerate hunk · {regenerate.filePath} · L{regenerate.hunk.modifiedStartLine}-
               {regenerate.hunk.modifiedEndLine}
             </h3>
-            <textarea
-              value={regenerate.instruction}
-              onChange={(e) => setRegenerate({ ...regenerate, instruction: e.target.value })}
-              rows={3}
-              placeholder="Different instruction for this hunk…"
-              style={{
-                width: '100%',
-                padding: 8,
-                background: 'var(--bg-sunken)',
-                border: '1px solid var(--border)',
-                borderRadius: 4,
-                color: 'var(--text-primary)',
-              }}
-            />
+            <div className="field">
+              <textarea
+                value={regenerate.instruction}
+                onChange={(e) => setRegenerate({ ...regenerate, instruction: e.target.value })}
+                rows={3}
+                placeholder="Different instruction for this hunk…"
+              />
+            </div>
             {regenerate.error && <p className="approvals-save-error">{regenerate.error}</p>}
             {regenerate.suggestion !== null && (
               <pre
@@ -771,7 +768,7 @@ export function MergeReviewModal({
                   padding: 8,
                   background: 'var(--bg-sunken)',
                   border: '1px solid var(--accent-border)',
-                  borderRadius: 4,
+                  borderRadius: 'var(--radius-2xs)',
                   fontSize: 12,
                   maxHeight: 200,
                   overflow: 'auto',
@@ -856,7 +853,7 @@ function WhyDisclosureBody({
           key={`${d.appliedAt ?? 'na'}-${idx}`}
           style={{
             border: '1px solid var(--border-row-divider)',
-            borderRadius: 4,
+            borderRadius: 'var(--radius-2xs)',
             padding: 8,
           }}
         >
@@ -868,7 +865,7 @@ function WhyDisclosureBody({
                   margin: '2px 0 0 0',
                   padding: 6,
                   background: 'var(--bg-sunken)',
-                  borderRadius: 3,
+                  borderRadius: 'var(--radius-2xs)',
                   whiteSpace: 'pre-wrap',
                   fontSize: 11,
                 }}

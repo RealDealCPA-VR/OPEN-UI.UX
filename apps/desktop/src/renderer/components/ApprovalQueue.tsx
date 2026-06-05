@@ -284,7 +284,7 @@ function WriteFilePreview({ path, content }: { path: string; content: string }):
             className="approval-preview-monaco-toggle"
             onClick={() => setMonacoOpen(true)}
           >
-            View in Monaco
+            View full diff
           </button>
         </div>
       ) : null}
@@ -354,7 +354,7 @@ function EditFileMonacoLauncher({
         disabled={!existing}
         onClick={() => setMonacoOpen(true)}
       >
-        View in Monaco
+        View full diff
       </button>
       {monacoOpen && existing ? (
         <MonacoDiffModal
@@ -403,7 +403,14 @@ function MonacoDiffModal({
           </button>
         </header>
         <Suspense
-          fallback={<div className="approval-monaco-modal-loading">Loading Monaco editor…</div>}
+          fallback={
+            <div
+              className="approval-monaco-modal-loading"
+              style={{ minHeight: '200px', color: 'var(--text-muted)' }}
+            >
+              Loading diff viewer…
+            </div>
+          }
         >
           <MonacoDiffViewer
             originalText={originalText}

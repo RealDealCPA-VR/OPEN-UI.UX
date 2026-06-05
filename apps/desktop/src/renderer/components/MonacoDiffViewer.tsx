@@ -203,8 +203,8 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
               whiteSpace: 'nowrap',
             }}
           >
-            <span style={{ color: 'var(--diff-add-fg, #4ec9b0)' }}>+{stats.added}</span>{' '}
-            <span style={{ color: 'var(--diff-del-fg, #f48771)' }}>-{stats.removed}</span>
+            <span style={{ color: 'var(--success)' }}>+{stats.added}</span>{' '}
+            <span style={{ color: 'var(--danger)' }}>-{stats.removed}</span>
           </span>
           <span style={{ color: 'var(--text-muted, #888)', whiteSpace: 'nowrap' }}>
             {stickyLabel === '+0 -0' ? '' : null}
@@ -224,7 +224,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                 gap: 0,
                 marginRight: 8,
                 border: '1px solid var(--border, #333)',
-                borderRadius: 4,
+                borderRadius: 'var(--radius-2xs)',
                 overflow: 'hidden',
               }}
             >
@@ -237,9 +237,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                   padding: '2px 8px',
                   fontSize: 11,
                   background:
-                    layout === 'side-by-side'
-                      ? 'var(--bg-selected, #2c2c2c)'
-                      : 'var(--bg-elevated, #1e1e1e)',
+                    layout === 'side-by-side' ? 'var(--bg-elevated-strong)' : 'var(--bg-elevated)',
                   color: 'var(--text-primary, #ddd)',
                   border: 'none',
                   cursor: 'pointer',
@@ -256,9 +254,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                   padding: '2px 8px',
                   fontSize: 11,
                   background:
-                    layout === 'unified'
-                      ? 'var(--bg-selected, #2c2c2c)'
-                      : 'var(--bg-elevated, #1e1e1e)',
+                    layout === 'unified' ? 'var(--bg-elevated-strong)' : 'var(--bg-elevated)',
                   color: 'var(--text-primary, #ddd)',
                   border: 'none',
                   borderLeft: '1px solid var(--border, #333)',
@@ -322,7 +318,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
               data-active={idx === activeHunkIdx ? 'true' : undefined}
               style={
                 idx === activeHunkIdx
-                  ? { outline: '1px solid var(--accent, #4d9aff)', outlineOffset: -1 }
+                  ? { boxShadow: 'var(--focus-ring)', outline: 'none' }
                   : undefined
               }
             >

@@ -94,11 +94,13 @@ export function FanoutConsentModal({ request, onResolved }: FanoutConsentModalPr
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.5)',
+        background: 'var(--shadow-overlay)',
+        backdropFilter: 'var(--glass-blur-soft)',
+        WebkitBackdropFilter: 'var(--glass-blur-soft)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 100,
+        zIndex: 'var(--z-modal)' as unknown as number,
       }}
     >
       <div
@@ -106,7 +108,7 @@ export function FanoutConsentModal({ request, onResolved }: FanoutConsentModalPr
         style={{
           background: 'var(--bg-panel)',
           border: '1px solid var(--border-strong)',
-          borderRadius: 8,
+          borderRadius: 'var(--radius-xl)',
           boxShadow: 'var(--shadow-modal)',
           maxWidth: 640,
           width: '90%',
@@ -116,7 +118,7 @@ export function FanoutConsentModal({ request, onResolved }: FanoutConsentModalPr
         }}
       >
         <header style={{ marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>Orchestrator wants to fan out</h2>
+          <h2 style={{ margin: 0, fontSize: 16 }}>Agent wants to spawn subtasks</h2>
           <p style={{ marginTop: 4, color: 'var(--text-secondary)', fontSize: 12 }}>
             Parent run <code>{request.parentRunId.slice(0, 8)}</code> is planning to spawn{' '}
             {plan.length} subagent{plan.length === 1 ? '' : 's'}.
@@ -144,7 +146,7 @@ export function FanoutConsentModal({ request, onResolved }: FanoutConsentModalPr
               key={idx}
               style={{
                 border: '1px solid var(--border-row-divider)',
-                borderRadius: 6,
+                borderRadius: 'var(--radius-sm)',
                 padding: 10,
                 background: 'var(--bg-sunken)',
               }}
@@ -171,7 +173,7 @@ export function FanoutConsentModal({ request, onResolved }: FanoutConsentModalPr
                       padding: 6,
                       background: 'var(--bg-base)',
                       border: '1px solid var(--border)',
-                      borderRadius: 4,
+                      borderRadius: 'var(--radius-2xs)',
                       color: 'var(--text-primary)',
                       resize: 'vertical',
                     }}

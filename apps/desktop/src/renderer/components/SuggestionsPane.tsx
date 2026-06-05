@@ -75,7 +75,11 @@ export function SuggestionsPane({ conversationId }: SuggestionsPaneProps): JSX.E
           {suggestions.length}
         </span>
       </div>
-      {error ? <div className="pair-suggestions-error">{error}</div> : null}
+      {error ? (
+        <div className="pair-suggestions-error" role="alert">
+          {error}
+        </div>
+      ) : null}
       {suggestions.length === 0 ? (
         <div className="pair-suggestions-empty">
           No file-change suggestions yet. Edit a file referenced in this conversation and a card

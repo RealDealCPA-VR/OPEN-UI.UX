@@ -238,64 +238,48 @@ export function RoutingPanel(): JSX.Element {
   if (loadError) {
     return (
       <div className="routing-panel">
-        <p className="routing-error" role="alert">
+        <div className="field-errors" role="alert">
           Failed to load routing: {loadError}
-        </p>
+        </div>
       </div>
     );
   }
   if (!state) {
-    return <p className="routing-loading">Loading routing…</p>;
+    return (
+      <div className="routing-panel">
+        <p className="settings-block-hint">Loading routing…</p>
+      </div>
+    );
   }
 
   return (
-    <div className="routing-panel" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <section data-settings-anchor="routing-presets">
-        <h3 style={{ marginBottom: 6 }}>Presets</h3>
-        <p className="routing-hint" style={{ color: 'var(--text-secondary)', marginBottom: 10 }}>
+    <div className="routing-panel">
+      <div className="settings-block" data-settings-anchor="routing-presets">
+        <h3 className="settings-subhead">Presets</h3>
+        <p className="settings-block-hint">
           Install a starter policy in one click. You can tweak its rules afterwards.
         </p>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 10,
-          }}
-        >
+        <div className="routing-preset-grid">
           {ROUTING_PRESETS.map((preset) => (
             <button
               key={preset.id}
               type="button"
-              className="btn"
+              className="routing-preset-card"
               disabled={pending === `preset:${preset.id}`}
               onClick={() => void installPreset(preset.id)}
-              style={{
-                textAlign: 'left',
-                padding: '10px 12px',
-                background: 'var(--bg-elevated)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-              }}
             >
-              <div style={{ fontWeight: 600 }}>{preset.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                {preset.description}
-              </div>
+              <div className="routing-preset-card-name">{preset.name}</div>
+              <div className="routing-preset-card-desc">{preset.description}</div>
             </button>
           ))}
         </div>
-      </section>
+      </div>
 
-      <section data-settings-anchor="routing-policies">
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 6,
-          }}
-        >
-          <h3 style={{ margin: 0 }}>Policies</h3>
+      <div className="settings-divider" />
+
+      <div className="settings-block" data-settings-anchor="routing-policies">
+        <div className="settings-subhead-row">
+          <h3 className="settings-subhead">Policies</h3>
           <button
             type="button"
             className="btn"
@@ -306,42 +290,31 @@ export function RoutingPanel(): JSX.Element {
           </button>
         </div>
         {actionError && (
-          <p className="routing-action-error" role="alert" style={{ color: 'var(--danger)' }}>
+          <div className="field-errors" role="alert">
+            <span aria-hidden="true">⚠ </span>
             {actionError}
-          </p>
+          </div>
         )}
         {state.policies.length === 0 && (
-          <p style={{ color: 'var(--text-muted)' }}>
+          <p className="settings-block-hint">
             No policies yet. Install a preset above or create a blank policy.
           </p>
         )}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="routing-policies-list">
           {state.policies.map((p) => {
             const isActive = activePolicy?.id === p.id;
             return (
               <div
                 key={p.id}
-                style={{
-                  background: 'var(--bg-panel)',
-                  border: `1px solid ${isActive ? 'var(--accent-border)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius)',
-                  padding: 12,
-                }}
+                className={`routing-policy-card${isActive ? ' is-active' : ''}`}
                 data-settings-anchor={`routing-policy-${p.id}`}
               >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: 8,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className="routing-policy-head">
+                  <div className="routing-policy-title">
                     <strong>{p.name}</strong>
-                    {isActive && <span className="pill pill-local">active</span>}
+                    {isActive && <span className="pill pill-ok">active</span>}
                   </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div className="routing-policy-actions">
                     {!isActive && (
                       <button
                         type="button"
@@ -382,7 +355,7 @@ export function RoutingPanel(): JSX.Element {
             );
           })}
         </div>
-      </section>
+      </div>
     </div>
   );
 }
@@ -410,24 +383,16 @@ function RuleEditor(props: {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div className="routing-rule-editor">
       {policy.rules.map((rule) => (
-        <div
-          key={rule.id}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '160px 1fr 1fr auto',
-            gap: 8,
-            alignItems: 'center',
-          }}
-        >
+        <div key={rule.id} className="routing-rule-row">
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600 }}>{RULE_LABELS[rule.when]}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{RULE_HINTS[rule.when]}</div>
+            <div className="routing-rule-label">{RULE_LABELS[rule.when]}</div>
+            <div className="routing-rule-hint">{RULE_HINTS[rule.when]}</div>
           </div>
           <input
             className="settings-input"
-            placeholder="providerId"
+            placeholder="e.g. anthropic"
             aria-label={`${RULE_LABELS[rule.when]} provider ID`}
             value={rule.use.providerId}
             onChange={(e) =>
@@ -437,7 +402,7 @@ function RuleEditor(props: {
           />
           <input
             className="settings-input"
-            placeholder="modelId"
+            placeholder="e.g. claude-3-5-sonnet-…"
             aria-label={`${RULE_LABELS[rule.when]} model ID`}
             value={rule.use.modelId}
             onChange={(e) => onUpdate({ ...rule, use: { ...rule.use, modelId: e.target.value } })}
@@ -454,7 +419,7 @@ function RuleEditor(props: {
         </div>
       ))}
       {unused.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div className="routing-add-rule-row">
           {unused.map((t) => (
             <button key={t} type="button" className="btn" onClick={() => addRule(t)}>
               + Add {RULE_LABELS[t]}

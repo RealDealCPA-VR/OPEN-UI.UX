@@ -143,7 +143,7 @@ export function ActiveRunCard({ run, now, onSelect }: ActiveRunCardProps): JSX.E
                   alignItems: 'center',
                   gap: 6,
                   padding: '2px 8px',
-                  borderRadius: 4,
+                  borderRadius: 'var(--radius-2xs)',
                   background: 'var(--accent-soft-bg)',
                   color: 'var(--accent-text)',
                   border: '1px solid var(--accent-soft-border)',

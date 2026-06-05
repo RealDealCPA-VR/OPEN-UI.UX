@@ -346,7 +346,9 @@ export function CommandPalette({
             spellCheck={false}
             autoComplete="off"
           />
-          {loading ? <span className="command-palette-spinner">…</span> : null}
+          {loading ? (
+            <span className="mcp-inline-spinner" role="status" aria-label="Loading" />
+          ) : null}
         </div>
         <div className="command-palette-results" role="listbox" aria-label="Search results">
           {totalCount === 0 ? (

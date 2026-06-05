@@ -68,6 +68,9 @@ export function EmbeddedTerminal({
 
         const { Terminal } = xtermMod;
         const { FitAddon } = fitMod;
+        const terminalBg =
+          getComputedStyle(document.documentElement).getPropertyValue('--bg-terminal').trim() ||
+          '#0b0d10';
         const terminal = new Terminal({
           convertEol: false,
           cursorBlink: false,
@@ -75,7 +78,7 @@ export function EmbeddedTerminal({
           fontSize: 12,
           fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
           scrollback: 10_000,
-          theme: { background: '#0b0d10' },
+          theme: { background: terminalBg },
         });
         const fit = new FitAddon();
         terminal.loadAddon(fit);

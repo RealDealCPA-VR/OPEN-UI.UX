@@ -60,65 +60,60 @@ export function AccessibilityPanel(): JSX.Element {
   };
 
   if (loadError) {
-    return <p className="theme-error">Failed to load accessibility settings: {loadError}</p>;
+    return (
+      <div role="alert" className="field-errors">
+        Failed to load accessibility settings: {loadError}
+      </div>
+    );
   }
   if (enabled === null) {
-    return <p className="theme-loading">Loading…</p>;
+    return <p className="accessibility-loading settings-skeleton">Loading…</p>;
   }
 
   return (
     <div className="accessibility-panel">
-      <label className="accessibility-toggle">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => void handleToggle(e.target.checked)}
-          disabled={saving}
-        />
-        <span className="accessibility-toggle-text">
-          <span className="accessibility-toggle-name">Hover hints</span>
-          <span className="accessibility-toggle-desc">
-            Show short helper bubbles when hovering or focusing UI controls.
-          </span>
-        </span>
-      </label>
-
-      {saveError && <p className="theme-action-error">Failed: {saveError}</p>}
-
-      <div className="accessibility-row">
-        <div>
-          <div style={{ fontWeight: 500 }}>Reduced motion</div>
-          <div
-            style={{
-              fontSize: 12,
-              color: 'var(--text-muted)',
-              marginTop: 2,
-              lineHeight: 1.4,
-            }}
-          >
-            OpenCodex honors your OS preference automatically. Animations are dampened when reduced
-            motion is on.
-          </div>
-        </div>
-        <span
-          className={`pill ${reducedMotion ? 'pill-ok' : ''}`}
-          aria-live="polite"
-          style={{
-            fontSize: 11,
-            padding: '2px 8px',
-            borderRadius: 'var(--radius-pill)',
-            border: '1px solid var(--border)',
-            color: reducedMotion ? 'var(--success)' : 'var(--text-muted)',
-            background: reducedMotion ? 'var(--success-bg)' : 'transparent',
-          }}
-        >
-          Detected from OS: {reducedMotion ? 'reduced' : 'default'}
-        </span>
+      <div className="settings-block">
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => void handleToggle(e.target.checked)}
+            disabled={saving}
+          />
+          <span>Hover hints</span>
+        </label>
+        <p className="settings-block-hint">
+          Show short helper bubbles when hovering or focusing UI controls.
+        </p>
+        {saveError && (
+          <p className="field-errors" role="alert">
+            Failed: {saveError}
+          </p>
+        )}
       </div>
 
-      <div className="accessibility-preview">
-        <h3 className="accessibility-preview-title">Preview</h3>
-        <p className="accessibility-preview-desc">
+      <div className="settings-divider" />
+
+      <div className="settings-block">
+        <div className="settings-toggle-row">
+          <div>
+            <div className="settings-field-label">Reduced motion</div>
+            <p className="settings-block-hint">
+              OpenCodex honors your OS preference automatically. Animations are dampened when
+              reduced motion is on.
+            </p>
+          </div>
+          <span className={`pill${reducedMotion ? ' pill-ok' : ''}`} aria-live="polite">
+            Detected from OS: {reducedMotion ? 'reduced' : 'default'}
+          </span>
+        </div>
+      </div>
+
+      <div className="settings-divider" />
+
+      <div className="settings-block">
+        <h3 className="settings-subhead">Preview</h3>
+        <p className="settings-block-hint">
           Hover or focus the button below to see a hint when the setting is enabled.
         </p>
         <HoverHint hint="Demo hint">

@@ -95,26 +95,10 @@ export function SlashCommands({
               >
                 <span className="slash-commands-name" style={{ flexShrink: 0 }}>
                   {name}
-                  {scopeBadge && (
-                    <span className="pill" style={{ marginLeft: 8 }}>
-                      {scopeBadge}
-                    </span>
-                  )}
+                  {scopeBadge && <span className="pill pill-local">{scopeBadge}</span>}
                 </span>
                 {desc ? (
-                  <span
-                    className="slash-commands-desc"
-                    style={{
-                      marginLeft: 'auto',
-                      color: 'var(--text-muted)',
-                      fontSize: 11.5,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      maxWidth: '60%',
-                    }}
-                    title={desc}
-                  >
+                  <span className="slash-commands-desc slash-commands-desc-right" title={desc}>
                     {desc}
                   </span>
                 ) : null}

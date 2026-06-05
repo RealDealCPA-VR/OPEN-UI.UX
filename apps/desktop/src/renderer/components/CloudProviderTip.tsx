@@ -54,13 +54,11 @@ export function CloudProviderTip({
         display: 'flex',
         alignItems: 'flex-start',
         gap: 8,
-        margin: '0 0 8px',
         padding: '8px 10px',
         background: 'var(--accent-soft-bg)',
         border: '1px solid var(--accent-border)',
-        borderRadius: 'var(--radius-md, 8px)',
+        borderRadius: 'var(--radius)',
         color: 'var(--text-primary)',
-        fontSize: 12.5,
         lineHeight: 1.4,
       }}
     >
@@ -70,10 +68,9 @@ export function CloudProviderTip({
       </span>
       <button
         type="button"
-        className="btn"
+        className="btn btn-compact"
         onClick={dismiss}
         aria-label="Dismiss cloud provider tip"
-        style={{ padding: '2px 8px', fontSize: 12 }}
       >
         Got it
       </button>

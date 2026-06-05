@@ -103,32 +103,11 @@ export function StatusBar(): JSX.Element {
           <span
             className="statusbar-tokens"
             title={`${meter.tokens.toLocaleString()} / ${meter.context.toLocaleString()} tokens (${Math.round(meter.ratio * 100)}%)`}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
-            <span
-              aria-hidden="true"
-              style={{
-                display: 'inline-flex',
-                width: 64,
-                height: 6,
-                borderRadius: 3,
-                overflow: 'hidden',
-                border: '1px solid var(--border)',
-                background: 'var(--bg-sunken)',
-              }}
-            >
+            <span aria-hidden="true" className="statusbar-token-meter">
               <span
-                style={{
-                  width: `${Math.min(100, meter.ratio * 100)}%`,
-                  height: '100%',
-                  background:
-                    meter.ratio >= 0.9
-                      ? 'var(--warn)'
-                      : meter.ratio >= 0.7
-                        ? 'var(--accent)'
-                        : 'var(--success-strong, var(--accent))',
-                  transition: 'width 200ms ease',
-                }}
+                className={`statusbar-token-meter-fill${meter.ratio >= 0.9 ? ' danger' : meter.ratio >= 0.7 ? ' warn' : ''}`}
+                style={{ width: `${Math.min(100, meter.ratio * 100)}%` }}
               />
             </span>
             <span className="statusbar-mono">{Math.round(meter.ratio * 100)}%</span>
@@ -147,25 +126,13 @@ export function StatusBar(): JSX.Element {
             className="statusbar-workspace"
             onClick={handleWorkspaceClick}
             title={`${activeWorkspace} — click to reveal in OS`}
-            style={{
-              background: 'transparent',
-              border: 0,
-              padding: 0,
-              font: 'inherit',
-              color: 'inherit',
-              cursor: 'pointer',
-            }}
           >
-            <span className="statusbar-workspace-icon" aria-hidden="true">
-              ⌂
-            </span>
+            <span className="statusbar-workspace-icon" aria-hidden="true" />
             {workspaceBasename(activeWorkspace)}
           </button>
         ) : (
           <span className="statusbar-workspace" title="No workspace (using launch directory)">
-            <span className="statusbar-workspace-icon" aria-hidden="true">
-              ⌂
-            </span>
+            <span className="statusbar-workspace-icon" aria-hidden="true" />
             (no workspace)
           </span>
         )}

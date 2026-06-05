@@ -2,7 +2,7 @@ import type { ReviewFinding, ReviewSeverity } from '../../shared/review';
 
 const SEVERITY_COLOR: Record<ReviewSeverity, { fg: string; bg: string; border: string }> = {
   bug: { fg: 'var(--danger)', bg: 'var(--danger-bg)', border: 'var(--danger-border)' },
-  smell: { fg: 'var(--warn)', bg: 'var(--bg-elevated)', border: 'var(--border-strong)' },
+  smell: { fg: 'var(--warn)', bg: 'var(--warn-bg)', border: 'var(--warn-border)' },
   style: { fg: 'var(--text-secondary)', bg: 'var(--bg-elevated)', border: 'var(--border)' },
   nit: { fg: 'var(--text-muted)', bg: 'var(--bg-sunken)', border: 'var(--border)' },
 };
@@ -33,12 +33,14 @@ export function ReviewFindingCard({
       className="review-finding-card"
       style={{
         border: `1px solid ${palette.border}`,
-        borderRadius: 'var(--radius-md, 8px)',
+        borderRadius: 'var(--radius)',
         padding: 12,
-        background: 'var(--bg-panel)',
+        background: selected ? 'var(--bg-selected)' : 'var(--bg-panel)',
         display: 'flex',
         flexDirection: 'column',
         gap: 8,
+        transition:
+          'border-color var(--duration) var(--ease), background var(--duration) var(--ease)',
       }}
       data-severity={finding.severity}
     >
@@ -48,6 +50,7 @@ export function ReviewFindingCard({
           checked={selected}
           onChange={onToggleSelected}
           aria-label={`Select finding ${finding.title}`}
+          style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
         />
         <span
           style={{
@@ -91,7 +94,7 @@ export function ReviewFindingCard({
             background: 'var(--bg-sunken)',
             color: 'var(--text-pre, var(--text-primary))',
             border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-sm, 6px)',
+            borderRadius: 'var(--radius-sm)',
             padding: 8,
             fontSize: 12,
             overflowX: 'auto',
@@ -161,7 +164,7 @@ export function ReviewFindingCard({
                   background: 'var(--bg-sunken)',
                   color: 'var(--text-pre, var(--text-primary))',
                   border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm, 6px)',
+                  borderRadius: 'var(--radius-sm)',
                   padding: 8,
                   fontSize: 11,
                   maxHeight: 240,
@@ -177,12 +180,12 @@ export function ReviewFindingCard({
       )}
       <footer style={{ display: 'flex', gap: 8 }}>
         {onOpenInCodebase && (
-          <button type="button" className="btn" onClick={onOpenInCodebase} style={{ fontSize: 12 }}>
+          <button type="button" className="btn btn-sm" onClick={onOpenInCodebase}>
             Open in Codebase
           </button>
         )}
         {finding.prompt && onCopyPrompt && (
-          <button type="button" className="btn" onClick={onCopyPrompt} style={{ fontSize: 12 }}>
+          <button type="button" className="btn btn-sm" onClick={onCopyPrompt}>
             Copy fix prompt
           </button>
         )}

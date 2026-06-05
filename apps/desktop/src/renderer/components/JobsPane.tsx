@@ -95,7 +95,15 @@ export function JobsPane({ initialRuns }: JobsPaneProps = {}): JSX.Element {
       </div>
       {loadError ? <p className="lcc-pane-error">{loadError}</p> : null}
       {runs === null ? (
-        <p className="lcc-pane-empty">Loading…</p>
+        <div
+          className="lcc-pane-empty"
+          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+          aria-label="Loading jobs"
+          aria-busy="true"
+        >
+          <span className="mcp-inline-spinner" aria-hidden="true" />
+          <span>Loading…</span>
+        </div>
       ) : running.length === 0 ? (
         <p className="lcc-pane-empty">No active jobs.</p>
       ) : (

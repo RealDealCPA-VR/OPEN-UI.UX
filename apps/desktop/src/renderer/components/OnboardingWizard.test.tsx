@@ -211,14 +211,15 @@ describe('OnboardingWizard', () => {
   });
 
   it('includes the prefers-reduced-motion CSS rule that disables the success check animation', async () => {
-    mockBridge({ complete: false });
-    const Wizard = await importComponent();
-    const { container } = renderWizard(Wizard);
-    await waitFor(() => screen.getByRole('dialog'));
-    const style = container.querySelector('style');
-    expect(style).not.toBeNull();
-    const css = style?.textContent ?? '';
+    // The onboarding styles were hoisted from an inline <style> block into the
+    // global stylesheet, so the reduced-motion guarantee now lives there.
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const css = readFileSync(
+      resolve(process.cwd(), 'apps/desktop/src/renderer/styles.css'),
+      'utf8',
+    );
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)/);
-    expect(css).toMatch(/onboarding-success-check\s*\{\s*animation:\s*none/);
+    expect(css).toMatch(/\.onboarding-success-check\s*\{\s*animation:\s*none/);
   });
 });

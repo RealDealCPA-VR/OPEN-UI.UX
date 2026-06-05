@@ -86,21 +86,17 @@ export function WorkspacePanel(): JSX.Element {
     return (
       <div
         role="alert"
+        className="workspace-action-error"
         style={{
           padding: 10,
           background: 'var(--danger-bg)',
           color: 'var(--danger)',
           border: '1px solid var(--danger-border)',
-          borderRadius: 6,
+          borderRadius: 'var(--radius-sm)',
         }}
       >
         <div>Failed to load workspace state: {loadError}</div>
-        <button
-          type="button"
-          className="btn btn-danger"
-          onClick={() => window.location.reload()}
-          style={{ marginTop: 6 }}
-        >
+        <button type="button" className="btn btn-danger" onClick={() => window.location.reload()}>
           Retry
         </button>
       </div>
@@ -114,9 +110,9 @@ export function WorkspacePanel(): JSX.Element {
 
   return (
     <div className="workspace-panel">
-      <div className="workspace-subsection">
-        <h3 className="workspace-subhead">Active workspace</h3>
-        <p className="workspace-subhead-desc">
+      <div className="settings-block">
+        <h3 className="settings-subhead">Active workspace</h3>
+        <p className="settings-block-hint">
           Tools the agent runs (read/write files, shell commands) are anchored to this folder. If
           unset, the launch directory is used.
         </p>
@@ -131,16 +127,16 @@ export function WorkspacePanel(): JSX.Element {
           <div className="workspace-actions">
             <button
               type="button"
-              className="workspace-btn workspace-btn-primary"
+              className="btn btn-primary"
               onClick={() => void handleBrowse()}
               disabled={pending === 'browse'}
             >
-              Browse…
+              Choose Folder
             </button>
             {state.active && (
               <button
                 type="button"
-                className="workspace-btn"
+                className="btn"
                 onClick={() => void handleClearActive()}
                 disabled={pending === 'clear'}
               >
@@ -151,10 +147,12 @@ export function WorkspacePanel(): JSX.Element {
         </div>
       </div>
 
-      <div className="workspace-subsection">
-        <h3 className="workspace-subhead">Recent</h3>
+      <div className="settings-divider" />
+
+      <div className="settings-block">
+        <h3 className="settings-subhead">Recent</h3>
         {recent.length === 0 ? (
-          <p className="workspace-empty">No recent workspaces yet.</p>
+          <p className="settings-block-hint">No recent workspaces yet.</p>
         ) : (
           <ul className="workspace-list">
             {recent.map((path) => {
@@ -167,7 +165,7 @@ export function WorkspacePanel(): JSX.Element {
                   <div className="workspace-actions">
                     <button
                       type="button"
-                      className="workspace-btn"
+                      className="btn"
                       onClick={() => void handleSetActive(path)}
                       disabled={pending === setKey}
                     >
@@ -177,7 +175,7 @@ export function WorkspacePanel(): JSX.Element {
                       <>
                         <button
                           type="button"
-                          className="workspace-btn workspace-btn-danger"
+                          className="btn btn-danger"
                           onClick={() => void handleRemove(path)}
                           disabled={pending === removeKey}
                         >
@@ -185,7 +183,7 @@ export function WorkspacePanel(): JSX.Element {
                         </button>
                         <button
                           type="button"
-                          className="workspace-btn"
+                          className="btn"
                           onClick={() => setConfirmingRemove(null)}
                         >
                           Cancel
@@ -194,7 +192,7 @@ export function WorkspacePanel(): JSX.Element {
                     ) : (
                       <button
                         type="button"
-                        className="workspace-btn workspace-btn-danger"
+                        className="btn btn-danger"
                         onClick={() => setConfirmingRemove(path)}
                         disabled={pending === removeKey}
                       >
@@ -209,7 +207,7 @@ export function WorkspacePanel(): JSX.Element {
         )}
       </div>
 
-      {actionError && <p className="workspace-action-error">Failed: {actionError}</p>}
+      {actionError && <p className="field-errors workspace-action-error">Failed: {actionError}</p>}
     </div>
   );
 }

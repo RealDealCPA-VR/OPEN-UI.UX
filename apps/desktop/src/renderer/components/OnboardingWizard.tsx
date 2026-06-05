@@ -27,89 +27,6 @@ const STARTER_SKILLS: ReadonlyArray<{ name: string; description: string }> = [
   { name: 'dependency-check', description: 'Outdated deps + GitHub Advisory CVE lookup' },
 ];
 
-const STYLES = `
-  .onboarding-progress {
-    display: flex;
-    gap: 6px;
-    margin: 0 0 14px;
-    list-style: none;
-    padding: 0;
-  }
-  .onboarding-progress li {
-    flex: 1;
-    height: 4px;
-    background: var(--border, #2a2a32);
-    border-radius: 999px;
-    transition: background 200ms ease;
-  }
-  .onboarding-progress li[data-state="done"] {
-    background: var(--accent, #6366f1);
-  }
-  .onboarding-progress li[data-state="current"] {
-    background: var(--accent-soft-bg);
-  }
-  .onboarding-why {
-    font-size: 12px;
-    color: var(--text-muted, #98a0aa);
-    margin: -6px 0 12px;
-    line-height: 1.45;
-  }
-  .onboarding-step-error {
-    background: var(--danger-bg, rgba(220, 38, 38, 0.08));
-    color: var(--danger, #dc2626);
-    border: 1px solid var(--danger-border, rgba(220, 38, 38, 0.3));
-    border-radius: 6px;
-    padding: 8px 10px;
-    margin: 8px 0;
-    font-size: 13px;
-    line-height: 1.4;
-  }
-  .onboarding-step-error-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 6px;
-  }
-  .onboarding-step-error-actions button {
-    background: transparent;
-    border: 1px solid currentColor;
-    color: inherit;
-    border-radius: 4px;
-    padding: 2px 8px;
-    font-size: 12px;
-    cursor: pointer;
-  }
-  .onboarding-success-check {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: var(--success-bg, rgba(34, 197, 94, 0.12));
-    color: var(--success, #22c55e);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 12px;
-    animation: onboarding-check-in 380ms ease-out 1;
-  }
-  .onboarding-success-check svg {
-    width: 22px;
-    height: 22px;
-    stroke-dasharray: 24;
-    stroke-dashoffset: 24;
-    animation: onboarding-check-draw 360ms 120ms ease-out forwards;
-  }
-  @keyframes onboarding-check-in {
-    from { transform: scale(0.6); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
-  }
-  @keyframes onboarding-check-draw {
-    to { stroke-dashoffset: 0; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .onboarding-success-check { animation: none; }
-    .onboarding-success-check svg { animation: none; stroke-dashoffset: 0; }
-  }
-`;
-
 export function OnboardingWizard(): JSX.Element | null {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>('ollama');
@@ -222,7 +139,6 @@ export function OnboardingWizard(): JSX.Element | null {
         }
       }}
     >
-      <style>{STYLES}</style>
       <div className="onboarding-wizard">
         <header className="onboarding-wizard-head">
           <h2>Welcome to OpenCodex</h2>
@@ -239,7 +155,14 @@ export function OnboardingWizard(): JSX.Element | null {
         <ol className="onboarding-progress" aria-label="Setup progress">
           {VISIBLE_STEPS.map((s, i) => {
             const state = i < stepIndex ? 'done' : i === stepIndex ? 'current' : 'pending';
-            return <li key={s} data-state={state} />;
+            return (
+              <li
+                key={s}
+                data-state={state}
+                aria-label={s}
+                aria-current={state === 'current' ? 'step' : undefined}
+              />
+            );
           })}
         </ol>
 
@@ -455,10 +378,10 @@ function ProviderStep({
         ))}
       </ul>
       <div className="onboarding-step-actions">
-        <button type="button" onClick={onSkip}>
+        <button type="button" className="btn" onClick={onSkip}>
           Skip this step
         </button>
-        <button type="button" disabled={!chosenId} onClick={onNext}>
+        <button type="button" className="btn btn-primary" disabled={!chosenId} onClick={onNext}>
           Next
         </button>
       </div>
@@ -507,13 +430,13 @@ function ApiKeyStep({
         className="onboarding-apikey"
       />
       <div className="onboarding-step-actions">
-        <button type="button" onClick={onBack}>
+        <button type="button" className="btn" onClick={onBack}>
           Back
         </button>
-        <button type="button" onClick={onSkip}>
+        <button type="button" className="btn" onClick={onSkip}>
           Skip
         </button>
-        <button type="button" disabled={!canContinue} onClick={onNext}>
+        <button type="button" className="btn btn-primary" disabled={!canContinue} onClick={onNext}>
           {busy ? 'Saving…' : 'Save & continue'}
         </button>
       </div>
@@ -557,13 +480,17 @@ function WorkspaceStep({
         <p className="settings-section-desc">No workspace selected yet.</p>
       )}
       <div className="onboarding-step-actions">
-        <button type="button" onClick={onBack}>
+        <button type="button" className="btn" onClick={onBack}>
           Back
         </button>
-        <button type="button" disabled={busy} onClick={onBrowse}>
+        <button type="button" className="btn" disabled={busy} onClick={onBrowse}>
           {workspace?.active ? 'Pick another folder' : 'Browse…'}
         </button>
-        <button type="button" onClick={workspace?.active ? onNext : onSkipWorkspace}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={workspace?.active ? onNext : onSkipWorkspace}
+        >
           {workspace?.active ? 'Next' : 'Skip for now'}
         </button>
       </div>
@@ -618,10 +545,10 @@ function SkillsStep({
         ))}
       </ul>
       <div className="onboarding-step-actions">
-        <button type="button" onClick={onBack}>
+        <button type="button" className="btn" onClick={onBack}>
           Back
         </button>
-        <button type="button" onClick={onSkip}>
+        <button type="button" className="btn" onClick={onSkip}>
           Skip all
         </button>
         <button
@@ -641,7 +568,7 @@ function SkillsStep({
 
 function DoneStep({ onFinish }: { onFinish(): void }): JSX.Element {
   return (
-    <div className="onboarding-step" style={{ textAlign: 'center' }}>
+    <div className="onboarding-step onboarding-step--centered">
       <div className="onboarding-success-check" aria-hidden="true">
         <svg
           viewBox="0 0 24 24"
@@ -659,7 +586,7 @@ function DoneStep({ onFinish }: { onFinish(): void }): JSX.Element {
         That&apos;s it — start chatting, or tweak more in Settings (approvals, MCP servers, audit
         log, theme).
       </p>
-      <div className="onboarding-step-actions" style={{ justifyContent: 'center' }}>
+      <div className="onboarding-step-actions">
         <button
           type="button"
           className="btn btn-primary"

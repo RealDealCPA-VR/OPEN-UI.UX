@@ -163,7 +163,25 @@ export function AppShell(): JSX.Element {
                 aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 title={collapsed ? 'Expand (Ctrl/⌘+\\)' : 'Collapse (Ctrl/⌘+\\)'}
               >
-                {collapsed ? '›' : '‹'}
+                <svg
+                  className={
+                    collapsed ? 'sidebar-chevron sidebar-chevron-collapsed' : 'sidebar-chevron'
+                  }
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path
+                    d="M10 4L6 8l4 4"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </button>
             </HoverHint>
           </div>
@@ -207,19 +225,7 @@ export function AppShell(): JSX.Element {
         </div>
       </aside>
       <div className="main-column">
-        <div
-          className="main-column-header"
-          role="presentation"
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            padding: '6px 12px',
-            gap: 8,
-            borderBottom: '1px solid var(--border, transparent)',
-            background: 'var(--bg-base, transparent)',
-          }}
-        >
+        <div className="main-column-header" role="presentation">
           <LocalOnlyPill />
         </div>
         <main id="main-content" className="content" tabIndex={-1}>

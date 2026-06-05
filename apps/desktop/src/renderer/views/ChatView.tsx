@@ -99,17 +99,23 @@ export function ChatView(): JSX.Element {
     <section className="chat-layout">
       <div className="chat-main">
         {modelLoading ? (
-          <p className="chat-empty">Loading…</p>
+          <div className="chat-empty-center">
+            <p className="chat-empty">Loading…</p>
+          </div>
         ) : !selected ? (
-          <p className="chat-empty">
-            Pick a model in the top bar, or{' '}
-            <Link to="/settings">add a provider API key in Settings</Link>.
-          </p>
+          <div className="chat-empty-center">
+            <p className="chat-empty">
+              Pick a model in the top bar, or{' '}
+              <Link to="/settings">add a provider API key in Settings</Link>.
+            </p>
+          </div>
         ) : !selectedCapabilities ? (
-          <p className="chat-warn">
-            The previously selected model (<code>{selected.providerId}</code> ·{' '}
-            <code>{selected.modelId}</code>) isn&apos;t available. Pick another in the top bar.
-          </p>
+          <div className="chat-empty-center">
+            <p className="chat-warn chat-warn-box">
+              The previously selected model (<code>{selected.providerId}</code> ·{' '}
+              <code>{selected.modelId}</code>) isn&apos;t available. Pick another in the top bar.
+            </p>
+          </div>
         ) : (
           <ChatPane
             providerId={selected.providerId}
@@ -696,118 +702,92 @@ function ChatPane({
             }
           }}
         />
-        <div className="chat-header-transfer">
-          <button
-            type="button"
-            className="btn"
-            disabled={!chat.activeId || chat.streaming}
-            onClick={handleSendToAgent}
-            title="Hand the conversation to the Agent view as a new autonomous run"
-          >
-            Send to Agent
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={!chat.activeId}
-            onClick={handleSendToCodebase}
-            title="Open the Codebase view with file paths mentioned in this chat"
-          >
-            Send to Codebase
-          </button>
-          {/* Lane 9 — Branch from this conversation */}
-          <button
-            type="button"
-            className="btn"
-            disabled={!chat.activeId || branching}
-            onClick={() => {
-              if (!chat.activeId || branching) return;
-              setBranching(true);
-              void window.opencodex.git
-                .branchFromConversation({ conversationId: chat.activeId })
-                .then((res) => {
-                  if (res.ok) {
-                    toast.show(res.branch ? `Created branch ${res.branch}` : 'Branch created', {
-                      kind: 'success',
-                    });
-                  } else {
-                    toast.show(res.error ?? 'Failed to create branch', { kind: 'error' });
-                  }
-                })
-                .catch((err: unknown) => {
-                  toast.show(err instanceof Error ? err.message : String(err), { kind: 'error' });
-                })
-                .finally(() => setBranching(false));
-            }}
-            title="Create an oc/<slug> branch in the active workspace from this conversation"
-          >
-            {branching ? 'Branching…' : 'Branch from this conversation'}
-          </button>
+        <div className="chat-header-actions">
+          <div className="chat-header-transfer">
+            <button
+              type="button"
+              className="btn"
+              disabled={!chat.activeId || chat.streaming}
+              onClick={handleSendToAgent}
+              title="Hand the conversation to the Agent view as a new autonomous run"
+            >
+              Send to Agent
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={!chat.activeId}
+              onClick={handleSendToCodebase}
+              title="Open the Codebase view with file paths mentioned in this chat"
+            >
+              Send to Codebase
+            </button>
+          </div>
+          <div className="chat-header-actions-secondary">
+            {/* Lane 9 — Branch from this conversation */}
+            <button
+              type="button"
+              className="btn"
+              disabled={!chat.activeId || branching}
+              onClick={() => {
+                if (!chat.activeId || branching) return;
+                setBranching(true);
+                void window.opencodex.git
+                  .branchFromConversation({ conversationId: chat.activeId })
+                  .then((res) => {
+                    if (res.ok) {
+                      toast.show(res.branch ? `Created branch ${res.branch}` : 'Branch created', {
+                        kind: 'success',
+                      });
+                    } else {
+                      toast.show(res.error ?? 'Failed to create branch', { kind: 'error' });
+                    }
+                  })
+                  .catch((err: unknown) => {
+                    toast.show(err instanceof Error ? err.message : String(err), { kind: 'error' });
+                  })
+                  .finally(() => setBranching(false));
+              }}
+              title="Create an oc/<slug> branch in the active workspace from this conversation"
+            >
+              {branching ? 'Branching…' : 'Branch'}
+            </button>
+            {/* Lane 6 — replay this conversation against a different provider/model */}
+            <button
+              type="button"
+              className="btn"
+              disabled={!chat.activeId || chat.streaming}
+              onClick={() => setReplayModalOpen(true)}
+              title="Replay this conversation against a different provider/model and diff the outputs"
+            >
+              Replay
+            </button>
+            <ExportMenu
+              disabled={!chat.activeId || chat.streaming}
+              onExport={(fmt) => {
+                void chat.exportActive(fmt);
+              }}
+            />
+          </div>
         </div>
-        <ExportMenu
-          disabled={!chat.activeId || chat.streaming}
-          onExport={(fmt) => {
-            void chat.exportActive(fmt);
-          }}
-        />
-        {/* Lane 6 — replay this conversation against a different provider/model */}
-        <button
-          type="button"
-          className="btn"
-          disabled={!chat.activeId || chat.streaming}
-          onClick={() => setReplayModalOpen(true)}
-          title="Replay this conversation against a different provider/model and diff the outputs"
-        >
-          Replay
-        </button>
         {chat.error ? <div className="chat-error">{chat.error}</div> : null}
       </header>
       <div className="chat-scroll" ref={scrollRef}>
         {visibleMessages.length === 0 && !chat.draft ? (
-          <div
-            className="chat-empty"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-start',
-              gap: 14,
-              padding: '40px 36px',
-              maxWidth: 920,
-              margin: '0 auto',
-            }}
-          >
-            <p
-              style={{
-                margin: 0,
-                color: 'var(--text-primary)',
-                fontSize: 18,
-                fontWeight: 600,
-                letterSpacing: '-0.01em',
-              }}
-            >
-              What can I help you build?
-            </p>
-            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 13 }}>
+          <div className="chat-empty-state">
+            <p className="chat-empty-state-heading">What can I help you build?</p>
+            <p className="chat-empty-state-sub">
               Pick a starter below, or type your own question. Use{' '}
               <kbd className="chat-empty-kbd">/</kbd> to insert a skill or MCP prompt, and{' '}
               <kbd className="chat-empty-kbd">?</kbd> to see every shortcut.
             </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div className="chat-starter-chips">
               {STARTER_CHIPS.map((chip) => (
                 <button
                   key={chip.label}
                   type="button"
+                  className="chat-starter-chip"
                   onClick={() => handleStarterChip(chip.prompt)}
-                  style={{
-                    background: 'var(--bg-elevated)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 999,
-                    padding: '6px 12px',
-                    font: 'inherit',
-                    fontSize: 12.5,
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                  }}
                 >
                   {chip.label}
                 </button>
@@ -1027,7 +1007,33 @@ function ComposerAddMenu({
             <label className="composer-add-row composer-add-row-toggle">
               <span className="composer-add-row-label">
                 <span className="composer-add-icon" aria-hidden="true">
-                  🛠
+                  {/* tools wrench */}
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    style={{ display: 'block', opacity: 0.8 }}
+                  >
+                    <mask
+                      id="icon-tools"
+                      style={{ maskType: 'alpha' }}
+                      maskUnits="userSpaceOnUse"
+                      x="0"
+                      y="0"
+                      width="16"
+                      height="16"
+                    >
+                      <path
+                        d="M10.5 1a4.5 4.5 0 0 0-4.27 5.9L1.22 11.9a1.5 1.5 0 1 0 2.12 2.12l5-5A4.5 4.5 0 0 0 14.5 4.5c0-.44-.06-.86-.17-1.27l-2.16 2.16-1.56-.44-.44-1.56 2.16-2.16A4.51 4.51 0 0 0 10.5 1Z"
+                        fill="currentColor"
+                      />
+                    </mask>
+                    <g mask="url(#icon-tools)">
+                      <rect width="16" height="16" fill="currentColor" />
+                    </g>
+                  </svg>
                 </span>
                 Tools
               </span>
@@ -1041,7 +1047,33 @@ function ComposerAddMenu({
             <div className="composer-add-row composer-add-row-disabled">
               <span className="composer-add-row-label">
                 <span className="composer-add-icon" aria-hidden="true">
-                  🛠
+                  {/* tools wrench */}
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    style={{ display: 'block', opacity: 0.8 }}
+                  >
+                    <mask
+                      id="icon-tools-dis"
+                      style={{ maskType: 'alpha' }}
+                      maskUnits="userSpaceOnUse"
+                      x="0"
+                      y="0"
+                      width="16"
+                      height="16"
+                    >
+                      <path
+                        d="M10.5 1a4.5 4.5 0 0 0-4.27 5.9L1.22 11.9a1.5 1.5 0 1 0 2.12 2.12l5-5A4.5 4.5 0 0 0 14.5 4.5c0-.44-.06-.86-.17-1.27l-2.16 2.16-1.56-.44-.44-1.56 2.16-2.16A4.51 4.51 0 0 0 10.5 1Z"
+                        fill="currentColor"
+                      />
+                    </mask>
+                    <g mask="url(#icon-tools-dis)">
+                      <rect width="16" height="16" fill="currentColor" />
+                    </g>
+                  </svg>
                 </span>
                 Tools
               </span>
@@ -1056,7 +1088,33 @@ function ComposerAddMenu({
           >
             <span className="composer-add-row-label">
               <span className="composer-add-icon" aria-hidden="true">
-                ✦
+                {/* skills star */}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  style={{ display: 'block', opacity: 0.8 }}
+                >
+                  <mask
+                    id="icon-skills"
+                    style={{ maskType: 'alpha' }}
+                    maskUnits="userSpaceOnUse"
+                    x="0"
+                    y="0"
+                    width="16"
+                    height="16"
+                  >
+                    <path
+                      d="M8 1l1.8 3.64 4.02.58-2.91 2.84.69 4.01L8 10.1l-3.6 1.97.69-4.01L2.18 5.22l4.02-.58L8 1Z"
+                      fill="currentColor"
+                    />
+                  </mask>
+                  <g mask="url(#icon-skills)">
+                    <rect width="16" height="16" fill="currentColor" />
+                  </g>
+                </svg>
               </span>
               Skills
             </span>
@@ -1070,7 +1128,36 @@ function ComposerAddMenu({
           >
             <span className="composer-add-row-label">
               <span className="composer-add-icon" aria-hidden="true">
-                ⛓
+                {/* mcp chain links */}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  style={{ display: 'block', opacity: 0.8 }}
+                >
+                  <mask
+                    id="icon-mcp"
+                    style={{ maskType: 'alpha' }}
+                    maskUnits="userSpaceOnUse"
+                    x="0"
+                    y="0"
+                    width="16"
+                    height="16"
+                  >
+                    <path
+                      d="M6.5 9.5a3 3 0 0 0 4.24 0l2-2a3 3 0 0 0-4.24-4.24l-1.15 1.14M9.5 6.5a3 3 0 0 0-4.24 0l-2 2a3 3 0 0 0 4.24 4.24l1.14-1.14"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </mask>
+                  <g mask="url(#icon-mcp)">
+                    <rect width="16" height="16" fill="currentColor" />
+                  </g>
+                </svg>
               </span>
               MCPs
             </span>
@@ -1084,7 +1171,33 @@ function ComposerAddMenu({
           >
             <span className="composer-add-row-label">
               <span className="composer-add-icon" aria-hidden="true">
-                🧩
+                {/* plugins puzzle piece */}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  style={{ display: 'block', opacity: 0.8 }}
+                >
+                  <mask
+                    id="icon-plugins"
+                    style={{ maskType: 'alpha' }}
+                    maskUnits="userSpaceOnUse"
+                    x="0"
+                    y="0"
+                    width="16"
+                    height="16"
+                  >
+                    <path
+                      d="M6 2a1 1 0 0 0-1 1v.5H3a1 1 0 0 0-1 1V7a.5.5 0 0 0 .5.5H3a1 1 0 1 1 0 2h-.5a.5.5 0 0 0-.5.5v2.5a1 1 0 0 0 1 1h2.5a.5.5 0 0 0 .5-.5V13a1 1 0 1 1 2 0v.5a.5.5 0 0 0 .5.5H12a1 1 0 0 0 1-1V10a.5.5 0 0 0-.5-.5H12a1 1 0 1 1 0-2h.5A.5.5 0 0 0 13 7V4.5a1 1 0 0 0-1-1h-2V3a1 1 0 0 0-1-1H6Z"
+                      fill="currentColor"
+                    />
+                  </mask>
+                  <g mask="url(#icon-plugins)">
+                    <rect width="16" height="16" fill="currentColor" />
+                  </g>
+                </svg>
               </span>
               Plugins
             </span>
@@ -1144,7 +1257,24 @@ function ExportMenu({
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        Export ▾
+        Export
+        <svg
+          className="model-picker-caret"
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <path
+            d="M2 3.5L5 6.5L8 3.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
       {open ? (
         <div className="chat-export-menu" role="menu">
@@ -1208,7 +1338,7 @@ function MessageBubbleInner({ message, onRerun }: MessageBubbleProps): JSX.Eleme
         </footer>
       ) : null}
       {message.role === 'assistant' ? (
-        <div className="chat-bubble-actions" style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <div className="chat-bubble-actions">
           <AddToMemoryButton content={message.content} defaultHeading={memoryHeading} />
         </div>
       ) : null}
@@ -1299,12 +1429,7 @@ function BlockSequence({
 }
 
 function CaretBlink(): JSX.Element {
-  const [on, setOn] = useState(true);
-  useEffect(() => {
-    const id = window.setInterval(() => setOn((v) => !v), 500);
-    return () => window.clearInterval(id);
-  }, []);
-  return <span className="chat-caret">{on ? '▍' : ' '}</span>;
+  return <span className="chat-caret" aria-hidden="true" />;
 }
 
 function composerPlaceholder(
@@ -1312,7 +1437,7 @@ function composerPlaceholder(
   transferOrigin: 'agent' | 'codebase' | null | undefined,
   streaming: boolean,
 ): string {
-  if (streaming) return 'Streaming… press Esc to stop';
+  if (streaming) return 'Generating response — press Esc to stop';
   if (transferOrigin === 'agent') return 'Continue from subagent run…';
   if (transferOrigin === 'codebase') return 'Ask about this file…';
   return `Ask ${modelName} anything…`;
@@ -1325,9 +1450,9 @@ function roleLabel(role: StoredMessage['role']): string {
     case 'assistant':
       return 'Assistant';
     case 'system':
-      return 'System';
+      return '';
     case 'tool':
-      return 'Tool';
+      return '';
   }
 }
 
@@ -1338,7 +1463,75 @@ function AttachmentChip({
   attachment: ChatAttachment;
   onRemove: () => void;
 }): JSX.Element {
-  const icon = attachment.kind === 'image' ? '🖼' : attachment.kind === 'text' ? '📄' : '📎';
+  const icon =
+    attachment.kind === 'image' ? (
+      /* image */
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ display: 'block' }}
+      >
+        <rect
+          x="1"
+          y="2"
+          width="14"
+          height="12"
+          rx="2"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          fill="none"
+        />
+        <circle cx="5.5" cy="6.5" r="1.5" fill="currentColor" />
+        <path
+          d="M1 12l4-4 3 3 2-2 5 5"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ) : attachment.kind === 'text' ? (
+      /* document */
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ display: 'block' }}
+      >
+        <path
+          d="M4 1h6l4 4v10H4V1Z"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          fill="none"
+        />
+        <path d="M9 1v5h4" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M6 9h5M6 12h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ) : (
+      /* paperclip */
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ display: 'block' }}
+      >
+        <path
+          d="M13 7.5l-5.5 5.5a4 4 0 0 1-5.66-5.66l6.36-6.36a2.5 2.5 0 0 1 3.54 3.54L5.38 10.38a1 1 0 0 1-1.42-1.42L9 4"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
   const label =
     attachment.kind === 'text' && attachment.truncated
       ? `${attachment.name} (truncated)`

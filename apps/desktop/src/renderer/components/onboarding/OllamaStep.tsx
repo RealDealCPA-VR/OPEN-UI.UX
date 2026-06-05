@@ -191,6 +191,7 @@ export function OllamaStep({
 
       {probing && (
         <p className="settings-section-desc" data-testid="ollama-probing">
+          <span className="mcp-inline-spinner" aria-hidden="true" style={{ marginRight: 6 }} />
           Checking for a running Ollama on 127.0.0.1:11434…
         </p>
       )}
@@ -202,8 +203,8 @@ export function OllamaStep({
           </p>
           {probe.models.length === 0 ? (
             <p className="onboarding-warn">
-              No models installed. Run <code>ollama pull llama3</code> in a terminal to download
-              one, then come back.
+              No models installed yet. Open a terminal and run <code>ollama pull llama3</code> to
+              download one, then return here.
             </p>
           ) : (
             <ul className="onboarding-provider-list">
@@ -223,7 +224,9 @@ export function OllamaStep({
                     <span>
                       <strong>{m.id}</strong>
                       {m.sizeGb > 0 ? (
-                        <span style={{ marginLeft: 8, opacity: 0.7 }}>{formatSize(m.sizeGb)}</span>
+                        <span style={{ marginLeft: 8, color: 'var(--text-secondary)' }}>
+                          {formatSize(m.sizeGb)}
+                        </span>
                       ) : null}
                     </span>
                   </label>
@@ -276,12 +279,14 @@ export function OllamaStep({
                   style={{
                     background: 'var(--bg-sunken)',
                     border: '1px solid var(--border)',
-                    borderRadius: 6,
+                    borderRadius: 'var(--radius-sm)',
                     padding: 8,
                     fontSize: 12,
                     maxHeight: 160,
                     overflow: 'auto',
                     whiteSpace: 'pre-wrap',
+                    color: 'var(--text-pre)',
+                    fontFamily: 'var(--font-mono)',
                   }}
                 >
                   {installerState.installLog || 'starting installer…'}

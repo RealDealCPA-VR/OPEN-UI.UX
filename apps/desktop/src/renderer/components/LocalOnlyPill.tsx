@@ -80,28 +80,29 @@ const PILL_CSS = `
     align-items: center;
     gap: 6px;
     padding: 3px 10px;
-    border-radius: var(--radius-pill, 999px);
+    border-radius: var(--radius-pill);
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.02em;
     line-height: 1;
     cursor: pointer;
-    border: 1px solid var(--border, #2a2f3a);
-    background: var(--bg-btn, #1a1d24);
-    color: var(--text-primary, #e6e7eb);
-    transition: background var(--duration-fast, 100ms) var(--ease, ease),
-      border-color var(--duration-fast, 100ms) var(--ease, ease);
+    border: 1px solid var(--border);
+    background: var(--bg-btn);
+    color: var(--text-primary);
+    transition: background var(--duration-fast) var(--ease),
+      border-color var(--duration-fast) var(--ease);
   }
   .local-only-pill:disabled { opacity: 0.6; cursor: progress; }
-  .local-only-pill:hover { background: var(--bg-btn-hover, #232733); }
+  .local-only-pill:hover { background: var(--bg-btn-hover); }
+  .local-only-pill:focus-visible { outline: none; box-shadow: var(--focus-ring); }
   .local-only-pill.is-on {
-    background: var(--success-bg, #0f3320);
-    color: var(--success, #22c55e);
-    border-color: var(--success, #22c55e);
+    background: var(--success-bg);
+    color: var(--success);
+    border-color: var(--success-border);
   }
   .local-only-pill.is-off {
-    background: var(--bg-btn, #1a1d24);
-    color: var(--text-secondary, #a1a5b0);
+    background: var(--bg-btn);
+    color: var(--text-secondary);
   }
   .local-only-pill-dot {
     display: inline-block;
@@ -109,6 +110,6 @@ const PILL_CSS = `
     height: 7px;
     border-radius: 999px;
     background: currentColor;
-    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 25%, transparent);
+    box-shadow: 0 0 0 2px var(--success-bg), 0 0 0 3px var(--bg-elevated);
   }
 `;

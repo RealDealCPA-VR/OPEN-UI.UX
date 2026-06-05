@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AgentRun } from '../../../shared/agent-runs';
+import {
+  statusPillClass as sharedStatusPillClass,
+  statusLabel,
+} from '../../views/agent-runs-derive';
 
 export default function AgentContextPane(): JSX.Element {
   const navigate = useNavigate();
@@ -36,7 +40,31 @@ export default function AgentContextPane(): JSX.Element {
       </div>
       {loadError ? <p className="lcc-pane-error">{loadError}</p> : null}
       {runs === null ? (
-        <p className="lcc-pane-empty">Loading…</p>
+        <ul className="lcc-list" aria-busy="true" aria-label="Loading runs">
+          {[0, 1, 2, 3].map((i) => (
+            <li key={i} className="lcc-list-row lcc-list-row--skeleton">
+              <span
+                className="settings-skeleton-pulse"
+                style={{
+                  display: 'block',
+                  height: 12,
+                  width: '65%',
+                  borderRadius: 'var(--radius-xs)',
+                  marginBottom: 6,
+                }}
+              />
+              <span
+                className="settings-skeleton-pulse"
+                style={{
+                  display: 'block',
+                  height: 10,
+                  width: '40%',
+                  borderRadius: 'var(--radius-xs)',
+                }}
+              />
+            </li>
+          ))}
+        </ul>
       ) : runs.length === 0 ? (
         <div className="lcc-pane-empty-state">
           <p className="lcc-pane-empty">No runs yet. Spawn a task to put the agent to work.</p>
@@ -59,7 +87,9 @@ export default function AgentContextPane(): JSX.Element {
               >
                 <span className="lcc-list-title">{truncate(run.task, 60)}</span>
                 <span className="lcc-list-meta">
-                  <span className={`pill pill-${statusPillClass(run.status)}`}>{run.status}</span>
+                  <span className={sharedStatusPillClass(run.status)}>
+                    {statusLabel(run.status)}
+                  </span>
                   {run.triggerSource === 'scheduled' && (
                     <span className="pill" title="Started by a scheduled task">
                       scheduled
@@ -70,7 +100,17 @@ export default function AgentContextPane(): JSX.Element {
                       {run.runnerId}
                     </span>
                   )}
-                  <span>{new Date(run.startedAt).toLocaleString()}</span>
+                  <span
+                    style={{
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      minWidth: 0,
+                    }}
+                    title={new Date(run.startedAt).toLocaleString()}
+                  >
+                    {relativeTime(run.startedAt)}
+                  </span>
                 </span>
               </button>
             </li>
@@ -81,13 +121,17 @@ export default function AgentContextPane(): JSX.Element {
   );
 }
 
-function statusPillClass(s: AgentRun['status']): string {
-  if (s === 'completed') return 'ok';
-  if (s === 'failed') return 'warn';
-  return '';
-}
-
 function truncate(s: string, n: number): string {
   if (s.length <= n) return s;
   return `${s.slice(0, n - 1)}…`;
+}
+
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return 'just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  if (diff < 172_800_000) return 'yesterday';
+  const d = new Date(ts);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }

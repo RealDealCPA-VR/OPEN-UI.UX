@@ -222,6 +222,7 @@ export function CodebaseSearchBox({
                   }
                   onClick={() => setScope(s.id)}
                   disabled={disabled}
+                  aria-disabled={disabled || undefined}
                   title={disabled ? 'No current directory selected' : undefined}
                 >
                   {s.label}
@@ -230,7 +231,11 @@ export function CodebaseSearchBox({
             );
           })}
         </div>
-        {searching && <span className="codebase-search-status">…</span>}
+        {searching && (
+          <span className="codebase-search-status" aria-label="Searching…">
+            <span className="mcp-inline-spinner" aria-hidden="true" />
+          </span>
+        )}
         {!searching && result && hasQuery ? (
           <span
             className="codebase-search-timing"

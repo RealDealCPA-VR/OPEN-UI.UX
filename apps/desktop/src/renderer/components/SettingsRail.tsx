@@ -39,7 +39,7 @@ export function SettingsRail({
 
   return (
     <nav ref={navRef} className="settings-rail" aria-label="Settings sections">
-      <div className="settings-rail-search" style={{ position: 'relative' }}>
+      <div className="settings-rail-search">
         <input
           ref={inputRef}
           type="search"
@@ -62,7 +62,26 @@ export function SettingsRail({
             onClick={() => onQueryChange('')}
             aria-label="Clear search"
           >
-            ×
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+              <line
+                x1="1"
+                y1="1"
+                x2="9"
+                y2="9"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+              <line
+                x1="9"
+                y1="1"
+                x2="1"
+                y2="9"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
           </button>
         )}
       </div>

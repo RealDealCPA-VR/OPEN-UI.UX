@@ -69,7 +69,21 @@ export default function AutomationsContextPane(): JSX.Element {
         <span className="lcc-pane-title">Automations</span>
       </div>
       {tasks === null ? (
-        <p className="lcc-pane-empty">Loading…</p>
+        <ul
+          className="lcc-list lcc-list-skeleton"
+          aria-busy="true"
+          aria-label="Loading automations"
+        >
+          {[0, 1, 2].map((i) => (
+            <li key={i} className="lcc-list-row">
+              <div className="lcc-skeleton-row">
+                <span className="lcc-skeleton lcc-skeleton-badge" />
+                <span className="lcc-skeleton lcc-skeleton-title" />
+                <span className="lcc-skeleton lcc-skeleton-meta" />
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : sorted.length === 0 ? (
         <div className="lcc-pane-empty-state">
           <p className="lcc-pane-empty">No automations. Create one to run prompts on a schedule.</p>
@@ -117,7 +131,11 @@ function AutomationRow({
           {task.name}
         </span>
         <span className="lcc-list-meta">
-          {countdown ? <span title="Time until next run">in {countdown}</span> : null}
+          {countdown ? (
+            <span title="Time until next run" aria-label={'Next run in ' + countdown}>
+              in {countdown}
+            </span>
+          ) : null}
           {!task.enabled ? <span className="pill pill-warn">disabled</span> : null}
         </span>
       </button>

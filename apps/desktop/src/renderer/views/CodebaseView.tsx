@@ -169,7 +169,7 @@ export function CodebaseView(): JSX.Element {
     <section className="view codebase-view">
       <header className="codebase-head">
         <h1>Codebase</h1>
-        <p>Workspace file tree. Click a file to preview; pending agent edits show pills.</p>
+        <p>Browse and preview files. Agent-proposed changes are highlighted inline.</p>
       </header>
       <div className="codebase-search-wrap">
         <CodebaseSearchBox

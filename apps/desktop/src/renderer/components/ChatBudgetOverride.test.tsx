@@ -91,7 +91,7 @@ describe('ChatBudgetOverride', () => {
     expect(req.amountUsd).toBe(12.5);
   });
 
-  it('shows "Budget ✓" and the existing values when a budget already exists', async () => {
+  it('shows "Edit budget" and the existing values when a budget already exists', async () => {
     const existing: Budget = {
       id: 'budget-existing',
       scope: 'conversation',
@@ -105,9 +105,9 @@ describe('ChatBudgetOverride', () => {
     };
     installBridge([existing]);
     renderInRouter(<ChatBudgetOverride conversationId="conv-1" />);
-    // Wait until the badge flips from "Set budget" to "Budget ✓"
-    await waitFor(() => screen.getByRole('button', { name: /budget ✓/i }));
-    fireEvent.click(screen.getByRole('button', { name: /budget ✓/i }));
+    // Wait until the badge flips from "Set budget" to "Edit budget"
+    await waitFor(() => screen.getByRole('button', { name: /edit budget/i }));
+    fireEvent.click(screen.getByRole('button', { name: /edit budget/i }));
     const amount = (await screen.findByLabelText('Max spend USD')) as HTMLInputElement;
     expect(amount.value).toBe('9.99');
   });
@@ -136,8 +136,8 @@ describe('ChatBudgetOverride', () => {
     };
     const bridge = installBridge([existing]);
     renderInRouter(<ChatBudgetOverride conversationId="conv-1" />);
-    await waitFor(() => screen.getByRole('button', { name: /budget ✓/i }));
-    fireEvent.click(screen.getByRole('button', { name: /budget ✓/i }));
+    await waitFor(() => screen.getByRole('button', { name: /edit budget/i }));
+    fireEvent.click(screen.getByRole('button', { name: /edit budget/i }));
     await screen.findByLabelText('Max spend USD');
     fireEvent.click(screen.getByRole('button', { name: /clear/i }));
     await waitFor(() => expect(bridge.delete).toHaveBeenCalledWith('budget-existing'));

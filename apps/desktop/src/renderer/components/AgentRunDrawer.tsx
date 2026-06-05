@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentRun, AgentRunToolEvent } from '../../shared/agent-runs';
 import type { RunnerFriendlyError, RunnerFriendlyErrorKind } from '../../shared/runner-discovery';
 import { getBridge } from '../bridge';
@@ -25,12 +25,82 @@ function runnerBridge(): RunnerBridge | null {
   return bridge?.runner ?? null;
 }
 
-const KIND_ICON: Record<RunnerFriendlyErrorKind, string> = {
-  auth: '🔑',
-  'model-not-found': '⚠',
-  'rate-limit': '⏱',
-  network: '⌧',
-  unknown: '⚠',
+const KIND_ICON: Record<RunnerFriendlyErrorKind, React.ReactElement> = {
+  auth: (
+    <svg
+      aria-hidden
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M10.5 1a4.5 4.5 0 0 1 1.027 8.875L11.5 10H10v1.5H8.5V13H7v2H4.5A1.5 1.5 0 0 1 3 13.5V11l4.125-4.125A4.501 4.501 0 0 1 10.5 1Zm0 1.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm0 1.25a1.75 1.75 0 1 1 0 3.5 1.75 1.75 0 0 1 0-3.5Zm0 1a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"
+        fill="currentColor"
+      />
+    </svg>
+  ),
+  'model-not-found': (
+    <svg
+      aria-hidden
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 1.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 10a.75.75 0 1 1 0 1.5A.75.75 0 0 1 8 10Zm0-6.5a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4A.75.75 0 0 1 8 3.5Z"
+        fill="currentColor"
+      />
+    </svg>
+  ),
+  'rate-limit': (
+    <svg
+      aria-hidden
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 1.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 3.75a.75.75 0 0 1 .75.75V8l2.25 1.3a.75.75 0 1 1-.75 1.3l-2.625-1.516A.75.75 0 0 1 7.25 8.5V4.5A.75.75 0 0 1 8 3.75Z"
+        fill="currentColor"
+      />
+    </svg>
+  ),
+  network: (
+    <svg
+      aria-hidden
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M2.22 2.22a.75.75 0 0 1 1.06 0l10.5 10.5a.75.75 0 1 1-1.06 1.06l-1.405-1.405A6.968 6.968 0 0 1 8 13a6.968 6.968 0 0 1-3.593-.987l-.742.742a.75.75 0 1 1-1.06-1.06l.601-.602A7.006 7.006 0 0 1 1.5 8c0-1.31.36-2.536.986-3.585L2.22 3.28a.75.75 0 0 1 0-1.06ZM8 6a2 2 0 0 1 1.93 1.476L8.53 6.12A2 2 0 0 0 6.12 8.53L4.667 7.078A3.5 3.5 0 0 1 8 4.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-.46 1.74L9.92 8.12A2 2 0 0 0 8 6Z"
+        fill="currentColor"
+      />
+    </svg>
+  ),
+  unknown: (
+    <svg
+      aria-hidden
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 1.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 10a.75.75 0 1 1 0 1.5A.75.75 0 0 1 8 10Zm0-6.5a.75.75 0 0 1 .75.75v4a.75.75 0 0 1-1.5 0v-4A.75.75 0 0 1 8 3.5Z"
+        fill="currentColor"
+      />
+    </svg>
+  ),
 };
 
 const KIND_LABEL: Record<RunnerFriendlyErrorKind, string> = {
@@ -263,7 +333,21 @@ export function AgentRunDrawer({
             onClick={onClose}
             aria-label="Close run detail"
           >
-            ×
+            <svg
+              aria-hidden
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M2 2L12 12M12 2L2 12"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+              />
+            </svg>
           </button>
           <div className="agent-run-drawer-title">
             <span className={statusPillClass(run.status)}>
@@ -275,8 +359,12 @@ export function AgentRunDrawer({
             <h2>{run.task}</h2>
           </div>
           <div className="agent-run-drawer-meta">
-            <span>
-              {run.providerId} · {run.modelId}
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {run.providerId}
+              <span aria-hidden style={{ margin: '0 4px', color: 'var(--text-faint)' }}>
+                ·
+              </span>
+              {run.modelId}
             </span>
             <span>
               {formatTokens(run.inputTokens)} in · {formatTokens(run.outputTokens)} out
@@ -287,7 +375,7 @@ export function AgentRunDrawer({
                 tool: <code>{tool}</code>
               </span>
             )}
-            <span>stop: {stopReasonLabel(run.stopReason)}</span>
+            <span>Stopped: {stopReasonLabel(run.stopReason)}</span>
           </div>
         </header>
 
@@ -344,7 +432,7 @@ export function AgentRunDrawer({
                 disabled={respawnBusy !== null}
                 onClick={() => void handleRespawn('internal')}
               >
-                {respawnBusy === 'internal' ? 'Re-spawning…' : 'Re-spawn with internal runner'}
+                {respawnBusy === 'internal' ? 'Re-spawning…' : 'Retry with built-in agent'}
               </button>
             </div>
             {run.error && (
@@ -370,20 +458,10 @@ export function AgentRunDrawer({
         )}
 
         <div className="agent-run-drawer-section">
-          <h3>
-            Activity log ({events.length})
-            <span
-              style={{
-                marginLeft: 8,
-                fontWeight: 400,
-                textTransform: 'none',
-                letterSpacing: 0,
-                color: 'var(--text-faint)',
-              }}
-            >
-              · j/k to navigate
-            </span>
-          </h3>
+          <h3>Activity log ({events.length})</h3>
+          <span className="agent-run-drawer-kbd-hint">
+            <kbd>j</kbd>/<kbd>k</kbd> to navigate
+          </span>
           {events.length === 0 ? (
             <p className="audit-empty">No tool events yet.</p>
           ) : (
@@ -402,9 +480,9 @@ export function AgentRunDrawer({
                     }}
                     className={`agent-run-timeline-item${evt.isError ? ' agent-run-timeline-item-error' : ''}`}
                     style={{
-                      outline: isFocused ? '1px solid var(--accent-soft-border)' : 'none',
-                      outlineOffset: 1,
-                      borderRadius: 4,
+                      outline: isFocused ? '2px solid var(--accent-border)' : 'none',
+                      outlineOffset: 2,
+                      borderRadius: 'var(--radius-2xs)',
                       cursor: 'pointer',
                       flexWrap: 'wrap',
                       alignItems: 'center',
@@ -457,10 +535,10 @@ export function AgentRunDrawer({
             right: 20,
             bottom: hasUnresolvedWorktree(run) || canContinueInChat(run) ? 76 : 20,
             zIndex: 1,
-            borderRadius: 999,
+            borderRadius: 'var(--radius-pill)',
             padding: '4px 12px',
             fontSize: 12,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
+            boxShadow: 'var(--shadow-dropdown)',
           }}
         >
           Jump to latest ↓
@@ -471,7 +549,7 @@ export function AgentRunDrawer({
         <footer
           style={{
             background: 'var(--bg-panel)',
-            paddingTop: 12,
+            padding: '12px 0 16px',
             borderTop: '1px solid var(--border-strong)',
             display: 'flex',
             gap: 8,
@@ -522,8 +600,32 @@ function ToolEventRow({ idx, evt, startedAt, expanded }: ToolEventRowProps): JSX
       <code className="agent-run-timeline-tool">{evt.name}</code>
       <span className="agent-run-timeline-dur">{formatDurationMs(evt.durationMs)}</span>
       {evt.isError && <span className="pill audit-error-pill">Error</span>}
-      <span aria-hidden style={{ marginLeft: 'auto', color: 'var(--text-faint)', fontSize: 10 }}>
-        {expanded ? '▾' : '▸'}
+      <span
+        aria-hidden
+        style={{
+          marginLeft: 'auto',
+          color: 'var(--text-faint)',
+          display: 'flex',
+          alignItems: 'center',
+          transition: 'transform var(--duration-fast) var(--ease)',
+          transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+        }}
+      >
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M2 3.5L5 6.5L8 3.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </span>
       {expanded && (
         <div
@@ -533,7 +635,7 @@ function ToolEventRow({ idx, evt, startedAt, expanded }: ToolEventRowProps): JSX
             padding: '6px 10px',
             background: 'var(--bg-sunken)',
             border: '1px solid var(--border-row-divider)',
-            borderRadius: 4,
+            borderRadius: 'var(--radius-2xs)',
             fontSize: 12,
             color: 'var(--text-secondary)',
             fontFamily: 'var(--font-mono, ui-monospace, monospace)',

@@ -78,9 +78,26 @@ export function MergeConflictResolver({
         <header className="approval-modal-header">
           <h2>Resolve merge conflicts</h2>
         </header>
-        {loading && <p>Loading conflicts…</p>}
+        {loading && (
+          <p className="approvals-loading" aria-busy="true">
+            Loading conflicts…
+          </p>
+        )}
         {error && <p className="approvals-save-error">{error}</p>}
-        {!loading && hunks.length === 0 && <p>No conflicts found.</p>}
+        {!loading && hunks.length === 0 && (
+          <p
+            style={{
+              padding: '16px 12px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--success-bg-soft)',
+              border: '1px solid var(--success-border)',
+              color: 'var(--success)',
+              margin: 0,
+            }}
+          >
+            No conflicts found.
+          </p>
+        )}
         {hunks.length > 0 && (
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 12 }}>
             {hunks.map((h) => (
@@ -88,7 +105,7 @@ export function MergeConflictResolver({
                 key={`${h.filePath}:${h.startLine}`}
                 style={{
                   border: '1px solid var(--border-strong)',
-                  borderRadius: 6,
+                  borderRadius: 'var(--radius-sm)',
                   padding: 10,
                   background: 'var(--bg-sunken)',
                 }}
@@ -106,34 +123,60 @@ export function MergeConflictResolver({
                     marginBottom: 8,
                   }}
                 >
-                  <pre
-                    style={{
-                      margin: 0,
-                      padding: 8,
-                      background: 'var(--bg-panel)',
-                      border: '1px solid var(--success-border)',
-                      borderRadius: 4,
-                      fontSize: 12,
-                      maxHeight: 200,
-                      overflow: 'auto',
-                    }}
-                  >
-                    {h.ours || '(empty)'}
-                  </pre>
-                  <pre
-                    style={{
-                      margin: 0,
-                      padding: 8,
-                      background: 'var(--bg-panel)',
-                      border: '1px solid var(--accent-border)',
-                      borderRadius: 4,
-                      fontSize: 12,
-                      maxHeight: 200,
-                      overflow: 'auto',
-                    }}
-                  >
-                    {h.theirs || '(empty)'}
-                  </pre>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        letterSpacing: '0.07em',
+                        textTransform: 'uppercase',
+                        color: 'var(--success)',
+                      }}
+                    >
+                      Ours (current)
+                    </span>
+                    <pre
+                      style={{
+                        margin: 0,
+                        padding: 8,
+                        background: 'var(--bg-panel)',
+                        border: '1px solid var(--success-border)',
+                        borderRadius: 'var(--radius-2xs)',
+                        fontSize: 12,
+                        maxHeight: 200,
+                        overflow: 'auto',
+                      }}
+                    >
+                      {h.ours || '(empty)'}
+                    </pre>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        letterSpacing: '0.07em',
+                        textTransform: 'uppercase',
+                        color: 'var(--accent-text)',
+                      }}
+                    >
+                      Theirs (incoming)
+                    </span>
+                    <pre
+                      style={{
+                        margin: 0,
+                        padding: 8,
+                        background: 'var(--bg-panel)',
+                        border: '1px solid var(--accent-border)',
+                        borderRadius: 'var(--radius-2xs)',
+                        fontSize: 12,
+                        maxHeight: 200,
+                        overflow: 'auto',
+                      }}
+                    >
+                      {h.theirs || '(empty)'}
+                    </pre>
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button

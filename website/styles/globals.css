@@ -1,0 +1,39 @@
+/*
+ * OpenCodex docs — global CSS
+ * Imported once via pages/_app.tsx so it applies site-wide.
+ */
+
+/* ── Focus ring ─────────────────────────────────────────────────────────── */
+/*
+ * Branded :focus-visible ring using design-token values.
+ * Matches the desktop app's --accent / --focus-ring-offset contract so the
+ * docs site stays visually consistent with the app shell.
+ *
+ * Fallback literals are the dark-theme token values; in practice the Nextra
+ * layout injects a <style> block with CSS custom properties on :root, so the
+ * var() references resolve at runtime.
+ */
+
+*:focus-visible {
+  outline: 2px solid var(--accent, #7c7cff);
+  outline-offset: var(--focus-ring-offset, 2px);
+  border-radius: var(--radius-xs, 5px);
+}
+
+/* ── Reduced-motion reset ───────────────────────────────────────────────── */
+/*
+ * Collapses all duration/delay values to 0 for users who request minimal
+ * animation at the OS level. Nextra ships its own transitions; this override
+ * catches anything not already respecting the media query inline.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

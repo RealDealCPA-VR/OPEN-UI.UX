@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Conversation } from '../../../shared/conversation';
 import { useChat } from '../../state/chat-context';
 import { useSelectedModel } from '../../state/selected-model-context';
@@ -124,9 +124,7 @@ export default function ChatContextPane(): JSX.Element {
               active={c.id === activeId}
               onSelect={() => selectConversation(c.id)}
               onDelete={() => {
-                if (window.confirm(`Delete "${c.title}"?`)) {
-                  void deleteConversation(c.id);
-                }
+                void deleteConversation(c.id);
               }}
             />
           ))
@@ -147,25 +145,79 @@ function ConversationRow({
   onSelect: () => void;
   onDelete: () => void;
 }): JSX.Element {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  // Auto-focus the Cancel button when confirmation appears so Escape/Tab work naturally
+  useEffect(() => {
+    if (confirmingDelete) {
+      cancelRef.current?.focus();
+    }
+  }, [confirmingDelete]);
+
   return (
-    <li className={`chat-conversation-row${active ? ' active' : ''}`}>
-      <button type="button" className="chat-conversation-btn" onClick={onSelect}>
-        <span className="chat-conversation-title">{conversation.title}</span>
-        <span className="chat-conversation-meta">
-          {new Date(conversation.updatedAt).toLocaleDateString()}
-        </span>
-      </button>
-      <button
-        type="button"
-        className="chat-conversation-del"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-        aria-label={`Delete ${conversation.title}`}
-      >
-        ×
-      </button>
+    <li
+      className={`chat-conversation-row${active ? ' active' : ''}${confirmingDelete ? ' confirming' : ''}`}
+    >
+      {confirmingDelete ? (
+        <div
+          className="chat-conversation-confirm-row"
+          role="group"
+          aria-label={`Confirm delete "${conversation.title}"`}
+        >
+          <span className="chat-conversation-confirm-label">Delete?</span>
+          <div className="chat-conversation-confirm-actions">
+            <button
+              type="button"
+              className="chat-conversation-confirm-delete btn btn-danger"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmingDelete(false);
+                onDelete();
+              }}
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              ref={cancelRef}
+              className="chat-conversation-confirm-cancel btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmingDelete(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.stopPropagation();
+                  setConfirmingDelete(false);
+                }
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <button type="button" className="chat-conversation-btn" onClick={onSelect}>
+            <span className="chat-conversation-title">{conversation.title}</span>
+            <span className="chat-conversation-meta">
+              {new Date(conversation.updatedAt).toLocaleDateString()}
+            </span>
+          </button>
+          <button
+            type="button"
+            className="chat-conversation-del"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmingDelete(true);
+            }}
+            aria-label={`Delete ${conversation.title}`}
+          >
+            ×
+          </button>
+        </>
+      )}
     </li>
   );
 }

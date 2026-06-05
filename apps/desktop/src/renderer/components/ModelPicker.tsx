@@ -224,11 +224,26 @@ export function ModelPicker({ conversationId = null }: ModelPickerProps = {}): J
         disabled={loading}
         aria-haspopup="listbox"
         aria-expanded={open}
+        title={buttonLabel}
       >
         <span className="model-picker-label">{buttonLabel}</span>
-        <span className="model-picker-caret" aria-hidden="true">
-          ▾
-        </span>
+        <svg
+          className="model-picker-caret"
+          aria-hidden="true"
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M2 3.5L5 6.5L8 3.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
       <CostComparisonTooltip open={hovered && !open} conversationId={conversationId} />
 
@@ -290,9 +305,23 @@ export function ModelPicker({ conversationId = null }: ModelPickerProps = {}): J
                             onClick={() => toggleProvider(group.providerId)}
                             aria-expanded={isExpanded}
                           >
-                            <span className="model-picker-provider-caret" aria-hidden="true">
-                              {isExpanded ? '▾' : '▸'}
-                            </span>
+                            <svg
+                              className={`model-picker-provider-caret${isExpanded ? ' expanded' : ''}`}
+                              aria-hidden="true"
+                              width="10"
+                              height="10"
+                              viewBox="0 0 10 10"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <path
+                                d="M2 3.5L5 6.5L8 3.5"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
                             <span className="model-picker-provider-name">{group.providerName}</span>
                             {group.local ? (
                               <span className="model-picker-local-tag">local</span>

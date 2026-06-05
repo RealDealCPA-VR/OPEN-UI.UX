@@ -44,13 +44,19 @@ export function AddToMemoryButton(props: AddToMemoryButtonProps): JSX.Element | 
   return (
     <button
       type="button"
-      className="btn btn-ghost btn-tiny"
+      className={`btn btn-ghost btn-tiny${done === 'error' ? ' btn-danger' : ''}`}
       onClick={() => void onClick()}
       disabled={pending}
       title={error ?? 'Append this reply to .opencodex/memory.md'}
       data-testid="add-to-memory-button"
     >
-      {done === 'saved' ? 'Saved to memory' : pending ? 'Saving…' : '+ Add to project memory'}
+      {done === 'saved'
+        ? 'Saved to memory'
+        : done === 'error'
+          ? 'Save failed'
+          : pending
+            ? 'Saving…'
+            : '+ Add to project memory'}
     </button>
   );
 }

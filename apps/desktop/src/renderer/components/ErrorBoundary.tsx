@@ -37,25 +37,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         return this.props.fallback(this.state.error, this.reset);
       }
       return (
-        <div
-          role="alert"
-          style={{
-            padding: 16,
-            margin: 16,
-            border: '1px solid var(--danger-border, #b00020)',
-            background: 'var(--danger-bg, #2a1010)',
-            color: 'var(--text-primary, #fff)',
-            borderRadius: 6,
-            fontSize: 13,
-          }}
-        >
-          <h2 style={{ margin: '0 0 8px 0', fontSize: 14 }}>Something went wrong</h2>
-          <p style={{ margin: '0 0 8px 0', opacity: 0.85 }}>
-            {this.props.label ? `In ${this.props.label}: ` : null}
-            {this.state.error.message}
-          </p>
-          <button type="button" className="btn" onClick={this.reset} style={{ marginTop: 4 }}>
-            Try again
+        <div role="alert" className="error-boundary-fallback">
+          <h2>A part of the interface couldn&apos;t load</h2>
+          {this.props.label ? <p>In {this.props.label}</p> : null}
+          <pre className="tool-card-pre">
+            <code>{this.state.error.message}</code>
+          </pre>
+          <button type="button" className="btn" onClick={this.reset}>
+            Reload this view
           </button>
         </div>
       );

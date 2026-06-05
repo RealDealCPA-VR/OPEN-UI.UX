@@ -169,7 +169,11 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
   }, []);
 
   if (loadError) {
-    return <p className="memory-error">Failed to load memory state: {loadError}</p>;
+    return (
+      <div role="alert" className="field-errors memory-load-error">
+        Failed to load memory state: {loadError}
+      </div>
+    );
   }
   if (!status) {
     return <p className="memory-loading">Loading…</p>;
@@ -181,12 +185,12 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
 
   return (
     <div className={`memory-panel${props.className ? ` ${props.className}` : ''}`}>
-      <div className="memory-subsection">
-        <header className="memory-subhead">
-          <h3>Obsidian vault</h3>
+      <div className="settings-block">
+        <div className="settings-subhead-row">
+          <h3 className="settings-subhead">Obsidian vault</h3>
           <StatusPill status={obsidian} />
-        </header>
-        <p className="memory-subhead-desc">
+        </div>
+        <p className="settings-block-hint">
           Point the agent at a folder of markdown notes. Read tools run without a prompt; write
           tools (append, create) ask first.
         </p>
@@ -213,7 +217,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
             </button>
           )}
         </label>
-        <div className="memory-actions">
+        <div className="settings-field-row">
           <button
             type="button"
             className="btn"
@@ -226,12 +230,14 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
         </div>
       </div>
 
-      <div className="memory-subsection">
-        <header className="memory-subhead">
-          <h3>Notion</h3>
+      <div className="settings-divider" />
+
+      <div className="settings-block">
+        <div className="settings-subhead-row">
+          <h3 className="settings-subhead">Notion</h3>
           <StatusPill status={notion} />
-        </header>
-        <p className="memory-subhead-desc">
+        </div>
+        <p className="settings-block-hint">
           Provide a Notion integration token (stored in OS keychain). Share the pages and databases
           you want the agent to access with that integration.
         </p>
@@ -263,20 +269,13 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
             {busy.notionTokenSaving ? 'Saving…' : 'Save token'}
           </button>
           {savedFlash === 'notionToken' && (
-            <span
-              aria-live="polite"
-              style={{
-                fontSize: 12,
-                color: 'var(--success)',
-                marginLeft: 6,
-              }}
-            >
+            <span aria-live="polite" className="settings-saved-flash">
               Saved
             </span>
           )}
           {status.hasNotionToken &&
             (confirmingClearToken ? (
-              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', marginLeft: 6 }}>
+              <span className="memory-confirm-row">
                 <button
                   type="button"
                   className="btn btn-danger"
@@ -302,7 +301,7 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
               </button>
             ))}
         </label>
-        <div className="memory-actions">
+        <div className="settings-field-row">
           <button
             type="button"
             className="btn"
@@ -315,12 +314,14 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
         </div>
       </div>
 
-      <div className="memory-subsection">
-        <header className="memory-subhead">
-          <h3>Local workspace memory</h3>
+      <div className="settings-divider" />
+
+      <div className="settings-block">
+        <div className="settings-subhead-row">
+          <h3 className="settings-subhead">Local workspace memory</h3>
           <StatusPill status={localFs} />
-        </header>
-        <p className="memory-subhead-desc">
+        </div>
+        <p className="settings-block-hint">
           Keep a per-workspace memory.md the agent can read, search, and append to. Tools target the
           currently active workspace.
         </p>
@@ -334,7 +335,11 @@ export function MemoryPanel(props: MemoryPanelProps = {}): JSX.Element {
         </label>
       </div>
 
-      {actionError && <p className="memory-action-error">Failed: {actionError}</p>}
+      {actionError && (
+        <p className="field-errors" role="alert">
+          Failed: {actionError}
+        </p>
+      )}
     </div>
   );
 }

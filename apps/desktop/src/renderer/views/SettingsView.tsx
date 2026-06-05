@@ -38,9 +38,9 @@ export function SettingsView(): JSX.Element {
     findSectionBySlug(SETTINGS_SECTIONS, DEFAULT_SETTINGS_SLUG) ?? SETTINGS_SECTIONS[0];
   if (!defaultSection) {
     return (
-      <div role="alert" style={{ padding: 24 }}>
-        <h1 style={{ marginTop: 0 }}>Settings unavailable</h1>
-        <p>
+      <div role="alert" className="settings-card">
+        <h1>Settings unavailable</h1>
+        <p className="chat-warn">
           No settings sections are registered. This indicates a build configuration problem — please
           reinstall OpenCodex or contact support.
         </p>
@@ -136,7 +136,7 @@ function SettingsViewBody({ defaultSection }: { defaultSection: SettingsSection 
 const ANCHOR_HIGHLIGHT_CSS = `
   .settings-anchor-highlight {
     animation: settings-anchor-pulse 1.6s ease-out 1;
-    border-radius: 6px;
+    border-radius: 7px;
   }
   @keyframes settings-anchor-pulse {
     0%   { box-shadow: 0 0 0 0 var(--accent-soft-border); }

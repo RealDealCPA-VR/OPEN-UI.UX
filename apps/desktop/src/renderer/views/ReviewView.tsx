@@ -119,18 +119,7 @@ export function ReviewView(): JSX.Element {
   const canPostToPr = diff !== null && diff.prNumber !== null;
 
   return (
-    <div
-      className="review-view"
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(320px, 380px) 1fr',
-        gap: 16,
-        padding: 16,
-        minHeight: 0,
-        height: '100%',
-        boxSizing: 'border-box',
-      }}
-    >
+    <div className="review-view">
       <aside
         style={{
           display: 'flex',
@@ -139,11 +128,11 @@ export function ReviewView(): JSX.Element {
           padding: 12,
           background: 'var(--bg-panel)',
           border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md, 8px)',
+          borderRadius: 'var(--radius)',
           overflowY: 'auto',
         }}
       >
-        <h1 style={{ margin: 0, fontSize: 16 }}>Reviewer</h1>
+        <h1 className="review-view-title">Reviewer</h1>
         <ReviewSourcePicker disabled={stage === 'fetching'} onSubmit={fetchDiff} />
 
         {diff && (
@@ -165,18 +154,17 @@ export function ReviewView(): JSX.Element {
               )}
               <div>Files: {diff.files.length}</div>
             </div>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            <div className="field">
+              <label className="field-label" style={{ fontSize: 11 }}>
                 Extra context (optional)
-              </span>
+              </label>
               <textarea
                 value={extraContext}
                 onChange={(e) => setExtraContext(e.target.value)}
                 rows={3}
                 placeholder="Focus on auth boundaries, recent regressions, etc."
-                style={{ fontFamily: 'inherit', fontSize: 12 }}
               />
-            </label>
+            </div>
             <button
               type="button"
               className="btn btn-primary"
@@ -187,7 +175,7 @@ export function ReviewView(): JSX.Element {
             </button>
             {!selected && (
               <p style={{ margin: 0, fontSize: 11, color: 'var(--warn, var(--text-secondary))' }}>
-                Select a model in the chat picker first.
+                Choose a model in the model selector to generate findings.
               </p>
             )}
           </section>
@@ -198,9 +186,16 @@ export function ReviewView(): JSX.Element {
             <h3 style={{ margin: '0 0 4px', fontSize: 13, color: 'var(--text-secondary)' }}>
               Post log
             </h3>
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 11 }}>
+            <ul style={{ margin: 0, paddingInlineStart: 16, fontSize: 11 }}>
               {postLog.map((line, i) => (
-                <li key={i}>{line}</li>
+                <li
+                  key={i}
+                  style={{
+                    color: /^Failed/i.test(line) ? 'var(--danger)' : 'var(--success)',
+                  }}
+                >
+                  {line}
+                </li>
               ))}
             </ul>
           </section>
@@ -215,7 +210,7 @@ export function ReviewView(): JSX.Element {
           padding: 12,
           background: 'var(--bg-panel)',
           border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md, 8px)',
+          borderRadius: 'var(--radius)',
           overflowY: 'auto',
           minHeight: 0,
         }}
@@ -237,7 +232,14 @@ export function ReviewView(): JSX.Element {
           </p>
         )}
 
-        {stage === 'fetching' && <p style={{ margin: 0 }}>Fetching diff…</p>}
+        {(stage === 'fetching' || stage === 'analyzing') && (
+          <div className="approvals-loading" aria-busy="true">
+            <span className="mcp-inline-spinner" aria-hidden="true" />
+            <span style={{ color: 'var(--text-muted)' }}>
+              {stage === 'fetching' ? 'Fetching diff…' : 'Analyzing…'}
+            </span>
+          </div>
+        )}
 
         {stage === 'fetched' && diff && findings.length === 0 && (
           <p style={{ margin: 0, color: 'var(--text-secondary)' }}>
