@@ -154,6 +154,18 @@ Status: planned for v0.1.
 - **Embeddings**: provider-agnostic (same `LLMProvider.embed` interface).
 - **Updates**: chokidar file watcher → incremental reindex (respects `.gitignore` and `.opencodexignore`).
 
+## Code knowledge graph
+
+A deterministic structural index that sits **alongside** RAG retrieval, not inside it. RAG answers "what code is semantically similar to this query"; the graph answers "what code is structurally related to this symbol" — callers, callees, neighbors, the path between two symbols, and the community (subsystem) a symbol belongs to.
+
+- **Package**: `@opencodex/code-graph` (pure, Electron-free) — `graphology`-backed `DirectedGraph`, Zod `GraphNode`/`GraphEdge` schemas, unicode-aware ID normalization (the reconciliation key), Jaro-Winkler entity dedup, and Louvain community detection (`graphology-communities-louvain`, seeded for determinism).
+- **Extraction**: `@opencodex/rag-chunker` reuses its existing tree-sitter walk to emit an `ExtractionResult` (symbols + `contains`/`method` edges + raw calls + imports) from the same parse it already does for AST chunking. No second parser, no extra grammars.
+- **Resolution** (`code-graph`): deterministic, no LLM. Import-guided call resolution yields high-confidence `EXTRACTED` edges; a unique global label yields lower-confidence `INFERRED` edges. Member calls and ambiguous labels are skipped. Dangling edges to external/stdlib symbols and cross-language `INFERRED` `calls` are dropped.
+- **Confidence split**: every edge carries `EXTRACTED | INFERRED | AMBIGUOUS`, so consumers can prefer deterministic relationships and treat heuristic ones as hints. (An optional LLM tie-break for the Jaro-Winkler 0.75–0.92 band is deferred behind a setting — the default path is fully deterministic.)
+- **Persistence**: `code_graph_nodes` / `code_graph_edges` tables (migration 21), workspace-scoped, rebuilt best-effort off the same watcher batch that drives reindexing.
+- **Agent access**: the `query_code_graph` tool (read tier) exposes neighbors/callers/callees/path/subsystem through an injectable resolver (the same pattern as `search_codebase`), so the agent can ask relationship questions in chat — complementing, not replacing, `search_codebase`.
+- **Louvain vs. Leiden**: Leiden (`graspologic`) is Python-only; Louvain is the realistic native target. Community quality is slightly lower than Leiden but stable across runs via a seeded rng + a previous-run remap.
+
 ## Multi-agent orchestration
 
 - `spawn_subagent` tool lets an orchestrator agent fan out work. Each spawn picks a `runnerId` from the `SubagentRunner` registry (`packages/core/src/runner.ts`).

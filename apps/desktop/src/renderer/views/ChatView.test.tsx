@@ -107,6 +107,11 @@ function installBridge(): void {
       list: () => Promise.resolve({ skills: [] }),
       onChanged: () => off,
     },
+    plugins: {
+      listSlashCommands: () => Promise.resolve([]),
+      runSlashCommand: () => Promise.resolve({ ok: true }),
+      onChanged: () => off,
+    },
     conversations: {
       onScrollToMessage: () => off,
     },
@@ -135,6 +140,11 @@ describe('ChatView composer while streaming', () => {
     expect(textarea.disabled).toBe(false);
     expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy();
+  });
+
+  it('gives the composer a stable accessible name', () => {
+    renderView();
+    expect(screen.getByRole('textbox', { name: 'Message composer' })).toBeTruthy();
   });
 
   it('enqueues (does not send) when submitting during a stream', async () => {

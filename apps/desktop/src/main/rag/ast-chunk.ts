@@ -47,6 +47,21 @@ export function languageForPath(path: string): SupportedLanguage | null {
 }
 
 /**
+ * The `<lang>` token parsed out of a `tree-sitter-<lang>.wasm` filename does not
+ * always equal one of `SUPPORTED_LANGUAGES`. The `tree-sitter-wasms` package
+ * ships some grammars under upstream tree-sitter names that differ from ours
+ * (e.g. `c_sharp` vs our `csharp`). This map normalizes those tokens to a
+ * supported language; tokens absent here are used verbatim.
+ */
+const WASM_TOKEN_ALIASES: Readonly<Record<string, SupportedLanguage>> = {
+  c_sharp: 'csharp',
+};
+
+function resolveWasmLanguage(token: string): string {
+  return WASM_TOKEN_ALIASES[token] ?? token;
+}
+
+/**
  * AST-aware chunker for the RAG indexer. Uses `chunkBySymbols` (tree-sitter)
  * when a grammar is registered for the file's language, otherwise falls back to
  * size-based chunking. `chunkBySymbols` itself also falls back internally if the
@@ -81,8 +96,9 @@ export function registerBundledGrammars(dir: string): number {
   try {
     for (const file of readdirSync(dir)) {
       const match = /^tree-sitter-(.+)\.wasm$/.exec(file);
-      const lang = match?.[1];
-      if (!lang) continue;
+      const token = match?.[1];
+      if (!token) continue;
+      const lang = resolveWasmLanguage(token);
       if (!(SUPPORTED_LANGUAGES as readonly string[]).includes(lang)) continue;
       if (hasGrammar(lang)) continue;
       registerGrammar(lang, join(dir, file));
@@ -100,4 +116,24 @@ export function registerBundledGrammars(dir: string): number {
     logger.info({ dir }, 'AST chunking: no supported grammars in dir; using size-based chunking');
   }
   return registered;
+}
+
+/**
+ * Pick the grammar directory to register from. We try candidates in order and
+ * return the first that exists.
+ *
+ * WHY two locations: in a PACKAGED app the wasm is shipped via
+ * electron-builder `extraResources` to `<resourcesPath>/tree-sitter` (see
+ * electron-builder.yml + scripts/copy-grammars.mjs). In DEV (`pnpm dev`) there
+ * is no packaged resources dir, so we fall back to the `tree-sitter-wasms`
+ * package's own `out/` directory inside node_modules — the same source the copy
+ * script reads from — so AST chunking is live without a packaging step. The
+ * filename token differences (e.g. `c_sharp` -> `csharp`) are normalized by
+ * `registerBundledGrammars`, so reading the raw package dir in dev is safe.
+ */
+export function resolveGrammarDir(candidates: readonly string[]): string | null {
+  for (const dir of candidates) {
+    if (dir && existsSync(dir)) return dir;
+  }
+  return null;
 }

@@ -155,20 +155,9 @@ export function ProviderSwitchButton({
             Pick a different provider/model
           </div>
           <ModelPicker />
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              marginTop: 10,
-              fontSize: 12,
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-            }}
-          >
+          <label className="toggle" style={{ marginTop: 10 }}>
             <input
               type="checkbox"
-              className="toggle"
               checked={resendStrategy === 'summary-only'}
               onChange={(e) =>
                 setResendStrategy(e.target.checked ? 'summary-only' : 'full-history')

@@ -13,7 +13,11 @@ import { findModel, knownModels } from './models';
 import { sseEvents } from './sse';
 import { buildChatRequestBody } from './translate-request';
 import { streamChunksToEvents } from './translate-stream';
-import { streamChunkSchema, type StreamChunk } from './response-schemas';
+import {
+  batchEmbedContentsResponseSchema,
+  streamChunkSchema,
+  type StreamChunk,
+} from './response-schemas';
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
 const DEFAULT_API_VERSION = 'v1beta';
@@ -43,8 +47,28 @@ class GoogleProvider implements LLMProvider {
     yield* streamChunksToEvents(this.chunksFromBody(response.body), { model: req.model });
   }
 
-  async embed(_req: EmbedRequest): Promise<EmbedResult> {
-    throw new Error('Google embeddings not implemented yet');
+  async embed(req: EmbedRequest): Promise<EmbedResult> {
+    const path = `/models/${encodeURIComponent(req.model)}:batchEmbedContents`;
+    const body = {
+      requests: req.inputs.map((text) => ({
+        model: `models/${req.model}`,
+        content: { parts: [{ text }] },
+      })),
+    };
+    const response = await this.post(path, body, req.signal);
+    if (!response.ok) {
+      const detail = await this.safeReadText(response);
+      throw new Error(`Google embeddings HTTP ${response.status}: ${detail}`);
+    }
+    const raw: unknown = await response.json();
+    const parsed = batchEmbedContentsResponseSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new Error(`Google embeddings: malformed response: ${parsed.error.message}`);
+    }
+    return {
+      embeddings: parsed.data.embeddings.map((e) => e.values),
+      usage: { tokens: 0 },
+    };
   }
 
   async listModels(): Promise<ModelCapabilities[]> {

@@ -16,6 +16,8 @@ afterEach(() => {
 describe('migration v20 — checkpoints', () => {
   it('applies on a v19 DB adding both checkpoint tables + FK cascade', () => {
     applyMigrations(db);
+    db.exec('DROP TABLE IF EXISTS code_graph_edges');
+    db.exec('DROP TABLE IF EXISTS code_graph_nodes');
     db.exec('DROP INDEX IF EXISTS idx_checkpoint_entries_blob');
     db.exec('DROP TABLE IF EXISTS checkpoint_entries');
     db.exec('DROP TABLE IF EXISTS checkpoints');
@@ -31,7 +33,7 @@ describe('migration v20 — checkpoints', () => {
     const after = db.prepare('SELECT MAX(version) AS v FROM schema_migrations').get() as {
       v: number;
     };
-    expect(after.v).toBe(20);
+    expect(after.v).toBeGreaterThanOrEqual(20);
 
     const cpTable = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = 'checkpoints'")
@@ -102,6 +104,6 @@ describe('migration v20 — checkpoints', () => {
     const after = db.prepare('SELECT MAX(version) AS v FROM schema_migrations').get() as {
       v: number;
     };
-    expect(after.v).toBe(20);
+    expect(after.v).toBeGreaterThanOrEqual(20);
   });
 });

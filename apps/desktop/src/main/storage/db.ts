@@ -324,6 +324,42 @@ const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_checkpoint_entries_blob ON checkpoint_entries(pre_blob_sha);
     `,
   },
+  {
+    version: 21,
+    sql: `
+      CREATE TABLE code_graph_nodes (
+        workspace_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        file_type TEXT NOT NULL,
+        source_file TEXT NOT NULL,
+        start_line INTEGER,
+        end_line INTEGER,
+        language TEXT,
+        kind TEXT,
+        community INTEGER,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE INDEX idx_code_graph_nodes_workspace ON code_graph_nodes(workspace_id);
+      CREATE INDEX idx_code_graph_nodes_label ON code_graph_nodes(workspace_id, label);
+      CREATE INDEX idx_code_graph_nodes_community ON code_graph_nodes(workspace_id, community);
+
+      CREATE TABLE code_graph_edges (
+        workspace_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        target TEXT NOT NULL,
+        relation TEXT NOT NULL,
+        confidence TEXT NOT NULL,
+        confidence_score REAL NOT NULL,
+        weight REAL NOT NULL,
+        source_file TEXT NOT NULL
+      );
+
+      CREATE INDEX idx_code_graph_edges_source ON code_graph_edges(workspace_id, source);
+      CREATE INDEX idx_code_graph_edges_target ON code_graph_edges(workspace_id, target);
+    `,
+  },
 ];
 
 let db: Database.Database | null = null;

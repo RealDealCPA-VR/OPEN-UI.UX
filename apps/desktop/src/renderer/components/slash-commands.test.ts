@@ -1,17 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import type { McpPromptEntry } from '../../shared/mcp';
+import type { PluginSlashCommandDescriptor } from '../../shared/plugins';
 import type { Skill } from '../../shared/skills';
 import {
   applyInsert,
   buildSlashGroups,
+  filterPluginCommands,
   filterPrompts,
   filterSkills,
   findSkillsForTriggerText,
+  formatPluginCommandInsert,
   formatPromptInsert,
   formatSkillInsert,
   getSlashTrigger,
+  groupByPlugin,
   groupByServer,
 } from './slash-commands';
+
+const pluginCmd = (
+  pluginId: string,
+  pluginName: string,
+  name: string,
+  description?: string,
+): PluginSlashCommandDescriptor => ({
+  pluginId,
+  pluginName,
+  name,
+  ...(description !== undefined ? { description } : {}),
+});
 
 function makeSkill(
   name: string,
@@ -256,6 +272,86 @@ describe('buildSlashGroups', () => {
     const groups = buildSlashGroups(prompts, skills, 'security');
     expect(groups).toHaveLength(1);
     expect(groups[0]?.header).toBe('Skills');
+  });
+});
+
+describe('filterPluginCommands', () => {
+  const commands = [
+    pluginCmd('p1', 'Deploy Tools', 'deploy', 'ship to prod'),
+    pluginCmd('p1', 'Deploy Tools', 'rollback'),
+    pluginCmd('p2', 'Linter', 'lint', 'check style'),
+  ];
+
+  it('returns all commands on empty query', () => {
+    expect(filterPluginCommands(commands, '').length).toBe(3);
+  });
+
+  it('filters by command name', () => {
+    expect(filterPluginCommands(commands, 'roll').map((c) => c.name)).toEqual(['rollback']);
+  });
+
+  it('filters by plugin name', () => {
+    expect(filterPluginCommands(commands, 'linter').map((c) => c.name)).toEqual(['lint']);
+  });
+
+  it('filters by description', () => {
+    expect(filterPluginCommands(commands, 'prod').map((c) => c.name)).toEqual(['deploy']);
+  });
+
+  it('is case-insensitive', () => {
+    expect(filterPluginCommands(commands, 'LINTER').map((c) => c.name)).toEqual(['lint']);
+  });
+
+  it('returns empty when no matches', () => {
+    expect(filterPluginCommands(commands, 'zzz')).toEqual([]);
+  });
+});
+
+describe('groupByPlugin', () => {
+  it('groups commands under their plugin preserving order', () => {
+    const result = groupByPlugin([
+      pluginCmd('p1', 'One', 'a'),
+      pluginCmd('p2', 'Two', 'b'),
+      pluginCmd('p1', 'One', 'c'),
+    ]);
+    expect(result.map((g) => g.pluginId)).toEqual(['p1', 'p2']);
+    expect(result[0]?.commands.map((c) => c.name)).toEqual(['a', 'c']);
+    expect(result[1]?.commands.map((c) => c.name)).toEqual(['b']);
+  });
+});
+
+describe('formatPluginCommandInsert', () => {
+  it('formats a plugin command with a trailing space', () => {
+    expect(formatPluginCommandInsert(pluginCmd('p1', 'One', 'deploy'))).toBe('/deploy ');
+  });
+});
+
+describe('buildSlashGroups with plugin commands', () => {
+  it('appends Plugin groups after Skills and MCP groups', () => {
+    const skills = [makeSkill('foo')];
+    const prompts: McpPromptEntry[] = [
+      { serverId: 'git', serverDisplayName: 'git', prompt: { name: 'commit' } },
+    ];
+    const commands = [pluginCmd('p1', 'Deploy Tools', 'deploy')];
+    const groups = buildSlashGroups(prompts, skills, '', commands);
+    expect(groups.map((g) => g.header)).toEqual(['Skills', 'MCP — git', 'Plugin — Deploy Tools']);
+    const pluginGroup = groups[2];
+    expect(pluginGroup?.entries[0]?.kind).toBe('plugin');
+  });
+
+  it('filters plugin commands by query', () => {
+    const commands = [
+      pluginCmd('p1', 'Deploy Tools', 'deploy', 'ship'),
+      pluginCmd('p2', 'Linter', 'lint', 'style'),
+    ];
+    const groups = buildSlashGroups([], [], 'lint', commands);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.header).toBe('Plugin — Linter');
+  });
+
+  it('omits plugin groups when no commands are supplied', () => {
+    const groups = buildSlashGroups([], [makeSkill('foo')], '');
+    expect(groups.every((g) => !g.header.startsWith('Plugin'))).toBe(true);
   });
 });
 

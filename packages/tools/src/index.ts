@@ -12,6 +12,7 @@ export { webFetchTool } from './web-fetch';
 export {
   searchCodebaseTool,
   reciprocalRankFusion,
+  rankFused,
   setSearchWorkspaceResolver,
   getSearchWorkspaceResolver,
   type SearchWorkspaceResolver,
@@ -20,6 +21,16 @@ export {
   type SearchHitSource,
   type RelatedWorkspaceRef,
 } from './search-codebase';
+export {
+  queryCodeGraphTool,
+  setCodeGraphResolver,
+  getCodeGraphResolver,
+  type CodeGraphNodeView,
+  type CodeGraphEdgeView,
+  type CodeGraphQuery,
+  type CodeGraphQueryResult,
+  type CodeGraphResolver,
+} from './query-code-graph';
 export {
   parseIgnoreFile,
   createIgnoreMatcher,

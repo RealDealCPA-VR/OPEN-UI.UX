@@ -11,6 +11,7 @@ import type { ProviderExtraField, ProviderInfo } from '../../shared/provider-con
 import { getProviderEntry } from '../storage/settings';
 import { getSecret } from '../storage/secrets';
 import { loadOllamaModels } from '../ollama/ollama-probe';
+import { listPluginProviders, type PluginProviderEntry } from './plugin-provider-registry';
 
 export interface PingInput {
   apiKey: string | undefined;
@@ -334,14 +335,60 @@ export async function getProviderInfo(id: string): Promise<ProviderInfo | undefi
   return info;
 }
 
+async function resolvePluginConfig(entry: PluginProviderEntry): Promise<ProviderConfig> {
+  const raw: Record<string, unknown> = {};
+  try {
+    const apiKey = (await getSecret(apiKeyAccount(entry.id))) ?? undefined;
+    if (apiKey) raw['apiKey'] = apiKey;
+  } catch {
+    // Keytar unavailable — build from stored settings / defaults only.
+  }
+  try {
+    const stored = getProviderEntry(entry.id);
+    if (stored.baseUrl) raw['baseUrl'] = stored.baseUrl;
+    for (const [key, value] of Object.entries(stored.extra)) {
+      if (value !== undefined && value !== '') raw[key] = value;
+    }
+  } catch {
+    // No stored config for this plugin provider — build from defaults + key.
+  }
+  try {
+    return entry.factory.configSchema.parse(raw);
+  } catch {
+    return entry.factory.configSchema.parse({});
+  }
+}
+
+export async function getPluginProviderInfo(entry: PluginProviderEntry): Promise<ProviderInfo> {
+  let models: ModelCapabilities[] = [];
+  try {
+    const config = await resolvePluginConfig(entry);
+    models = await entry.factory.create(config).listModels();
+  } catch {
+    // A misbehaving plugin must not break the whole provider list; surface it
+    // with no models so the user can still see and configure it in the picker.
+  }
+  return {
+    id: entry.id,
+    displayName: entry.displayName,
+    requiresApiKey: true,
+    defaultBaseUrl: '',
+    extraFields: [],
+    models,
+    source: 'plugin',
+  };
+}
+
 export async function getAllProviderInfo(): Promise<ProviderInfo[]> {
-  return Promise.all(
+  const catalogInfos = await Promise.all(
     catalog.map(async (e) => {
       const info = await getProviderInfo(e.id);
       if (!info) throw new Error(`Unreachable: catalog entry for ${e.id} missing info`);
       return info;
     }),
   );
+  const pluginInfos = await Promise.all(listPluginProviders().map(getPluginProviderInfo));
+  return [...catalogInfos, ...pluginInfos];
 }
 
 export function buildProviderConfig(

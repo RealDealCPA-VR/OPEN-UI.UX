@@ -52,18 +52,7 @@ export function ActiveRunCard({ run, now, onSelect }: ActiveRunCardProps): JSX.E
   };
 
   return (
-    <article
-      className="active-run-card"
-      onClick={onSelect}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
-    >
+    <article className="active-run-card" onClick={onSelect}>
       <header className="active-run-card-head">
         <span className="pill pill-running">
           <span className="pill-icon" aria-hidden="true">

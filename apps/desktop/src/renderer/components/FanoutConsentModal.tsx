@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   FanoutConsentDecision,
   FanoutConsentRequestedEvent,
   FanoutPlanTask,
 } from '../../shared/agent-tree';
+import { Modal } from './Modal';
 
 interface FanoutBridge {
   fanoutConsent?: (req: {
@@ -36,6 +37,14 @@ export function FanoutConsentModal({ request, onResolved }: FanoutConsentModalPr
     const elapsed = Date.now() - request.requestedAt;
     return Math.max(0, request.autoAllowDelayMs - elapsed);
   });
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!request.autoAllowDelayMs) return;
@@ -69,15 +78,17 @@ export function FanoutConsentModal({ request, onResolved }: FanoutConsentModalPr
         decision,
         ...(decision === 'edit' ? { editedPlan: plan } : {}),
       });
+      if (!mountedRef.current) return;
       if (!result.ok) {
         setError(result.error ?? 'failed');
         return;
       }
       onResolved();
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(null);
+      if (mountedRef.current) setBusy(null);
     }
   };
 
@@ -86,49 +97,26 @@ export function FanoutConsentModal({ request, onResolved }: FanoutConsentModalPr
   };
 
   return (
-    <div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Subagent fan-out approval"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'var(--shadow-overlay)',
-        backdropFilter: 'var(--glass-blur-soft)',
-        WebkitBackdropFilter: 'var(--glass-blur-soft)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 'var(--z-modal)' as unknown as number,
-      }}
+    <Modal
+      open
+      onClose={() => {}}
+      labelledBy="fanout-consent-title"
+      className="approval-modal"
+      closeOnBackdrop={false}
     >
-      <div
-        className="modal-panel"
-        style={{
-          background: 'var(--bg-panel)',
-          border: '1px solid var(--border-strong)',
-          borderRadius: 'var(--radius-xl)',
-          boxShadow: 'var(--shadow-modal)',
-          maxWidth: 640,
-          width: '90%',
-          maxHeight: '80vh',
-          overflowY: 'auto',
-          padding: 20,
-        }}
-      >
-        <header style={{ marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 16 }}>Agent wants to spawn subtasks</h2>
-          <p style={{ marginTop: 4, color: 'var(--text-secondary)', fontSize: 12 }}>
-            Parent run <code>{request.parentRunId.slice(0, 8)}</code> is planning to spawn{' '}
-            {plan.length} subagent{plan.length === 1 ? '' : 's'}.
-            {remainingMs !== null && remainingMs > 0 && (
-              <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
-                auto-allow in {Math.ceil(remainingMs / 1000)}s
-              </span>
-            )}
-          </p>
+      <div style={{ maxWidth: 640, width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
+        <header className="approval-modal-header">
+          <h2 id="fanout-consent-title">Agent wants to spawn subtasks</h2>
         </header>
+        <p style={{ marginTop: 4, color: 'var(--text-secondary)', fontSize: 12 }}>
+          Parent run <code>{request.parentRunId.slice(0, 8)}</code> is planning to spawn{' '}
+          {plan.length} subagent{plan.length === 1 ? '' : 's'}.
+          {remainingMs !== null && remainingMs > 0 && (
+            <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
+              auto-allow in {Math.ceil(remainingMs / 1000)}s
+            </span>
+          )}
+        </p>
 
         <ul
           className="fanout-plan-list"
@@ -164,19 +152,11 @@ export function FanoutConsentModal({ request, onResolved }: FanoutConsentModalPr
                     Task #{idx + 1}
                   </label>
                   <textarea
+                    className="settings-input"
                     value={task.task}
                     onChange={(e) => updateTask(idx, { task: e.target.value })}
                     rows={2}
-                    style={{
-                      width: '100%',
-                      fontSize: 12,
-                      padding: 6,
-                      background: 'var(--bg-base)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--radius-2xs)',
-                      color: 'var(--text-primary)',
-                      resize: 'vertical',
-                    }}
+                    style={{ width: '100%', fontSize: 12, resize: 'vertical' }}
                   />
                 </>
               ) : (
@@ -222,11 +202,7 @@ export function FanoutConsentModal({ request, onResolved }: FanoutConsentModalPr
           </button>
           <button
             type="button"
-            className="btn"
-            style={{
-              borderColor: 'var(--danger-border)',
-              color: 'var(--danger)',
-            }}
+            className="btn btn-danger"
             onClick={() => void submit('deny')}
             disabled={busy !== null}
           >
@@ -252,7 +228,7 @@ export function FanoutConsentModal({ request, onResolved }: FanoutConsentModalPr
           </button>
         </footer>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -264,8 +240,15 @@ export function useFanoutConsent(): {
   useEffect(() => {
     const b = bridge();
     if (!b?.onFanoutConsentRequested) return;
-    const off = b.onFanoutConsentRequested((payload) => setCurrent(payload));
-    return () => off();
+    let cancelled = false;
+    const off = b.onFanoutConsentRequested((payload) => {
+      if (cancelled) return;
+      setCurrent(payload);
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
   }, []);
   return { current, clear: () => setCurrent(null) };
 }

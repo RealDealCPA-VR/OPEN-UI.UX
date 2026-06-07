@@ -198,6 +198,8 @@ export type {
   OllamaProbeResult,
 } from './ollama';
 import type {
+  CodebaseGraphRequest,
+  CodebaseGraphResponse,
   CodebaseListDirFilesRequest,
   CodebaseListDirFilesResponse,
   CodebasePendingEditsResponse,
@@ -279,7 +281,10 @@ import type {
   InstallPluginRequest,
   PluginListItem,
   PluginPanelDescriptor,
+  PluginSlashCommandDescriptor,
   PluginsChangedEvent,
+  RunPluginSlashCommandRequest,
+  RunPluginSlashCommandResult,
   UninstallPluginRequest,
 } from './plugins';
 import type {
@@ -723,6 +728,14 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
     request: { presetId: string };
     response: { plugins: PluginListItem[] };
   };
+  'plugins:list-slash-commands': {
+    request: void;
+    response: PluginSlashCommandDescriptor[];
+  };
+  'plugins:run-slash-command': {
+    request: RunPluginSlashCommandRequest;
+    response: RunPluginSlashCommandResult;
+  };
   'chat:get-read-only-mode': {
     request: void;
     response: { readOnly: boolean };
@@ -791,6 +804,10 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
   'codebase:list-dir-files': {
     request: CodebaseListDirFilesRequest;
     response: CodebaseListDirFilesResponse;
+  };
+  'codebase:graph': {
+    request: CodebaseGraphRequest;
+    response: CodebaseGraphResponse;
   };
   'git:is-repo': {
     request: GitIsRepoRequest;

@@ -16,6 +16,7 @@ export interface ProviderInfo {
   defaultBaseUrl: string;
   extraFields: ProviderExtraField[];
   models: ModelCapabilities[];
+  source?: 'plugin';
 }
 
 export interface ProviderStatus {

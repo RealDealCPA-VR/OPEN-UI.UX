@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import type { McpPromptEntry } from '../../shared/mcp';
+import type { PluginSlashCommandDescriptor } from '../../shared/plugins';
 import type { Skill } from '../../shared/skills';
 import { buildSlashGroups, type SlashEntry } from './slash-commands';
 
@@ -7,9 +8,11 @@ interface SlashCommandsProps {
   query: string;
   prompts: ReadonlyArray<McpPromptEntry>;
   skills: ReadonlyArray<Skill>;
+  pluginCommands: ReadonlyArray<PluginSlashCommandDescriptor>;
   activeIndex: number;
   onSelectMcp: (entry: McpPromptEntry) => void;
   onSelectSkill: (skill: Skill) => void;
+  onSelectPlugin: (command: PluginSlashCommandDescriptor) => void;
   onActiveIndexChange: (index: number) => void;
   onClose: () => void;
 }
@@ -26,12 +29,17 @@ export function SlashCommands({
   query,
   prompts,
   skills,
+  pluginCommands,
   activeIndex,
   onSelectMcp,
   onSelectSkill,
+  onSelectPlugin,
   onActiveIndexChange,
 }: SlashCommandsProps): JSX.Element | null {
-  const groups = useMemo(() => buildSlashGroups(prompts, skills, query), [prompts, skills, query]);
+  const groups = useMemo(
+    () => buildSlashGroups(prompts, skills, query, pluginCommands),
+    [prompts, skills, query, pluginCommands],
+  );
   const flat = useMemo(() => flattenEntries(groups), [groups]);
 
   useEffect(() => {
@@ -44,8 +52,8 @@ export function SlashCommands({
     return (
       <div className="slash-commands slash-commands-empty" role="listbox">
         <div className="slash-commands-empty-text">
-          {prompts.length === 0 && skills.length === 0
-            ? 'No skills or MCP prompts available. Add a skill in Settings → Skills, or connect an MCP server.'
+          {prompts.length === 0 && skills.length === 0 && pluginCommands.length === 0
+            ? 'No skills, MCP prompts, or plugin commands available. Add a skill in Settings → Skills, connect an MCP server, or install a plugin.'
             : `No matches for "${query}"`}
         </div>
       </div>
@@ -64,13 +72,21 @@ export function SlashCommands({
             const key =
               entry.kind === 'mcp'
                 ? `mcp:${entry.entry.serverId}:${entry.entry.prompt.name}`
-                : `skill:${entry.skill.id}`;
+                : entry.kind === 'skill'
+                  ? `skill:${entry.skill.id}`
+                  : `plugin:${entry.command.pluginId}:${entry.command.name}`;
             const name =
-              entry.kind === 'mcp' ? entry.entry.prompt.name : `skill:${entry.skill.name}`;
+              entry.kind === 'mcp'
+                ? entry.entry.prompt.name
+                : entry.kind === 'skill'
+                  ? `skill:${entry.skill.name}`
+                  : entry.command.name;
             const desc =
               entry.kind === 'mcp'
                 ? (entry.entry.prompt.description ?? '')
-                : entry.skill.description;
+                : entry.kind === 'skill'
+                  ? entry.skill.description
+                  : (entry.command.description ?? '');
             const scopeBadge =
               entry.kind === 'skill' && entry.skill.scope === 'project' ? 'project' : null;
             return (
@@ -83,7 +99,8 @@ export function SlashCommands({
                 onMouseDown={(e) => {
                   e.preventDefault();
                   if (entry.kind === 'mcp') onSelectMcp(entry.entry);
-                  else onSelectSkill(entry.skill);
+                  else if (entry.kind === 'skill') onSelectSkill(entry.skill);
+                  else onSelectPlugin(entry.command);
                 }}
                 onMouseEnter={() => onActiveIndexChange(idx)}
                 style={{

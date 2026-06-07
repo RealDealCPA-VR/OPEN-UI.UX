@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, session, shell } from 'electron';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { dirname, join as pathJoin, join } from 'node:path';
 import { z } from 'zod';
 import { logger } from './logger';
@@ -47,7 +48,7 @@ import {
 } from './rag/multi-workspace-indexer';
 import { setWatchedWorkspace, stopWatchedWorkspace } from './rag/watcher';
 import { RoutingEmbeddingResolver } from './rag/embedding-resolver';
-import { astAwareChunkFn, registerBundledGrammars } from './rag/ast-chunk';
+import { astAwareChunkFn, registerBundledGrammars, resolveGrammarDir } from './rag/ast-chunk';
 import { registerReplayHandlers } from './replay/handlers';
 import { registerCheckpointHandlers } from './checkpoints/handlers';
 import { gc as gcCheckpoints } from './checkpoints/manager';
@@ -80,6 +81,7 @@ import { bootstrapVoice, registerVoiceHandlers } from './voice/handlers';
 import { unregisterPttShortcut } from './voice/global-shortcut';
 import { registerMultiWorkspaceHandlers } from './workspace/multi-workspace-handlers';
 import { installSearchWorkspaceResolver } from './workspace/search-resolver';
+import { installCodeGraphResolver } from './workspace/code-graph-resolver';
 import { resolveAppIconPath } from './app-icon';
 import { createTray, destroyTray } from './tray';
 import { initAutoUpdater, registerUpdateHandlers } from './updater';
@@ -91,6 +93,19 @@ import { registerCrashReportingHandlers } from './crash/handlers';
 import { INITIAL_THEME_ARG_PREFIX } from '../shared/theme';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const requireFromHere = createRequire(import.meta.url);
+
+// In dev there is no packaged resources dir; resolve the tree-sitter-wasms
+// package's own `out/` so AST chunking runs without a packaging step. Returns
+// '' (a non-existent path resolveGrammarDir skips) if the package is absent.
+function devGrammarDir(): string {
+  try {
+    return pathJoin(dirname(requireFromHere.resolve('tree-sitter-wasms/package.json')), 'out');
+  } catch {
+    return '';
+  }
+}
 
 const PROTOCOL = 'opencodex';
 
@@ -445,11 +460,13 @@ app.whenReady().then(() => {
     // Register any bundled tree-sitter grammars so the indexer can chunk along
     // AST symbol boundaries; absent assets degrade to size-based chunking.
     const resourcesBase = process.resourcesPath ?? app.getAppPath();
-    registerBundledGrammars(pathJoin(resourcesBase, 'tree-sitter'));
+    const grammarDir = resolveGrammarDir([pathJoin(resourcesBase, 'tree-sitter'), devGrammarDir()]);
+    if (grammarDir) registerBundledGrammars(grammarDir);
     const indexer = new MultiWorkspaceIndexer({
       baseDir: pathJoin(app.getPath('userData'), 'rag'),
       embeddingResolver: new RoutingEmbeddingResolver(),
       chunkFn: astAwareChunkFn,
+      getDb,
     });
     setActiveMultiWorkspaceIndexer(indexer);
     void indexer.start().catch((err: unknown) => {
@@ -465,6 +482,13 @@ app.whenReady().then(() => {
     installSearchWorkspaceResolver();
   } catch (err) {
     logger.warn({ err }, 'search workspace resolver install failed');
+  }
+
+  // Wire query_code_graph to the per-workspace persisted code graph.
+  try {
+    installCodeGraphResolver();
+  } catch (err) {
+    logger.warn({ err }, 'code graph resolver install failed');
   }
 
   // Lane 2 — defer resume prompt until renderer's webContents have loaded

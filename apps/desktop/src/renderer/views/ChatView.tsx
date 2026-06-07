@@ -22,6 +22,7 @@ import {
   applyInsert,
   buildSlashGroups,
   findSkillsForTriggerText,
+  formatPluginCommandInsert,
   formatPromptInsert,
   formatSkillInsert,
   getSlashTrigger,
@@ -48,6 +49,7 @@ import type {
   StoredMessage,
 } from '../../shared/conversation';
 import type { McpPromptEntry } from '../../shared/mcp';
+import type { PluginSlashCommandDescriptor } from '../../shared/plugins';
 import type { Skill } from '../../shared/skills';
 
 export function ChatView(): JSX.Element {
@@ -206,6 +208,7 @@ function ChatPane({
   const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
   const [mcpPrompts, setMcpPrompts] = useState<McpPromptEntry[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [pluginCommands, setPluginCommands] = useState<PluginSlashCommandDescriptor[]>([]);
   const [slashTrigger, setSlashTrigger] = useState<SlashCommandTrigger | null>(null);
   const [branching, setBranching] = useState(false);
   const toast = useToast();
@@ -290,6 +293,26 @@ function ChatPane({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = (): void => {
+      void window.opencodex.plugins
+        .listSlashCommands()
+        .then((rows) => {
+          if (!cancelled) setPluginCommands(rows);
+        })
+        .catch(() => {
+          // Slash menu degrades gracefully when plugin commands can't load.
+        });
+    };
+    refresh();
+    const off = window.opencodex.plugins.onChanged(() => refresh());
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, []);
+
   // Lane 3 — react to inline scroll-to-message events from CommandPalette etc.
   useEffect(() => {
     const off = window.opencodex.conversations.onScrollToMessage((payload) => {
@@ -351,8 +374,9 @@ function ChatPane({
   }, [chatMessages, chatDraft]);
 
   const slashGroups = useMemo(
-    () => (slashTrigger ? buildSlashGroups(mcpPrompts, skills, slashTrigger.query) : []),
-    [slashTrigger, mcpPrompts, skills],
+    () =>
+      slashTrigger ? buildSlashGroups(mcpPrompts, skills, slashTrigger.query, pluginCommands) : [],
+    [slashTrigger, mcpPrompts, skills, pluginCommands],
   );
   const flatSlashEntries = useMemo(() => slashGroups.flatMap((g) => g.entries), [slashGroups]);
   const slashOpen = slashTrigger !== null;
@@ -629,6 +653,33 @@ function ChatPane({
     }
   };
 
+  const insertPluginCommand = (command: PluginSlashCommandDescriptor): void => {
+    if (!slashTrigger) return;
+    const el = inputRef.current;
+    const caret = el ? (el.selectionEnd ?? input.length) : input.length;
+    const insert = formatPluginCommandInsert(command);
+    const next = applyInsert(input, slashTrigger, caret, insert);
+    setInput(next.value);
+    closeSlash();
+    if (el) {
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(next.caret, next.caret);
+      });
+    }
+    void window.opencodex.plugins
+      .runSlashCommand({ pluginId: command.pluginId, name: command.name, args: '' })
+      .then((res) => {
+        if (!res.ok) {
+          toast.show(`/${command.name} failed: ${res.error}`, { kind: 'error' });
+        }
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        toast.show(`/${command.name} failed: ${message}`, { kind: 'error' });
+      });
+  };
+
   // Inline "Try /<skill>" hint — debounced 300ms; substring match against
   // skill.triggers[]. Suppressed when the composer already starts with a slash.
   useEffect(() => {
@@ -747,7 +798,8 @@ function ChatPane({
           const entry = flatSlashEntries[idx];
           if (entry) {
             if (entry.kind === 'mcp') insertPrompt(entry.entry);
-            else insertSkill(entry.skill);
+            else if (entry.kind === 'skill') insertSkill(entry.skill);
+            else insertPluginCommand(entry.command);
           }
           return;
         }
@@ -1068,9 +1120,11 @@ function ChatPane({
               query={slashTrigger.query}
               prompts={mcpPrompts}
               skills={skills}
+              pluginCommands={pluginCommands}
               activeIndex={Math.min(slashActiveIndex, Math.max(0, flatSlashEntries.length - 1))}
               onSelectMcp={insertPrompt}
               onSelectSkill={insertSkill}
+              onSelectPlugin={insertPluginCommand}
               onActiveIndexChange={setSlashActiveIndex}
               onClose={closeSlash}
             />
@@ -1099,6 +1153,7 @@ function ChatPane({
           <textarea
             ref={inputRef}
             className="chat-input"
+            aria-label="Message composer"
             value={input}
             onChange={handleChange}
             onKeyDown={handleKeyDown}

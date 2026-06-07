@@ -152,6 +152,8 @@ import type {
   WorkspacesChangedEvent,
 } from '../shared/workspaces';
 import type {
+  CodebaseGraphRequest,
+  CodebaseGraphResponse,
   CodebaseListDirFilesRequest,
   CodebaseListDirFilesResponse,
   CodebasePendingEditsResponse,
@@ -239,7 +241,10 @@ import type {
   InstallPluginRequest,
   PluginListItem,
   PluginPanelDescriptor,
+  PluginSlashCommandDescriptor,
   PluginsChangedEvent,
+  RunPluginSlashCommandRequest,
+  RunPluginSlashCommandResult,
   UninstallPluginRequest,
 } from '../shared/plugins';
 import type {
@@ -616,6 +621,10 @@ const plugins = {
   listPresets: (): Promise<PluginPreset[]> => ipcRenderer.invoke('plugins:list-presets'),
   installPreset: (presetId: string): Promise<{ plugins: PluginListItem[] }> =>
     ipcRenderer.invoke('plugins:install-preset', { presetId }),
+  listSlashCommands: (): Promise<PluginSlashCommandDescriptor[]> =>
+    ipcRenderer.invoke('plugins:list-slash-commands'),
+  runSlashCommand: (req: RunPluginSlashCommandRequest): Promise<RunPluginSlashCommandResult> =>
+    ipcRenderer.invoke('plugins:run-slash-command', req),
   onChanged: (listener: PluginsChangedListener): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: PluginsChangedEvent): void =>
       listener(payload);
@@ -708,6 +717,8 @@ const codebase = {
     ipcRenderer.invoke('codebase:get-pending-edits'),
   listDirFiles: (req: CodebaseListDirFilesRequest): Promise<CodebaseListDirFilesResponse> =>
     ipcRenderer.invoke('codebase:list-dir-files', req),
+  graph: (req: CodebaseGraphRequest): Promise<CodebaseGraphResponse> =>
+    ipcRenderer.invoke('codebase:graph', req),
 };
 
 const git = {

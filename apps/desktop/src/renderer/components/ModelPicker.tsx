@@ -20,6 +20,7 @@ interface ProviderGroup {
   providerId: string;
   providerName: string;
   local: boolean;
+  plugin: boolean;
   models: FlatModel[];
 }
 
@@ -169,6 +170,7 @@ export function ModelPicker({ conversationId = null }: ModelPickerProps = {}): J
           providerId: p.info.id,
           providerName: p.info.displayName,
           local: !p.info.requiresApiKey,
+          plugin: p.info.source === 'plugin',
           models,
         };
       }),
@@ -325,6 +327,9 @@ export function ModelPicker({ conversationId = null }: ModelPickerProps = {}): J
                             <span className="model-picker-provider-name">{group.providerName}</span>
                             {group.local ? (
                               <span className="model-picker-local-tag">local</span>
+                            ) : null}
+                            {group.plugin ? (
+                              <span className="model-picker-plugin-tag">plugin</span>
                             ) : null}
                             <span className="model-picker-provider-count">
                               {group.models.length}

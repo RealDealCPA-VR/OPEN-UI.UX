@@ -21,9 +21,11 @@ import {
   buildProviderConfig,
   catalog,
   catalogById,
+  getPluginProviderInfo,
   getProviderInfo,
   invalidateProviderInfo,
 } from './catalog';
+import { listPluginProviders } from './plugin-provider-registry';
 import { ping } from './ping';
 
 const apiKeyAccount = (id: string): string => `provider:${id}:apiKey`;
@@ -88,6 +90,9 @@ export function registerProviderHandlers(): void {
     for (const entry of catalog) {
       const item = await buildItem(entry.id);
       if (item) items.push(item);
+    }
+    for (const entry of listPluginProviders()) {
+      items.push({ info: await getPluginProviderInfo(entry), status: await buildStatus(entry.id) });
     }
     return items;
   });

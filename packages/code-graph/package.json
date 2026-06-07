@@ -1,0 +1,35 @@
+{
+  "name": "@opencodex/code-graph",
+  "version": "0.0.0",
+  "description": "Deterministic code knowledge graph: symbol/edge extraction, cross-file resolution, dedup, and community detection — a sibling to RAG retrieval",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "graphology": "^0.25.4",
+    "graphology-communities-louvain": "^2.0.2",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
+  }
+}

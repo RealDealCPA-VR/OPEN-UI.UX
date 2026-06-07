@@ -199,8 +199,8 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
             justifyContent: 'space-between',
             gap: 8,
             padding: '6px 10px',
-            background: 'var(--bg-elevated, #1e1e1e)',
-            borderBottom: '1px solid var(--border, #333)',
+            background: 'var(--bg-elevated)',
+            borderBottom: '1px solid var(--border)',
             fontSize: 12,
           }}
         >
@@ -208,7 +208,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
             <code
               className="monaco-diff-viewer-sticky-path"
               style={{
-                fontFamily: 'var(--font-mono, monospace)',
+                fontFamily: 'var(--font-mono)',
                 color: 'var(--text-primary)',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -226,15 +226,15 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
             className="monaco-diff-viewer-sticky-stats"
             aria-label={`${stats.added} added, ${stats.removed} removed`}
             style={{
-              fontFamily: 'var(--font-mono, monospace)',
-              color: 'var(--text-secondary, #aaa)',
+              fontFamily: 'var(--font-mono)',
+              color: 'var(--text-secondary)',
               whiteSpace: 'nowrap',
             }}
           >
             <span style={{ color: 'var(--success)' }}>+{stats.added}</span>{' '}
             <span style={{ color: 'var(--danger)' }}>-{stats.removed}</span>
           </span>
-          <span style={{ color: 'var(--text-muted, #888)', whiteSpace: 'nowrap' }}>
+          <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
             {stickyLabel === '+0 -0' ? '' : null}
           </span>
         </div>
@@ -251,7 +251,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                 display: 'inline-flex',
                 gap: 0,
                 marginRight: 8,
-                border: '1px solid var(--border, #333)',
+                border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-2xs)',
                 overflow: 'hidden',
               }}
@@ -266,7 +266,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                   fontSize: 11,
                   background:
                     layout === 'side-by-side' ? 'var(--bg-elevated-strong)' : 'var(--bg-elevated)',
-                  color: 'var(--text-primary, #ddd)',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   cursor: 'pointer',
                 }}
@@ -283,9 +283,9 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                   fontSize: 11,
                   background:
                     layout === 'unified' ? 'var(--bg-elevated-strong)' : 'var(--bg-elevated)',
-                  color: 'var(--text-primary, #ddd)',
+                  color: 'var(--text-primary)',
                   border: 'none',
-                  borderLeft: '1px solid var(--border, #333)',
+                  borderLeft: '1px solid var(--border)',
                   cursor: 'pointer',
                 }}
               >
@@ -298,7 +298,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
               className="monaco-diff-viewer-keys"
               style={{
                 fontSize: 11,
-                color: 'var(--text-muted, #888)',
+                color: 'var(--text-muted)',
                 marginRight: 8,
               }}
               aria-hidden

@@ -43,7 +43,9 @@ export function AgentTreeView({ runs, now, onSelectRun }: AgentTreeViewProps): J
 
   useEffect(() => {
     const b = bridge();
+    let cancelled = false;
     const off = b?.onPausedChanged?.((payload) => {
+      if (cancelled) return;
       setPaused((prev) => {
         const next = new Set(prev);
         if (payload.paused) next.add(payload.runId);
@@ -52,6 +54,7 @@ export function AgentTreeView({ runs, now, onSelectRun }: AgentTreeViewProps): J
       });
     });
     return () => {
+      cancelled = true;
       if (off) off();
     };
   }, []);

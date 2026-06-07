@@ -1,6 +1,15 @@
 import { useEffect, useRef } from 'react';
 import type { SettingsSection } from '../views/settings-sections';
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.classList.contains('settings-rail-search-input')) return false;
+  if (target.isContentEditable) return true;
+  if (target.closest('.monaco-editor')) return true;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
 export interface SettingsRailProps {
   sections: readonly SettingsSection[];
   activeSlug: string;
@@ -27,11 +36,11 @@ export function SettingsRail({
     const onKey = (e: Event): void => {
       const ke = e as KeyboardEvent;
       const isMeta = ke.metaKey || ke.ctrlKey;
-      if (isMeta && ke.key === 'f') {
-        ke.preventDefault();
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      }
+      if (!isMeta || ke.key !== 'f') return;
+      if (isEditableTarget(ke.target) || isEditableTarget(document.activeElement)) return;
+      ke.preventDefault();
+      inputRef.current?.focus();
+      inputRef.current?.select();
     };
     settingsRoot.addEventListener('keydown', onKey);
     return () => settingsRoot.removeEventListener('keydown', onKey);

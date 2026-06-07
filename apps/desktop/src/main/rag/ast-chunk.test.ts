@@ -1,9 +1,15 @@
 import { promises as fs } from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { hasGrammar } from '@opencodex/rag-chunker';
-import { languageForPath, registerBundledGrammars } from './ast-chunk';
+import { languageForPath, registerBundledGrammars, resolveGrammarDir } from './ast-chunk';
+
+const require = createRequire(import.meta.url);
+function wasmsOutDir(): string {
+  return path.join(path.dirname(require.resolve('tree-sitter-wasms/package.json')), 'out');
+}
 
 describe('languageForPath', () => {
   it('maps known extensions to their language', () => {
@@ -95,5 +101,49 @@ describe('registerBundledGrammars', () => {
     // Second pass over the same dir: rust is already registered, so nothing new.
     const second = registerBundledGrammars(dir);
     expect(second).toBe(0);
+  });
+
+  it('normalizes the tree-sitter-wasms filename token to a supported language', async () => {
+    // The package ships C# as `tree-sitter-c_sharp.wasm`; our supported language
+    // is `csharp`. registerBundledGrammars must map the token, not skip it.
+    await touch('tree-sitter-c_sharp.wasm');
+
+    const count = registerBundledGrammars(dir);
+
+    expect(count).toBe(1);
+    expect(hasGrammar('csharp')).toBe(true);
+  });
+
+  it('registers the real grammars shipped by the tree-sitter-wasms package', async () => {
+    // Copy real package wasm files (raw upstream names, incl. the c_sharp token)
+    // into a dir and assert they register under their supported-language names.
+    // Uses languages no other test in this file touches so the per-language
+    // count is order-independent against the module-level grammar registry.
+    const out = wasmsOutDir();
+    for (const file of [
+      'tree-sitter-typescript.wasm',
+      'tree-sitter-java.wasm',
+      'tree-sitter-swift.wasm',
+    ]) {
+      await fs.copyFile(path.join(out, file), path.join(dir, file));
+    }
+
+    const count = registerBundledGrammars(dir);
+
+    expect(count).toBe(3);
+    expect(hasGrammar('typescript')).toBe(true);
+    expect(hasGrammar('java')).toBe(true);
+    expect(hasGrammar('swift')).toBe(true);
+  });
+});
+
+describe('resolveGrammarDir', () => {
+  it('returns the first existing candidate and skips empty/missing ones', () => {
+    const out = wasmsOutDir();
+    expect(resolveGrammarDir(['', path.join(out, 'nope'), out])).toBe(out);
+  });
+
+  it('returns null when no candidate exists', () => {
+    expect(resolveGrammarDir(['', path.join(os.tmpdir(), 'opencodex-no-such-dir-xyz')])).toBeNull();
   });
 });

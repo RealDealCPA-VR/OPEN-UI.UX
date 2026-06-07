@@ -108,6 +108,7 @@ packages/
   memory-local-fs/         Local markdown notes backend
   memory-obsidian/         Obsidian vault backend
   memory-notion/           Notion workspace backend
+  memory-utils/            Shared helpers for memory backends
   runner-claude-code/      Claude Code CLI adapter
   runner-opencode/         OpenCode CLI adapter
   runner-aider/            Aider CLI adapter

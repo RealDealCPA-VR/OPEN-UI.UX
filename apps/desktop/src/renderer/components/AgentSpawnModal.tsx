@@ -519,7 +519,7 @@ export function AgentSpawnModal({
           <span>Workspace</span>
           <div className="agent-spawn-workspace">
             <code>{workspaceRoot || '(none selected)'}</code>
-            <button type="button" onClick={() => void handleBrowse()}>
+            <button type="button" className="btn" onClick={() => void handleBrowse()}>
               Change…
             </button>
           </div>

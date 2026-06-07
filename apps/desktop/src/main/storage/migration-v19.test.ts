@@ -19,6 +19,8 @@ describe('migration v19 — turn_status', () => {
     // running every migration, then rolling the recorded version back to 16 and
     // dropping the v17/v18/v19 artifacts so the upgrade path is exercised.
     applyMigrations(db);
+    db.exec('DROP TABLE IF EXISTS code_graph_edges');
+    db.exec('DROP TABLE IF EXISTS code_graph_nodes');
     db.exec('DROP INDEX IF EXISTS idx_checkpoint_entries_blob');
     db.exec('DROP TABLE IF EXISTS checkpoint_entries');
     db.exec('DROP TABLE IF EXISTS checkpoints');

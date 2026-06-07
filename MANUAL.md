@@ -339,9 +339,9 @@ Two-pane layout: section rail on the left, panel on the right. The rail has a se
 
 URLs like `/settings/providers?highlight=openai` briefly pulse the matching row so deep-links from elsewhere are visible.
 
-### The 19 sections
+### The 21 sections
 
-Theme, Workspace, Providers, Approvals, Model routing, Privacy, Plugins, MCP servers, Memory, Updates, Telemetry, Crash reporting, Budgets, Audit log, Indexing, Scheduled tasks (redirect), Skills, Accessibility, Help.
+Theme, Workspace, Providers, Approvals, Model routing, Privacy, Plugins, MCP servers, Memory, Updates, Telemetry, Crash reporting, Budgets, Audit log, Replay & provenance, Indexing, Scheduled tasks (redirect), Skills, Notifications, Accessibility, Help.
 
 Note: **Runners is a top-level route at `/runners`**, not a Settings section. The Settings rail's "Scheduled tasks" entry exists for backwards-compat deep-links only — opening it redirects to `/automations`.
 
@@ -420,7 +420,7 @@ Toolbar: **New skill from template**, **Import from URL** (consent prompt + writ
 
 #### Runners
 
-The 15th section. Lists registered subagent runners: `internal` (built-in), plus any plugin-contributed runners. Per-row:
+Runners is a top-level route at `/runners`, not a Settings section, but its configuration surface is documented here. Lists registered subagent runners: `internal` (built-in), plus any plugin-contributed runners. Per-row:
 
 - Source badge (built-in / plugin displayName).
 - **Install status** via the runner's `checkInstalled()` — green check or "Not installed → hint URL".

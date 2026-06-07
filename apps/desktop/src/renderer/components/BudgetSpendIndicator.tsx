@@ -34,8 +34,8 @@ const TONE_BG: Record<'idle' | 'warn' | 'danger', string> = {
 
 const TONE_BORDER: Record<'idle' | 'warn' | 'danger', string> = {
   idle: 'var(--border)',
-  warn: 'var(--warn-border, var(--warn))',
-  danger: 'var(--danger-border, var(--danger))',
+  warn: 'var(--warn-border)',
+  danger: 'var(--danger-border)',
 };
 
 const TONE_FG: Record<'idle' | 'warn' | 'danger', string> = {

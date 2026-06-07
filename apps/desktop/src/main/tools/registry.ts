@@ -4,6 +4,7 @@ import {
   globTool,
   grepTool,
   listDirTool,
+  queryCodeGraphTool,
   readDocumentTool,
   readFileTool,
   runShellTool,
@@ -30,6 +31,7 @@ export function getToolRegistry(): ToolRegistry {
     registry.register(runShellTool);
     registry.register(webFetchTool);
     registry.register(searchCodebaseTool);
+    registry.register(queryCodeGraphTool);
     registry.register(spawnSubagentTool);
     instance = registry;
   }

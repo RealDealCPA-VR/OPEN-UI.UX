@@ -73,48 +73,42 @@ export function ReviewSourcePicker({
         <legend style={{ fontSize: 12, color: 'var(--text-secondary)', padding: 0 }}>
           Review source
         </legend>
-        <div className="field" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-            <input
-              type="radio"
-              name="review-source-kind"
-              value="local-branch"
-              checked={kind === 'local-branch'}
-              onChange={() => setKind('local-branch')}
-              disabled={disabled}
-              style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
-            />
-            <span>Local branch</span>
-          </label>
-        </div>
-        <div className="field" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-            <input
-              type="radio"
-              name="review-source-kind"
-              value="github-pr-number"
-              checked={kind === 'github-pr-number'}
-              onChange={() => setKind('github-pr-number')}
-              disabled={disabled}
-              style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
-            />
-            <span>GitHub PR number</span>
-          </label>
-        </div>
-        <div className="field" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-            <input
-              type="radio"
-              name="review-source-kind"
-              value="gh-pr-url"
-              checked={kind === 'gh-pr-url'}
-              onChange={() => setKind('gh-pr-url')}
-              disabled={disabled}
-              style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
-            />
-            <span>GitHub PR URL</span>
-          </label>
-        </div>
+        <label className="toggle">
+          <input
+            type="radio"
+            name="review-source-kind"
+            value="local-branch"
+            checked={kind === 'local-branch'}
+            onChange={() => setKind('local-branch')}
+            disabled={disabled}
+            style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
+          />
+          <span>Local branch</span>
+        </label>
+        <label className="toggle">
+          <input
+            type="radio"
+            name="review-source-kind"
+            value="github-pr-number"
+            checked={kind === 'github-pr-number'}
+            onChange={() => setKind('github-pr-number')}
+            disabled={disabled}
+            style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
+          />
+          <span>GitHub PR number</span>
+        </label>
+        <label className="toggle">
+          <input
+            type="radio"
+            name="review-source-kind"
+            value="gh-pr-url"
+            checked={kind === 'gh-pr-url'}
+            onChange={() => setKind('gh-pr-url')}
+            disabled={disabled}
+            style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
+          />
+          <span>GitHub PR URL</span>
+        </label>
       </fieldset>
 
       {kind === 'local-branch' && (

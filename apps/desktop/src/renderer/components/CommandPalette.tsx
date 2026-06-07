@@ -383,13 +383,7 @@ export function CommandPalette({
       onClick={onClose}
       onKeyDown={handleKey}
     >
-      <div
-        className="command-palette"
-        onClick={(e) => e.stopPropagation()}
-        role="combobox"
-        aria-expanded={totalCount > 0}
-        aria-haspopup="listbox"
-      >
+      <div className="command-palette" onClick={(e) => e.stopPropagation()}>
         <div className="command-palette-input-row">
           <input
             ref={inputRef}
@@ -398,15 +392,25 @@ export function CommandPalette({
             value={query}
             placeholder="Search messages, files, skills — or type a command (try “theme”, “settings”, “?”)"
             aria-label="Search query"
+            role="combobox"
+            aria-haspopup="listbox"
+            aria-expanded={totalCount > 0}
+            aria-controls="command-palette-results"
+            aria-activedescendant={totalCount > 0 ? `palette-opt-${activeIndex}` : undefined}
+            autoComplete="off"
             onChange={(e) => setQuery(e.target.value)}
             spellCheck={false}
-            autoComplete="off"
           />
           {loading ? (
             <span className="mcp-inline-spinner" role="status" aria-label="Loading" />
           ) : null}
         </div>
-        <div className="command-palette-results" role="listbox" aria-label="Search results">
+        <div
+          id="command-palette-results"
+          className="command-palette-results"
+          role="listbox"
+          aria-label="Search results"
+        >
           {totalCount === 0 ? (
             <div className="command-palette-empty">
               {debouncedQuery
@@ -427,6 +431,7 @@ export function CommandPalette({
                       <button
                         type="button"
                         key={entry.id}
+                        id={`palette-opt-${idx}`}
                         className={isActive ? 'command-palette-row active' : 'command-palette-row'}
                         role="option"
                         aria-selected={isActive}

@@ -467,14 +467,20 @@ export function MergeReviewModal({
   }, [parsedFiles, focusedIndex, bundle, busy, regenerate, showDraftPr, showConflicts]);
 
   return (
-    <div className="approval-modal-backdrop" role="dialog" aria-modal="true" ref={modalRootRef}>
+    <div
+      className="approval-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="merge-review-modal-title"
+      ref={modalRootRef}
+    >
       <div
         className="approval-modal merge-review-modal"
         style={{ minWidth: 'min(960px, 92vw)', maxWidth: '96vw' }}
         tabIndex={-1}
       >
         <header className="approval-modal-header">
-          <h2>Review subagent changes</h2>
+          <h2 id="merge-review-modal-title">Review subagent changes</h2>
         </header>
 
         {loadError && <p className="approvals-save-error">Failed to load diff: {loadError}</p>}

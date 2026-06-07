@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 
 const workspacePackages: Record<string, string> = {
   '@opencodex/audit-verify': 'packages/audit-verify/src/index.ts',
+  '@opencodex/code-graph': 'packages/code-graph/src/index.ts',
   '@opencodex/core': 'packages/core/src/index.ts',
   '@opencodex/mcp-client': 'packages/mcp-client/src/index.ts',
   '@opencodex/memory-local-fs': 'packages/memory-local-fs/src/index.ts',

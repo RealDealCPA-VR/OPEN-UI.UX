@@ -85,7 +85,7 @@ export const searchCodebaseTool = defineTool({
 
     if (requestedIds.length === 0 || resolver === null) {
       const result = (await grepTool.execute(baseGrepInput as never, ctx)) as GrepMatch[];
-      perWorkspaceRanked = [rank(result, input.query, undefined)];
+      perWorkspaceRanked = [rankFused(result, input.query, undefined)];
     } else {
       for (const id of requestedIds) {
         const ws = resolver.resolve(id);
@@ -101,7 +101,7 @@ export const searchCodebaseTool = defineTool({
           });
           continue;
         }
-        perWorkspaceRanked.push(rank(result, input.query, id));
+        perWorkspaceRanked.push(rankFused(result, input.query, id));
       }
     }
 
@@ -139,10 +139,7 @@ export const searchCodebaseTool = defineTool({
 });
 
 function fuseRankedHits(rankings: SearchHit[][]): SearchHit[] {
-  return reciprocalRankFusion(
-    rankings,
-    (hit) => `${hit.workspaceId ?? '_'}:${hit.file}:${hit.line}`,
-  );
+  return reciprocalRankFusion(rankings, hitKey);
 }
 
 function rank(hits: readonly GrepMatch[], query: string, workspaceId?: string): SearchHit[] {
@@ -169,6 +166,39 @@ function rank(hits: readonly GrepMatch[], query: string, workspaceId?: string): 
 }
 
 export { rank as rankSearchHits };
+
+function hitKey(hit: SearchHit): string {
+  return `${hit.workspaceId ?? '_'}:${hit.file}:${hit.line}`;
+}
+
+// The tool layer has no handle to the LanceDB vector store — ToolContext only
+// exposes workspaceRoot/signal/logger, and the indexer lives in the desktop main
+// process. Rather than invent IPC, we fuse the two signals we *can* compute here
+// (keyword relevance and path quality) through the same RRF used for the vector
+// path in apps/desktop/.../multi-workspace-indexer.ts. When/if a vector-rank list
+// becomes reachable from the tool context, append it to `signals` below.
+export function rankFused(
+  hits: readonly GrepMatch[],
+  query: string,
+  workspaceId?: string,
+): SearchHit[] {
+  const scored = rank(hits, query, workspaceId);
+  if (scored.length <= 1) return scored;
+
+  const keywordRanked = scored;
+  const pathRanked = [...scored].sort((a, b) => pathQuality(b) - pathQuality(a));
+  const signals: SearchHit[][] = [keywordRanked, pathRanked];
+
+  const byKey = new Map(scored.map((h) => [hitKey(h), h]));
+  return reciprocalRankFusion(signals, hitKey).map((h) => byKey.get(hitKey(h)) ?? h);
+}
+
+function pathQuality(hit: SearchHit): number {
+  let q = 0;
+  if (hit.file.endsWith('.md') || hit.file.endsWith('.txt')) q -= 1;
+  if (hit.file.includes('test') || hit.file.includes('__fixtures__')) q -= 2;
+  return q;
+}
 
 export function reciprocalRankFusion<T>(
   rankings: ReadonlyArray<ReadonlyArray<T>>,

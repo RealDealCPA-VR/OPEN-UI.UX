@@ -198,6 +198,7 @@ export function CodebaseSearchBox({
           ref={inputRef}
           type="text"
           className="codebase-search-input"
+          aria-label="Search codebase"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => {
@@ -242,7 +243,7 @@ export function CodebaseSearchBox({
             aria-live="polite"
             style={{
               fontSize: 11,
-              color: 'var(--text-muted, #888)',
+              color: 'var(--text-muted)',
               padding: '0 6px',
               whiteSpace: 'nowrap',
             }}

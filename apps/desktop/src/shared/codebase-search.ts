@@ -53,3 +53,29 @@ export interface PendingEditEntry {
 export interface CodebasePendingEditsResponse {
   entries: PendingEditEntry[];
 }
+
+export interface GraphNodeView {
+  id: string;
+  label: string;
+  file: string;
+  startLine: number | null;
+  community: number | null;
+  kind: string | null;
+  language: string | null;
+}
+
+export interface GraphEdgeView {
+  source: string;
+  target: string;
+  relation: string;
+}
+
+export interface CodebaseGraphRequest {
+  limit?: number;
+}
+
+export interface CodebaseGraphResponse {
+  nodes: GraphNodeView[];
+  edges: GraphEdgeView[];
+  available: boolean;
+}

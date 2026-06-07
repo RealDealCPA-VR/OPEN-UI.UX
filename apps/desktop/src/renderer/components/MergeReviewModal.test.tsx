@@ -109,6 +109,22 @@ describe('MergeReviewModal', () => {
     );
   });
 
+  it('exposes an accessible name on the dialog via aria-labelledby', async () => {
+    render(
+      <MergeReviewModal
+        runId="run-1"
+        conversationId="conv-1"
+        workspaceRoot="/tmp/ws"
+        onClose={() => {}}
+        onResolved={() => {}}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.getAttribute('aria-labelledby')).toBe('merge-review-modal-title');
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Review subagent changes' })));
+  });
+
   it('renders an empty list when the rag citations json is null or malformed', () => {
     expect(parseRagCitations(null)).toEqual([]);
     expect(parseRagCitations('not-json')).toEqual([]);

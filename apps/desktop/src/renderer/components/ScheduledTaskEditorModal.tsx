@@ -399,10 +399,16 @@ export function ScheduledTaskEditorModal({
   };
 
   return (
-    <div className="approval-modal-backdrop" role="dialog" aria-modal="true" onKeyDown={onKeyDown}>
+    <div
+      className="approval-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="scheduled-task-editor-title"
+      onKeyDown={onKeyDown}
+    >
       <div className="approval-modal agent-spawn-modal scheduled-task-editor scheduled-task-editor-modal">
         <header className="approval-modal-header">
-          <h2>{isEdit ? 'Edit automation' : 'New automation'}</h2>
+          <h2 id="scheduled-task-editor-title">{isEdit ? 'Edit automation' : 'New automation'}</h2>
         </header>
 
         <label className="agent-spawn-field">

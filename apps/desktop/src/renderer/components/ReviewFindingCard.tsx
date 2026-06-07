@@ -58,7 +58,7 @@ export function ReviewFindingCard({
             color: palette.fg,
             border: `1px solid ${palette.border}`,
             padding: '2px 8px',
-            borderRadius: 'var(--radius-pill, 999px)',
+            borderRadius: 'var(--radius-pill)',
             fontSize: 11,
             fontWeight: 600,
             textTransform: 'uppercase',
