@@ -152,6 +152,10 @@ import type {
   WorkspacesChangedEvent,
 } from '../shared/workspaces';
 import type {
+  CodebaseGraphRequest,
+  CodebaseGraphResponse,
+  CodebaseListDirFilesRequest,
+  CodebaseListDirFilesResponse,
   CodebasePendingEditsResponse,
   CodebaseReadFileRequest,
   CodebaseReadFileResponse,
@@ -168,10 +172,21 @@ import type {
 } from '../shared/approvals';
 import type {
   ChatCancelRequest,
+  ChatListActiveResponse,
+  ChatReattachRequest,
+  ChatReattachResponse,
   ChatStartRequest,
   ChatStartResponse,
   ChatStreamEvent,
 } from '../shared/chat';
+import type {
+  CheckpointsChangedEvent,
+  ListCheckpointsForMessageRequest,
+  ListCheckpointsForRunRequest,
+  ListCheckpointsResponse,
+  RestoreCheckpointRequest,
+  RestoreCheckpointResponse,
+} from '../shared/checkpoints';
 import type { PrepareAttachmentsRequest, PrepareAttachmentsResponse } from '../shared/attachments';
 import type {
   AppendMessageRequest,
@@ -226,7 +241,10 @@ import type {
   InstallPluginRequest,
   PluginListItem,
   PluginPanelDescriptor,
+  PluginSlashCommandDescriptor,
   PluginsChangedEvent,
+  RunPluginSlashCommandRequest,
+  RunPluginSlashCommandResult,
   UninstallPluginRequest,
 } from '../shared/plugins';
 import type {
@@ -274,6 +292,7 @@ import type {
   SkillsListResponse,
 } from '../shared/skills';
 import type {
+  AgentRunNotificationsChangedEvent,
   HoverHintsChangedEvent,
   PluginPreset,
   RunnerInfo,
@@ -375,6 +394,10 @@ const chat = {
   start: (req: ChatStartRequest): Promise<ChatStartResponse> =>
     ipcRenderer.invoke('chat:start', req),
   cancel: (req: ChatCancelRequest): Promise<void> => ipcRenderer.invoke('chat:cancel', req),
+  // Crash-restore — reattach reuses the existing chat:event subscription below.
+  listActive: (): Promise<ChatListActiveResponse> => ipcRenderer.invoke('chat:list-active'),
+  reattach: (req: ChatReattachRequest): Promise<ChatReattachResponse> =>
+    ipcRenderer.invoke('chat:reattach', req),
   onEvent: (listener: ChatEventListener): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: ChatStreamEvent): void => listener(payload);
     ipcRenderer.on('chat:event', wrapped);
@@ -469,6 +492,7 @@ const theme = {
 };
 
 type HoverHintsChangedListener = (enabled: boolean) => void;
+type AgentRunNotificationsChangedListener = (enabled: boolean) => void;
 
 const settings = {
   getHoverHintsEnabled: (): Promise<boolean> => ipcRenderer.invoke('settings:get-hover-hints'),
@@ -479,6 +503,18 @@ const settings = {
       listener(payload.enabled);
     ipcRenderer.on('settings:hover-hints-changed', wrapped);
     return () => ipcRenderer.off('settings:hover-hints-changed', wrapped);
+  },
+  getAgentRunNotificationsEnabled: (): Promise<boolean> =>
+    ipcRenderer.invoke('settings:get-agent-run-notifications'),
+  setAgentRunNotificationsEnabled: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('settings:set-agent-run-notifications', { enabled }),
+  onAgentRunNotificationsChanged: (
+    listener: AgentRunNotificationsChangedListener,
+  ): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: AgentRunNotificationsChangedEvent): void =>
+      listener(payload.enabled);
+    ipcRenderer.on('settings:agent-run-notifications-changed', wrapped);
+    return () => ipcRenderer.off('settings:agent-run-notifications-changed', wrapped);
   },
   getRunnerCliPath: (runnerId: string): Promise<string | null> =>
     ipcRenderer.invoke('settings:get-runner-cli-path', { runnerId }),
@@ -585,6 +621,10 @@ const plugins = {
   listPresets: (): Promise<PluginPreset[]> => ipcRenderer.invoke('plugins:list-presets'),
   installPreset: (presetId: string): Promise<{ plugins: PluginListItem[] }> =>
     ipcRenderer.invoke('plugins:install-preset', { presetId }),
+  listSlashCommands: (): Promise<PluginSlashCommandDescriptor[]> =>
+    ipcRenderer.invoke('plugins:list-slash-commands'),
+  runSlashCommand: (req: RunPluginSlashCommandRequest): Promise<RunPluginSlashCommandResult> =>
+    ipcRenderer.invoke('plugins:run-slash-command', req),
   onChanged: (listener: PluginsChangedListener): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: PluginsChangedEvent): void =>
       listener(payload);
@@ -599,6 +639,8 @@ type RunnersChangedListener = (payload: RunnersChangedEvent) => void;
 const agent = {
   listRuns: (): Promise<AgentRun[]> => ipcRenderer.invoke('agent:list-runs'),
   clearRuns: (): Promise<AgentRun[]> => ipcRenderer.invoke('agent:clear-runs'),
+  markRunsSeen: (runIds: string[]): Promise<{ ok: true; runs: AgentRun[] }> =>
+    ipcRenderer.invoke('agent:mark-runs-seen', { runIds }),
   onRunsChanged: (listener: AgentRunsChangedListener): (() => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: AgentRunsChangedEvent): void =>
       listener(payload);
@@ -673,6 +715,10 @@ const codebase = {
     ipcRenderer.invoke('codebase:read-file', req),
   getPendingEdits: (): Promise<CodebasePendingEditsResponse> =>
     ipcRenderer.invoke('codebase:get-pending-edits'),
+  listDirFiles: (req: CodebaseListDirFilesRequest): Promise<CodebaseListDirFilesResponse> =>
+    ipcRenderer.invoke('codebase:list-dir-files', req),
+  graph: (req: CodebaseGraphRequest): Promise<CodebaseGraphResponse> =>
+    ipcRenderer.invoke('codebase:graph', req),
 };
 
 const git = {
@@ -994,6 +1040,30 @@ const replay = {
   },
 };
 
+// Unified checkpoint manager — per-turn + pre-run rollback
+type CheckpointsChangedListener = (payload: CheckpointsChangedEvent) => void;
+
+const checkpoints = {
+  listForMessage: (messageId: string): Promise<ListCheckpointsResponse> =>
+    ipcRenderer.invoke('checkpoints:list-for-message', {
+      messageId,
+    } satisfies ListCheckpointsForMessageRequest),
+  listForRun: (runId: string): Promise<ListCheckpointsResponse> =>
+    ipcRenderer.invoke('checkpoints:list-for-run', {
+      runId,
+    } satisfies ListCheckpointsForRunRequest),
+  restore: (checkpointId: string): Promise<RestoreCheckpointResponse> =>
+    ipcRenderer.invoke('checkpoints:restore', {
+      checkpointId,
+    } satisfies RestoreCheckpointRequest),
+  onChanged: (listener: CheckpointsChangedListener): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: CheckpointsChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('checkpoints:changed', wrapped);
+    return () => ipcRenderer.off('checkpoints:changed', wrapped);
+  },
+};
+
 // Lane 7 — anti-sycophancy toggle
 const antiSycophancy = {
   get: (): Promise<boolean> => ipcRenderer.invoke('anti-sycophancy:get'),
@@ -1134,6 +1204,7 @@ const api = {
   plugins,
   agent,
   antiSycophancy,
+  checkpoints,
   budgets,
   network,
   ollama,

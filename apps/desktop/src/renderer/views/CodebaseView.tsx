@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CodebasePreviewPane } from '../components/CodebasePreviewPane';
 import { CodebaseSearchBox } from '../components/CodebaseSearchBox';
@@ -7,6 +7,13 @@ import { FileTreeContextMenu, type ContextMenuItem } from '../components/FileTre
 import { useAgentPendingEdits } from '../hooks/use-agent-pending-edits';
 import { consumeTransfer, onTransferPushed, pushTransfer } from '../state/transfer';
 import { annotationMapFromPending } from './codebase-pending-edits-derive';
+
+const CodeGraph = lazy(async () => {
+  const mod = await import('../components/CodeGraph');
+  return { default: mod.CodeGraph };
+});
+
+type CodebaseTab = 'tree' | 'graph';
 
 interface ContextMenuState {
   path: string;
@@ -37,6 +44,7 @@ export function CodebaseView(): JSX.Element {
   const [jumpToLine, setJumpToLine] = useState<number | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [pinnedPaths, setPinnedPaths] = useState<string[]>([]);
+  const [tab, setTab] = useState<CodebaseTab>('tree');
 
   const pendingEdits = useAgentPendingEdits();
   const workspaceRootRef = useRef<string | null>(workspaceRoot);
@@ -159,6 +167,12 @@ export function CodebaseView(): JSX.Element {
     ];
   }, [menu, workspaceRoot, handleOpenFile, navigate]);
 
+  const handleGraphSelect = useCallback((file: string, startLine: number | null) => {
+    setSelectedPath(file);
+    setJumpToLine(startLine);
+    pushRecentFile(file);
+  }, []);
+
   const continueInChat = useCallback(() => {
     if (!selectedPath) return;
     pushTransfer({ kind: 'codebase-to-chat', filePath: selectedPath });
@@ -169,7 +183,31 @@ export function CodebaseView(): JSX.Element {
     <section className="view codebase-view">
       <header className="codebase-head">
         <h1>Codebase</h1>
-        <p>Workspace file tree. Click a file to preview; pending agent edits show pills.</p>
+        <p>Browse and preview files. Agent-proposed changes are highlighted inline.</p>
+        <div
+          role="tablist"
+          aria-label="Codebase view"
+          style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'tree'}
+            className={tab === 'tree' ? 'btn btn-primary' : 'btn'}
+            onClick={() => setTab('tree')}
+          >
+            Tree
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'graph'}
+            className={tab === 'graph' ? 'btn btn-primary' : 'btn'}
+            onClick={() => setTab('graph')}
+          >
+            Graph
+          </button>
+        </div>
       </header>
       <div className="codebase-search-wrap">
         <CodebaseSearchBox
@@ -183,13 +221,25 @@ export function CodebaseView(): JSX.Element {
         />
       </div>
       <div className="codebase-body">
-        <aside className="codebase-tree-pane">
-          <FileTree
-            annotations={annotations}
-            onOpenFile={handleOpenFile}
-            onContextMenu={handleContextMenu}
-            onOpenPendingEdit={handleOpenPendingEdit}
-          />
+        <aside className="codebase-tree-pane" style={{ display: 'flex', flexDirection: 'column' }}>
+          {tab === 'tree' ? (
+            <FileTree
+              annotations={annotations}
+              onOpenFile={handleOpenFile}
+              onContextMenu={handleContextMenu}
+              onOpenPendingEdit={handleOpenPendingEdit}
+            />
+          ) : (
+            <Suspense
+              fallback={
+                <div style={{ padding: 'var(--space-5)', color: 'var(--text-muted)' }}>
+                  Loading graph…
+                </div>
+              }
+            >
+              <CodeGraph onSelect={handleGraphSelect} />
+            </Suspense>
+          )}
         </aside>
         <div className="codebase-preview-wrap">
           {selectedPath && (

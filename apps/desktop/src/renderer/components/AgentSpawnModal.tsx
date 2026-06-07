@@ -339,7 +339,7 @@ export function AgentSpawnModal({
     >
       <div onKeyDown={onKeyDown}>
         <header className="approval-modal-header">
-          <h2 id="agent-spawn-modal-title">Spawn task</h2>
+          <h2 id="agent-spawn-modal-title">New subagent task</h2>
         </header>
 
         <label className="agent-spawn-field">
@@ -402,10 +402,10 @@ export function AgentSpawnModal({
           <div
             className="agent-spawn-runner-note"
             style={{
-              background: 'var(--bg-pill)',
+              background: 'var(--bg-sunken)',
               color: 'var(--text-secondary)',
               border: '1px solid var(--border-row-divider)',
-              borderRadius: 6,
+              borderRadius: 'var(--radius-sm)',
               padding: '8px 10px',
               fontSize: 12,
               lineHeight: 1.45,
@@ -425,7 +425,7 @@ export function AgentSpawnModal({
               border: '1px solid var(--border-strong)',
               background: 'var(--bg-sunken)',
               color: 'var(--text-secondary)',
-              borderRadius: 6,
+              borderRadius: 'var(--radius-sm)',
               padding: '8px 10px',
               margin: '4px 0',
               fontSize: 13,
@@ -519,7 +519,7 @@ export function AgentSpawnModal({
           <span>Workspace</span>
           <div className="agent-spawn-workspace">
             <code>{workspaceRoot || '(none selected)'}</code>
-            <button type="button" onClick={() => void handleBrowse()}>
+            <button type="button" className="btn" onClick={() => void handleBrowse()}>
               Change…
             </button>
           </div>
@@ -551,7 +551,7 @@ export function AgentSpawnModal({
           <div
             style={{
               border: '1px solid var(--border-strong)',
-              borderRadius: 6,
+              borderRadius: 'var(--radius-sm)',
               padding: '8px 12px',
               background: 'var(--bg-sunken)',
               display: 'flex',
@@ -583,9 +583,15 @@ export function AgentSpawnModal({
             }
             role={probeResult.ok && probeResult.authenticated ? undefined : 'alert'}
           >
-            {probeResult.ok && probeResult.authenticated
-              ? '✓ Ready'
-              : `✗ ${probeResult.hint ?? 'Not authenticated'}`}
+            {probeResult.ok && probeResult.authenticated ? (
+              <>
+                <span className="pill-icon">✓</span> Ready
+              </>
+            ) : (
+              <>
+                <span className="pill-icon">✗</span> {probeResult.hint ?? 'Not authenticated'}
+              </>
+            )}
           </div>
         )}
 
@@ -610,7 +616,7 @@ export function AgentSpawnModal({
                 {probeBusy ? 'Verifying…' : 'Verify runner'}
               </button>
             )}
-            <button type="button" disabled={busy} onClick={onClose}>
+            <button type="button" className="btn" disabled={busy} onClick={onClose}>
               Cancel
             </button>
           </div>

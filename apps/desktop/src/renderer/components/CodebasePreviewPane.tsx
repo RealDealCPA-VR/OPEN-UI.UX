@@ -127,22 +127,9 @@ export function CodebasePreviewPane({
 
   if (!path) {
     return (
-      <div
-        className="codebase-preview-pane codebase-preview-empty"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 24,
-          height: '100%',
-          color: 'var(--text-muted, #888)',
-        }}
-      >
+      <div className="codebase-preview-pane codebase-preview-empty">
         <p style={{ margin: 0, fontWeight: 500 }}>Select a file to preview</p>
-        <p style={{ margin: '6px 0 0', fontSize: 12 }}>
-          Click any file in the tree, or search above.
-        </p>
+        <p style={{ margin: 'var(--space-3) 0 0' }}>Click any file in the tree, or search above.</p>
       </div>
     );
   }
@@ -153,10 +140,8 @@ export function CodebasePreviewPane({
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 8,
-        padding: '6px 10px',
-        borderBottom: '1px solid var(--border, #333)',
-        background: 'var(--bg-elevated, transparent)',
+        gap: 'var(--space-4)',
+        padding: 'var(--space-3) var(--space-5)',
       }}
     >
       <span
@@ -164,10 +149,10 @@ export function CodebasePreviewPane({
         aria-label="Language"
         style={{
           fontSize: 11,
-          padding: '2px 8px',
-          borderRadius: 999,
-          background: 'var(--bg-pill, rgba(255,255,255,0.06))',
-          color: 'var(--text-secondary, #aaa)',
+          padding: '2px var(--space-4)',
+          borderRadius: 'var(--radius-pill)',
+          background: 'var(--bg-btn)',
+          color: 'var(--text-secondary)',
           textTransform: 'lowercase',
           whiteSpace: 'nowrap',
         }}
@@ -185,13 +170,13 @@ export function CodebasePreviewPane({
           background: 'transparent',
           border: 'none',
           color: 'var(--text-primary)',
-          fontFamily: 'var(--font-mono, monospace)',
+          fontFamily: 'var(--font-mono)',
           fontSize: 12,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
           cursor: 'pointer',
-          padding: '2px 4px',
+          padding: '2px var(--space-2)',
         }}
       >
         {path}
@@ -205,32 +190,69 @@ export function CodebasePreviewPane({
           {file.truncated ? ' · truncated' : ''}
         </span>
       ) : null}
-      <button
-        type="button"
-        className="btn"
-        onClick={handleOpenInEditor}
-        title="Open this file in your OS default editor"
-        disabled={!workspaceRoot}
+      <div
+        className="codebase-preview-actions"
+        style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}
       >
-        Open in editor
-      </button>
-      <button
-        type="button"
-        className="btn"
-        onClick={handleRevealInOs}
-        title="Reveal in OS file manager"
-        disabled={!workspaceRoot}
-      >
-        Reveal in OS
-      </button>
-      <button
-        type="button"
-        className="btn"
-        onClick={() => void handleCopyPath()}
-        title="Copy path to clipboard"
-      >
-        {copyLabel}
-      </button>
+        <button
+          type="button"
+          className="btn"
+          style={{ opacity: 0.7, fontSize: 11 }}
+          onClick={handleOpenInEditor}
+          title="Open this file in your OS default editor"
+          disabled={!workspaceRoot}
+        >
+          Open in editor
+        </button>
+        <button
+          type="button"
+          className="btn"
+          style={{ opacity: 0.7, fontSize: 11 }}
+          onClick={handleRevealInOs}
+          title="Reveal in OS file manager"
+          disabled={!workspaceRoot}
+        >
+          Reveal in OS
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => void handleCopyPath()}
+          title="Copy path to clipboard"
+          style={{ fontSize: 11, minWidth: 80, position: 'relative' }}
+        >
+          <span
+            style={{
+              opacity: copyLabel === 'Copy path' ? 1 : 0,
+              transition: `opacity var(--duration-fast) var(--ease)`,
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            Copy path
+          </span>
+          <span
+            style={{
+              opacity: copyLabel === 'Copied' ? 1 : 0,
+              transition: `opacity var(--duration-fast) var(--ease)`,
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            Copied
+          </span>
+          {/* spacer keeps button width stable */}
+          <span aria-hidden style={{ visibility: 'hidden' }}>
+            Copy path
+          </span>
+        </button>
+      </div>
     </header>
   );
 
@@ -238,10 +260,33 @@ export function CodebasePreviewPane({
     return (
       <div className="codebase-preview-pane codebase-preview-error">
         {header}
-        <p>
-          Failed to load <code>{path}</code>:
-        </p>
-        <pre>{loadErr}</pre>
+        <div
+          style={{
+            margin: 'var(--space-6)',
+            padding: 'var(--space-5)',
+            borderRadius: 'var(--radius)',
+            background: 'var(--danger-bg)',
+            border: '1px solid var(--danger-border)',
+            color: 'var(--danger)',
+          }}
+        >
+          <p style={{ margin: '0 0 var(--space-3)', fontWeight: 500 }}>
+            Failed to load{' '}
+            <code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9em' }}>{path}</code>
+          </p>
+          <pre
+            style={{
+              margin: 0,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12,
+              color: 'var(--danger-soft)',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {loadErr}
+          </pre>
+        </div>
       </div>
     );
   }
@@ -250,9 +295,28 @@ export function CodebasePreviewPane({
     return (
       <div className="codebase-preview-pane codebase-preview-loading">
         {header}
-        <p>
-          Loading <code>{path}</code>…
-        </p>
+        <div
+          style={{
+            margin: 'var(--space-6)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-3)',
+          }}
+        >
+          {[80, 60, 70].map((w, i) => (
+            <div
+              key={i}
+              className="settings-skeleton-pulse"
+              style={{
+                height: 12,
+                width: `${w}%`,
+                borderRadius: 'var(--radius-xs)',
+                background: 'var(--bg-btn)',
+                animationDelay: `${i * 80}ms`,
+              }}
+            />
+          ))}
+        </div>
       </div>
     );
   }

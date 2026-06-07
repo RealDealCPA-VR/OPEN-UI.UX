@@ -126,7 +126,7 @@ export function ProvidersPanel(): JSX.Element {
   if (loadError) {
     return (
       <div className="providers-error">
-        Failed to load providers: {loadError}
+        <p>Failed to load providers: {loadError}</p>
         <button type="button" className="btn" onClick={reload}>
           Retry
         </button>
@@ -135,18 +135,28 @@ export function ProvidersPanel(): JSX.Element {
   }
 
   if (!items) {
-    return <p className="providers-loading">Loading providers…</p>;
+    return (
+      <div className="providers-loading">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="provider-card settings-skeleton" aria-hidden="true">
+            <div className="provider-card-head" />
+            <div className="provider-card-body" />
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return (
     <div className="providers-panel">
-      {items.map((item) => (
+      {items.map((item, idx) => (
         <ProviderCard
           key={item.info.id}
           item={item}
           draft={drafts[item.info.id] ?? makeDraft(item)}
           onDraftChange={(patch) => setDraft(item.info.id, patch)}
           onApplyItem={applyItem}
+          showDivider={idx > 0}
         />
       ))}
     </div>
@@ -158,9 +168,16 @@ interface ProviderCardProps {
   draft: DraftState;
   onDraftChange: (patch: Partial<DraftState>) => void;
   onApplyItem: (next: ProviderListItem) => void;
+  showDivider?: boolean;
 }
 
-function ProviderCard({ item, draft, onDraftChange, onApplyItem }: ProviderCardProps): JSX.Element {
+function ProviderCard({
+  item,
+  draft,
+  onDraftChange,
+  onApplyItem,
+  showDivider,
+}: ProviderCardProps): JSX.Element {
   const { info, status } = item;
 
   const chatModelCount = useMemo(
@@ -252,169 +269,206 @@ function ProviderCard({ item, draft, onDraftChange, onApplyItem }: ProviderCardP
       : 'pill pill-warn';
 
   return (
-    <section className="provider-card">
-      <header className="provider-card-head">
-        <div className="provider-card-head-main">
-          <h2>{info.displayName}</h2>
-          <span className="provider-meta-text">
-            {chatModelCount} chat · {embedModelCount} embed
-          </span>
-        </div>
-        <span className={statusClass}>{statusLabel}</span>
-      </header>
+    <>
+      {showDivider && <div className="settings-divider" />}
 
-      <div className="provider-card-body">
-        {info.requiresApiKey && (
-          <label className="field">
-            <span className="field-label">API key</span>
+      <div className="settings-block">
+        <div className="settings-subhead-row">
+          <h3 className="settings-subhead">{info.displayName}</h3>
+          <span className={statusClass}>{statusLabel}</span>
+        </div>
+        <p className="settings-block-hint">
+          {chatModelCount} chat · {embedModelCount} embed
+        </p>
+      </div>
+
+      {info.requiresApiKey && (
+        <div className="settings-block">
+          <label className="settings-field-label" htmlFor={`provider-apikey-${info.id}`}>
+            API key
+          </label>
+          <div className="settings-field-row">
             <input
+              id={`provider-apikey-${info.id}`}
               type="password"
+              className="settings-input"
               autoComplete="off"
               placeholder={status.hasApiKey ? KEY_MASK : 'sk-…'}
               value={draft.apiKey}
               onChange={(e) => onDraftChange({ apiKey: e.target.value, apiKeyDirty: true })}
             />
-          </label>
-        )}
+          </div>
+        </div>
+      )}
 
-        <label className="field">
-          <span className="field-label">Base URL override</span>
+      <div className="settings-block">
+        <label className="settings-field-label" htmlFor={`provider-baseurl-${info.id}`}>
+          Base URL override
+        </label>
+        <div className="settings-field-row">
           <input
+            id={`provider-baseurl-${info.id}`}
             type="text"
+            className="settings-input"
             placeholder={info.defaultBaseUrl}
             value={draft.baseUrl}
             onChange={(e) => onDraftChange({ baseUrl: e.target.value })}
           />
-        </label>
+        </div>
+      </div>
 
-        {info.extraFields.map((field) => (
-          <label key={field.name} className="field">
-            <span className="field-label">{field.label}</span>
+      {info.extraFields.map((field) => (
+        <div key={field.name} className="settings-block">
+          <label
+            className="settings-field-label"
+            htmlFor={`provider-extra-${info.id}-${field.name}`}
+          >
+            {field.label}
+          </label>
+          <div className="settings-field-row">
             <input
+              id={`provider-extra-${info.id}-${field.name}`}
               type={field.type}
+              className="settings-input"
               placeholder={field.placeholder}
               value={draft.extra[field.name] ?? ''}
               onChange={(e) =>
                 onDraftChange({ extra: { ...draft.extra, [field.name]: e.target.value } })
               }
             />
-            {field.description && <span className="field-help">{field.description}</span>}
-          </label>
-        ))}
+          </div>
+          {field.description && <p className="settings-block-hint">{field.description}</p>}
+        </div>
+      ))}
 
-        {draft.errors.length > 0 && (
-          <ul className="field-errors">
-            {draft.errors.map((msg, i) => (
-              <li key={i}>{msg}</li>
-            ))}
-          </ul>
-        )}
+      {draft.errors.length > 0 && (
+        <ul className="field-errors">
+          {draft.errors.map((msg, i) => (
+            <li key={i}>{msg}</li>
+          ))}
+        </ul>
+      )}
 
-        {draft.testResult && (
-          <div
-            className={
-              draft.testResult.ok ? 'test-result test-result-ok' : 'test-result test-result-err'
-            }
-            role={draft.testResult.ok ? undefined : 'alert'}
-          >
-            <div>
-              {draft.testResult.ok ? '✓ ' : '✗ '}
-              {draft.testResult.message}
-              {draft.testResult.ok && draft.testResult.latencyMs !== undefined && (
-                <span className="test-result-time">
-                  {' '}
-                  · {draft.testResult.latencyMs} ms
-                  {draft.testResult.modelCount !== undefined && (
-                    <>
-                      {' '}
-                      · {draft.testResult.modelCount} model
-                      {draft.testResult.modelCount === 1 ? '' : 's'} discovered
-                    </>
-                  )}
-                </span>
-              )}
-              {!draft.testResult.ok && draft.testResult.httpStatus && (
-                <span className="test-result-time"> · HTTP {draft.testResult.httpStatus}</span>
-              )}
-              {status.lastTestedAt && (
-                <span className="test-result-time"> · {formatTime(status.lastTestedAt)}</span>
-              )}
-            </div>
-            {!draft.testResult.ok &&
-              (() => {
-                const fix = suggestedFix(info.id, draft.testResult);
-                return fix ? (
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: 12,
-                      color: 'var(--text-muted)',
-                    }}
-                  >
-                    Suggested fix: {fix}
-                  </div>
-                ) : null;
-              })()}
-            {!draft.testResult.ok && (
-              <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => void handleTest()}
-                  disabled={draft.busy !== 'idle'}
-                >
-                  Retry test
-                </button>
-              </div>
+      {draft.testResult && (
+        <div
+          className={
+            draft.testResult.ok ? 'test-result test-result-ok' : 'test-result test-result-err'
+          }
+          role={draft.testResult.ok ? undefined : 'alert'}
+        >
+          <div>
+            {draft.testResult.ok ? (
+              <svg
+                aria-hidden="true"
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                fill="none"
+                style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }}
+              >
+                <path
+                  d="M2 6l3 3 5-5"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : (
+              <svg
+                aria-hidden="true"
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                fill="none"
+                style={{ display: 'inline', verticalAlign: 'middle', marginRight: 4 }}
+              >
+                <path
+                  d="M3 3l6 6M9 3l-6 6"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+            )}
+            {draft.testResult.message}
+            {draft.testResult.ok && draft.testResult.latencyMs !== undefined && (
+              <span className="test-result-time">
+                {' '}
+                · {draft.testResult.latencyMs} ms
+                {draft.testResult.modelCount !== undefined && (
+                  <>
+                    {' '}
+                    · {draft.testResult.modelCount} model
+                    {draft.testResult.modelCount === 1 ? '' : 's'} discovered
+                  </>
+                )}
+              </span>
+            )}
+            {!draft.testResult.ok && draft.testResult.httpStatus && (
+              <span className="test-result-time"> · HTTP {draft.testResult.httpStatus}</span>
+            )}
+            {status.lastTestedAt && (
+              <span className="test-result-time"> · {formatTime(status.lastTestedAt)}</span>
             )}
           </div>
-        )}
+          {!draft.testResult.ok &&
+            (() => {
+              const fix = suggestedFix(info.id, draft.testResult);
+              return fix ? <div className="test-result-fix">Suggested fix: {fix}</div> : null;
+            })()}
+          {!draft.testResult.ok && (
+            <div className="test-result-fix settings-field-row">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void handleTest()}
+                disabled={draft.busy !== 'idle'}
+              >
+                Retry test
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
-        {draft.saved && (
-          <p
-            aria-live="polite"
-            style={{
-              fontSize: 12,
-              color: 'var(--success)',
-              margin: '4px 0 0',
-              transition: 'opacity 300ms ease',
-            }}
+      <div className="settings-block">
+        <div className="settings-field-row">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => void handleSave()}
+            disabled={draft.busy !== 'idle'}
           >
-            Saved
-          </p>
-        )}
+            {draft.busy === 'saving' ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void handleTest()}
+            disabled={draft.busy !== 'idle'}
+          >
+            {draft.busy === 'testing' ? 'Testing…' : 'Test connection'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={() => void handleClear()}
+            disabled={
+              draft.busy !== 'idle' ||
+              (!status.hasApiKey && !status.baseUrl && Object.keys(status.extra).length === 0)
+            }
+          >
+            {draft.busy === 'clearing' ? 'Clearing…' : 'Clear'}
+          </button>
+          {draft.saved && (
+            <span aria-live="polite" className="settings-saved-flash">
+              Saved
+            </span>
+          )}
+        </div>
       </div>
-
-      <footer className="provider-card-actions">
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => void handleSave()}
-          disabled={draft.busy !== 'idle'}
-        >
-          {draft.busy === 'saving' ? 'Saving…' : 'Save'}
-        </button>
-        <button
-          type="button"
-          className="btn"
-          onClick={() => void handleTest()}
-          disabled={draft.busy !== 'idle'}
-        >
-          {draft.busy === 'testing' ? 'Testing…' : 'Test connection'}
-        </button>
-        <button
-          type="button"
-          className="btn btn-danger"
-          onClick={() => void handleClear()}
-          disabled={
-            draft.busy !== 'idle' ||
-            (!status.hasApiKey && !status.baseUrl && Object.keys(status.extra).length === 0)
-          }
-        >
-          {draft.busy === 'clearing' ? 'Clearing…' : 'Clear'}
-        </button>
-      </footer>
-    </section>
+    </>
   );
 }
 

@@ -67,67 +67,74 @@ export function LocalFsMemoryPanel(): JSX.Element {
   );
 
   if (!config) {
-    return <p className="chat-empty">Loading local memory settings…</p>;
+    return (
+      <p className="local-fs-memory-loading settings-skeleton">Loading local memory settings…</p>
+    );
   }
 
   return (
-    <div className="approvals-subsection" data-settings-anchor="local-fs-memory">
-      <h3 className="approvals-subhead">Local memory file</h3>
-      <p className="approvals-subhead-desc">
-        Single markdown file per workspace at <code>.opencodex/memory.md</code>. The agent gets
-        three tools: read, search (BM25), append. Optionally prepend the file to every chat system
-        prompt.
-      </p>
-      {path && <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{path}</p>}
-      <label className="toggle" style={{ padding: '6px 0' }}>
-        <input
-          type="checkbox"
-          checked={config.enabled}
-          disabled={pending}
-          onChange={(e) => void save({ ...config, enabled: e.target.checked })}
-        />
-        <span>Enable local memory tools</span>
-      </label>
-      <label className="toggle" style={{ padding: '6px 0' }}>
-        <input
-          type="checkbox"
-          checked={config.prependToSystemPrompt}
-          disabled={pending || !config.enabled}
-          onChange={(e) => void save({ ...config, prependToSystemPrompt: e.target.checked })}
-        />
-        <span>Prepend memory.md to chat system prompt</span>
-      </label>
-      <label className="settings-field-row" style={{ padding: '6px 0', fontSize: 12 }}>
-        <span style={{ minWidth: 110 }}>Max prepend bytes</span>
-        <input
-          className="settings-input"
-          type="number"
-          min={256}
-          max={65536}
-          step={256}
-          value={config.maxPrependBytes}
-          disabled={pending || !config.enabled || !config.prependToSystemPrompt}
-          onChange={(e) => {
-            const n = Number.parseInt(e.target.value, 10);
-            if (!Number.isFinite(n) || n < 256) return;
-            void save({ ...config, maxPrependBytes: n });
-          }}
-          style={{ flex: '0 0 auto', width: 110 }}
-        />
-      </label>
+    <div className="local-fs-memory-panel" data-settings-anchor="local-fs-memory">
+      <div className="settings-block">
+        <h3 className="settings-subhead">Local memory file</h3>
+        <p className="settings-block-hint">
+          Single markdown file per workspace at <code>.opencodex/memory.md</code>. The agent gets
+          three tools: read, search (BM25), append. Optionally prepend the file to every chat system
+          prompt.
+        </p>
+        {path && (
+          <p className="settings-block-hint" style={{ fontFamily: 'var(--font-mono)' }}>
+            {path}
+          </p>
+        )}
+      </div>
+
+      <div className="settings-divider" />
+
+      <div className="settings-block">
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={config.enabled}
+            disabled={pending}
+            onChange={(e) => void save({ ...config, enabled: e.target.checked })}
+          />
+          <span>Enable local memory tools</span>
+        </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={config.prependToSystemPrompt}
+            disabled={pending || !config.enabled}
+            onChange={(e) => void save({ ...config, prependToSystemPrompt: e.target.checked })}
+          />
+          <span>Prepend memory.md to chat system prompt</span>
+        </label>
+      </div>
+
+      <div className="settings-divider" />
+
+      <div className="settings-block">
+        <span className="settings-field-label">Max prepend bytes</span>
+        <div className="settings-field-row">
+          <input
+            className="settings-input"
+            type="number"
+            min={256}
+            max={65536}
+            step={256}
+            value={config.maxPrependBytes}
+            disabled={pending || !config.enabled || !config.prependToSystemPrompt}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              if (!Number.isFinite(n) || n < 256) return;
+              void save({ ...config, maxPrependBytes: n });
+            }}
+          />
+        </div>
+      </div>
+
       {error !== null && (
-        <div
-          role="alert"
-          style={{
-            marginTop: 6,
-            padding: 8,
-            background: 'var(--danger-bg)',
-            color: 'var(--danger)',
-            border: '1px solid var(--danger-border)',
-            borderRadius: 6,
-            fontSize: 12,
-          }}
-        >
+        <div role="alert" className="field-errors">
           {error}
         </div>
       )}

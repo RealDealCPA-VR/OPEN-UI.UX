@@ -24,42 +24,35 @@ export function IndexingPanel(): JSX.Element {
 
   return (
     <div className="indexing-panel">
-      <div className="indexing-row">
-        <div>
-          <div className="settings-field-label">Read-only chat mode</div>
-          <div className="settings-section-desc">
-            Block every write / execute / network tool call automatically. Useful for &ldquo;chat
-            with my codebase&rdquo; without giving the agent write access.
+      <div className="settings-block">
+        <div className="settings-toggle-row">
+          <div>
+            <div className="settings-field-label">Read-only chat mode</div>
+            <div className="settings-block-hint">
+              Block every write / execute / network tool call automatically. Useful for &ldquo;chat
+              with my codebase&rdquo; without giving the agent write access.
+            </div>
           </div>
-        </div>
-        <label className="toggle">
-          <input type="checkbox" checked={readOnly} onChange={() => void toggle()} />
-          <span>{readOnly ? 'On' : 'Off'}</span>
-        </label>
-      </div>
-      <div className="indexing-row indexing-search">
-        <div>
-          <div className="settings-field-label">Codebase search</div>
-          <div className="settings-section-desc">
-            The agent has the <code>search_codebase</code> tool — a ranked grep over the workspace
-            that respects <code>.gitignore</code> and <code>.opencodexignore</code>. Vector + AST
-            indexing is on the v0.1 backlog.
-          </div>
+          <label className="toggle">
+            <input type="checkbox" checked={readOnly} onChange={() => void toggle()} />
+            <span>{readOnly ? 'On' : 'Off'}</span>
+          </label>
         </div>
       </div>
+
+      <div className="settings-divider" />
+
+      <div className="settings-block">
+        <div className="settings-field-label">Codebase search</div>
+        <div className="settings-block-hint">
+          The agent has the <code>search_codebase</code> tool — a ranked grep over the workspace
+          that respects <code>.gitignore</code> and <code>.opencodexignore</code>. Vector + AST
+          indexing is on the v0.1 backlog.
+        </div>
+      </div>
+
       {error && (
-        <div
-          role="alert"
-          style={{
-            marginTop: 10,
-            padding: 10,
-            background: 'var(--danger-bg)',
-            color: 'var(--danger)',
-            border: '1px solid var(--danger-border)',
-            borderRadius: 6,
-            fontSize: 13,
-          }}
-        >
+        <div role="alert" className="field-errors">
           Failed to update read-only mode: {error}
         </div>
       )}

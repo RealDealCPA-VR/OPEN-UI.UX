@@ -1,7 +1,9 @@
 import { join } from 'node:path';
 import { promises as fs } from 'node:fs';
-import { chunkBySize, type Chunk } from '@opencodex/rag-chunker';
+import { chunkBySize, extractSymbols, type Chunk } from '@opencodex/rag-chunker';
+import type { ExtractionResult } from '@opencodex/code-graph';
 import type { LLMProvider } from '@opencodex/core';
+import type Database from 'better-sqlite3';
 import { SqliteVectorStore, type VectorSearchHit } from './vector-store';
 import { WorkspaceWatcher, type WatcherBatch } from './watcher';
 import { logger } from '../logger';
@@ -12,6 +14,9 @@ import {
 } from '../workspace/workspaces-store';
 import type { WorkspaceEntry } from '../../shared/workspaces';
 import type { MultiWorkspaceSearchHit } from '../../shared/workspaces';
+import { languageForPath } from './ast-chunk';
+import { buildGraphFromExtractions } from './code-graph-builder';
+import { persistWorkspaceGraph } from './code-graph-store';
 
 export interface EmbeddingPipelineConfig {
   providerId: string;
@@ -49,12 +54,24 @@ export interface MultiWorkspaceIndexerOptions {
   chunkFn?: ChunkFn;
   /** Reads a file from disk; null result means "skip". Test seam. */
   readFile?: ReadFileFn;
+  /**
+   * Resolves the sqlite DB used to persist the per-workspace code graph. Null
+   * disables code-graph maintenance entirely (default in tests / when the main
+   * DB is unavailable). A throwing resolver is treated as "graph disabled".
+   */
+  getDb?: () => Database.Database;
 }
 
 interface IndexerEntry {
   workspace: WorkspaceEntry;
   store: SqliteVectorStore;
   watcher: WorkspaceWatcher | null;
+  /**
+   * Per-file extraction results, keyed by workspace-relative path. The code
+   * graph is a full rebuild from this accumulator after every batch, so it stays
+   * consistent under add/change/remove without a fragile incremental merge.
+   */
+  extractions: Map<string, ExtractionResult>;
 }
 
 /**
@@ -75,6 +92,7 @@ export class MultiWorkspaceIndexer {
   private readonly embeddingResolver: EmbeddingProviderResolver | null;
   private readonly chunkFn: ChunkFn;
   private readonly readFile: ReadFileFn;
+  private readonly getDb: (() => Database.Database) | null;
   private readonly entries = new Map<string, IndexerEntry>();
   private readonly inFlight = new Map<string, Promise<void>>();
   private started = false;
@@ -89,6 +107,7 @@ export class MultiWorkspaceIndexer {
     this.embeddingResolver = options.embeddingResolver ?? null;
     this.chunkFn = options.chunkFn ?? ((text: string): Chunk[] => chunkBySize(text, 1500, 100));
     this.readFile = options.readFile ?? defaultReadFile;
+    this.getDb = options.getDb ?? null;
   }
 
   async start(): Promise<void> {
@@ -233,7 +252,12 @@ export class MultiWorkspaceIndexer {
       );
       watcher = null;
     }
-    this.entries.set(workspace.id, { workspace, store, watcher });
+    this.entries.set(workspace.id, {
+      workspace,
+      store,
+      watcher,
+      extractions: new Map<string, ExtractionResult>(),
+    });
   }
 
   private onBatch(workspaceId: string, batch: WatcherBatch): void {
@@ -262,6 +286,20 @@ export class MultiWorkspaceIndexer {
     const entry = this.entries.get(workspaceId);
     if (!entry) return;
 
+    try {
+      await this.reindexVectors(entry, workspaceId, batch);
+    } finally {
+      // Code-graph maintenance is best-effort and independent of embeddings, so
+      // it runs even when the vector path bailed (no provider, empty batch).
+      await this.updateGraphForBatch(entry, workspaceId, batch);
+    }
+  }
+
+  private async reindexVectors(
+    entry: IndexerEntry,
+    workspaceId: string,
+    batch: WatcherBatch,
+  ): Promise<void> {
     for (const rel of batch.removed) {
       try {
         entry.store.upsert(rel, []);
@@ -335,6 +373,79 @@ export class MultiWorkspaceIndexer {
           'reindex: embed/upsert failed',
         );
       }
+    }
+  }
+
+  /**
+   * Grow-or-prune the workspace code graph for this batch, then full-rebuild from
+   * the accumulated per-file extractions and persist.
+   *
+   * WHY full rebuild: the graph's call-resolution and community detection are
+   * global passes over all symbols, so a per-file incremental merge would risk
+   * stale cross-file edges and drifting community ids. Rebuilding from the cached
+   * extractions is correct by construction and cheap relative to embedding.
+   */
+  private async updateGraphForBatch(
+    entry: IndexerEntry,
+    workspaceId: string,
+    batch: WatcherBatch,
+  ): Promise<void> {
+    const getDb = this.getDb;
+    if (!getDb) return;
+
+    let changed = false;
+    for (const rel of batch.removed) {
+      if (entry.extractions.delete(rel)) changed = true;
+    }
+
+    for (const rel of [...batch.added, ...batch.changed]) {
+      const language = languageForPath(rel);
+      if (!language) continue;
+
+      let content: string | null;
+      try {
+        content = await this.readFile(join(entry.workspace.path, rel));
+      } catch {
+        continue;
+      }
+      if (content === null) {
+        if (entry.extractions.delete(rel)) changed = true;
+        continue;
+      }
+
+      try {
+        const result = await extractSymbols({ code: content, language, filePath: rel });
+        entry.extractions.set(rel, result);
+        changed = true;
+      } catch (err) {
+        logger.warn(
+          { err: err instanceof Error ? err.message : String(err), workspaceId, path: rel },
+          'code-graph: symbol extraction failed; skipping file',
+        );
+      }
+    }
+
+    if (!changed) return;
+
+    let db: Database.Database;
+    try {
+      db = getDb();
+    } catch (err) {
+      logger.debug(
+        { err: err instanceof Error ? err.message : String(err), workspaceId },
+        'code-graph: db unavailable; skipping graph persist',
+      );
+      return;
+    }
+
+    try {
+      const { graph, communities } = buildGraphFromExtractions([...entry.extractions.values()]);
+      persistWorkspaceGraph(db, workspaceId, graph, communities);
+    } catch (err) {
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err), workspaceId },
+        'code-graph: rebuild/persist failed',
+      );
     }
   }
 }

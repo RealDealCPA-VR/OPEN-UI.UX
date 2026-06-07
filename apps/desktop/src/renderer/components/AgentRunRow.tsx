@@ -60,6 +60,9 @@ export function AgentRunRow({
           aria-label={`${expanded ? 'Collapse' : 'Expand'} subagent run ${run.id}`}
           onClick={onToggle}
         >
+          {run.seen === false && run.status !== 'running' && (
+            <span className="unread-dot" aria-label="Unread" title="Unread" />
+          )}
           <span className="audit-row-time">{new Date(run.startedAt).toLocaleTimeString()}</span>
           <span className="audit-row-tool">
             <code className="approvals-tool-name">{truncate(run.task, 80)}</code>
@@ -86,7 +89,26 @@ export function AgentRunRow({
           <span className="audit-row-duration">{formatDurationMs(duration)}</span>
         </button>
         <span className="audit-row-caret" aria-hidden>
-          {expanded ? '▾' : '▸'}
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{
+              transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+              transition: `transform var(--duration-fast) var(--ease)`,
+              display: 'block',
+            }}
+          >
+            <path
+              d="M3 2L7 5L3 8"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </span>
       </div>
       {expanded && (
@@ -151,18 +173,14 @@ export function AgentRunRow({
           {(showReview || showContinue) && (
             <div className="audit-row-section agent-run-row-actions">
               {showReview && onReview && (
-                <button
-                  type="button"
-                  className="audit-clear-button"
-                  onClick={() => onReview(run.id)}
-                >
+                <button type="button" className="btn btn-primary" onClick={() => onReview(run.id)}>
                   Review changes
                 </button>
               )}
               {showContinue && (
                 <button
                   type="button"
-                  className="audit-clear-button"
+                  className="btn"
                   onClick={handleContinue}
                   title="Push this run's context into the chat composer"
                 >

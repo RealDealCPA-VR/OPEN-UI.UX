@@ -59,7 +59,7 @@ export function ProvenanceBundleExporter({
         padding: 12,
         background: 'var(--bg-panel)',
         border: '1px solid var(--border)',
-        borderRadius: 8,
+        borderRadius: 'var(--radius)',
       }}
     >
       <div style={{ fontSize: 13, fontWeight: 500 }}>
@@ -75,7 +75,7 @@ export function ProvenanceBundleExporter({
         </button>
       </div>
       {error ? (
-        <div role="alert" style={{ color: 'var(--danger, #900)', fontSize: 12 }}>
+        <div role="alert" style={{ color: 'var(--danger)', fontSize: 12 }}>
           {error}
         </div>
       ) : null}

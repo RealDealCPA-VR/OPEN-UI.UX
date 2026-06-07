@@ -106,7 +106,7 @@ export function PrivacyPanel(): JSX.Element {
   };
 
   if (loadError) {
-    return <p className="chat-warn">{loadError}</p>;
+    return <p className="approvals-save-error">{loadError}</p>;
   }
   if (!policy) {
     return <p className="telemetry-loading">Loading…</p>;
@@ -130,10 +130,7 @@ export function PrivacyPanel(): JSX.Element {
           />
           <span>
             <strong>Local Only mode</strong>
-            <span
-              className="settings-block-hint"
-              style={{ display: 'block', marginTop: 2, fontSize: 12 }}
-            >
+            <span className="settings-block-hint">
               When ON, the title-bar pill turns green and every non-local request fails with{' '}
               <code>LocalOnlyBlockedError</code>.
             </span>
@@ -144,8 +141,8 @@ export function PrivacyPanel(): JSX.Element {
       <div className="settings-divider" />
 
       <div className="settings-block" data-settings-anchor="allowlist">
-        <h3 style={{ margin: '0 0 4px 0' }}>Network allowlist</h3>
-        <p className="settings-block-hint" style={{ marginTop: 0 }}>
+        <h3 className="settings-subhead">Network allowlist</h3>
+        <p className="settings-block-hint">
           When Local Only is OFF, the allowlist gates every outbound request. Empty allowlist =
           allow all (legacy behavior). Wildcards like <code>*.anthropic.com</code> are supported.
         </p>
@@ -180,37 +177,16 @@ export function PrivacyPanel(): JSX.Element {
             Add
           </button>
         </div>
-        {draftError ? (
-          <p className="chat-warn" style={{ marginTop: 6 }}>
-            {draftError}
-          </p>
-        ) : null}
+        {draftError ? <p className="approvals-save-error">{draftError}</p> : null}
 
-        <ul
-          className="privacy-allowlist"
-          style={{ listStyle: 'none', padding: 0, margin: '12px 0 0' }}
-        >
+        <ul className="privacy-allowlist">
           {policy.allowlist.length === 0 ? (
-            <li className="chat-empty" style={{ padding: '6px 0' }}>
+            <li className="privacy-allowlist-empty">
               Allowlist is empty — all outbound requests are allowed.
             </li>
           ) : (
             policy.allowlist.map((entry) => (
-              <li
-                key={entry}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '6px 10px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--bg-elevated)',
-                  border: '1px solid var(--border)',
-                  marginBottom: 6,
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 12,
-                }}
-              >
+              <li key={entry} className="privacy-allowlist-entry">
                 <span>{entry}</span>
                 <button
                   type="button"
@@ -226,7 +202,7 @@ export function PrivacyPanel(): JSX.Element {
           )}
         </ul>
         {!isDefault ? (
-          <p className="settings-block-hint" style={{ marginTop: 8 }}>
+          <p className="settings-block-hint">
             Note: removing <code>127.0.0.1</code>, <code>localhost</code>, or <code>*.local</code>{' '}
             disables Ollama and other local model servers when Local Only is OFF and the allowlist
             is non-empty.
@@ -237,14 +213,14 @@ export function PrivacyPanel(): JSX.Element {
       <div className="settings-divider" />
 
       <div className="settings-block" data-settings-anchor="threat-model">
-        <h3 style={{ margin: '0 0 4px 0' }}>Threat model</h3>
+        <h3 className="settings-subhead">Threat model</h3>
         <p className="privacy-explainer">
           OpenCodex is local-first. Even so, every external request — provider HTTPS, the{' '}
           <code>web_fetch</code> tool, MCP servers, plugin code — is a potential exfiltration
           channel. Local Only mode and the allowlist exist so you can prove to yourself (and to a
           compliance team) that no data leaves your machine when working with a sensitive codebase.
         </p>
-        <ul style={{ paddingLeft: 18, lineHeight: 1.55 }}>
+        <ul className="privacy-threat-list">
           <li>
             <strong>What it protects against:</strong> a tool, plugin, or provider call that, by
             accident or by prompt injection, tries to reach a host outside the allowlist.
@@ -266,7 +242,7 @@ export function PrivacyPanel(): JSX.Element {
         </p>
       </div>
 
-      {actionError ? <p className="chat-warn">{actionError}</p> : null}
+      {actionError ? <p className="approvals-save-error">{actionError}</p> : null}
     </div>
   );
 }

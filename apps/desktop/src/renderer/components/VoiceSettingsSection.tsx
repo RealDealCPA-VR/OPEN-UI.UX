@@ -118,7 +118,11 @@ export function VoiceSettingsSection(): JSX.Element {
 
   return (
     <section className="voice-settings settings-block" data-settings-anchor="voice">
-      <h3 className="settings-field-label">Voice input</h3>
+      <h2
+        style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 6px' }}
+      >
+        Voice input
+      </h2>
       <p className="settings-section-desc">
         Push-to-talk dictation powered by a local whisper.cpp binary. Audio never leaves your
         machine.
@@ -144,7 +148,7 @@ export function VoiceSettingsSection(): JSX.Element {
           </HoverHint>
         </div>
         {pttError ? (
-          <p className="chat-error">{pttError}</p>
+          <p className="field-errors">{pttError}</p>
         ) : (
           <p className="settings-block-hint">
             Currently: <code>{pttShortcut || '(disabled)'}</code>. Use Electron accelerator syntax
@@ -162,7 +166,7 @@ export function VoiceSettingsSection(): JSX.Element {
             {binaryStatus.version ? ` (${binaryStatus.version})` : ''}.
           </p>
         ) : (
-          <p className="chat-error">
+          <p className="field-errors">
             {binaryStatus?.setupHint ?? 'whisper-cli not found on PATH.'}
           </p>
         )}
@@ -176,7 +180,7 @@ export function VoiceSettingsSection(): JSX.Element {
             className="settings-input"
           />
           <button type="button" className="btn" onClick={() => void handleBinaryPathSave()}>
-            Save path
+            Apply
           </button>
         </div>
       </div>
@@ -215,11 +219,40 @@ export function VoiceSettingsSection(): JSX.Element {
                     {isDownloading ? 'Downloading…' : 'Download'}
                   </button>
                   {progress && !progress.done && progress.totalBytes ? (
-                    <span className="voice-settings-progress">
-                      {Math.round((progress.receivedBytes / progress.totalBytes) * 100)}%
+                    <span
+                      className="voice-settings-progress"
+                      style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+                    >
+                      <span
+                        className="voice-dl-bar"
+                        style={{
+                          display: 'inline-block',
+                          width: 80,
+                          height: 4,
+                          borderRadius: 'var(--radius-pill)',
+                          background: 'var(--border-strong)',
+                          overflow: 'hidden',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span
+                          className="voice-dl-bar-fill"
+                          style={{
+                            display: 'block',
+                            height: '100%',
+                            width: `${Math.round((progress.receivedBytes / progress.totalBytes) * 100)}%`,
+                            background: 'var(--accent)',
+                            borderRadius: 'var(--radius-pill)',
+                            transition: `width var(--duration) var(--ease)`,
+                          }}
+                        />
+                      </span>
+                      <span>
+                        {Math.round((progress.receivedBytes / progress.totalBytes) * 100)}%
+                      </span>
                     </span>
                   ) : null}
-                  {progress?.error ? <span className="chat-error">{progress.error}</span> : null}
+                  {progress?.error ? <span className="field-errors">{progress.error}</span> : null}
                 </div>
               </div>
             );

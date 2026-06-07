@@ -1,24 +1,77 @@
-# OpenCodex
+{/* PLACEHOLDERS: The hero image below is a hand-drawn SVG placeholder. The shipped landing hero is a real screenshot of the AgentRunDrawer subagent tree view — see PLACEHOLDERS.md in the repo for the replacement spec. */}
 
-**Mission Control for AI coding agents — a standalone desktop app that lives next to your editor and drives Claude Code, Aider, OpenCode, and a built-in agent over any LLM.**
+<div className="eyebrow">OpenCodex</div>
 
-![Subagent tree view — OpenCodex Mission Control](/hero-subagent-tree.svg)
+# Mission Control for AI Coding Agents
 
-> The image above is a hand-drawn SVG placeholder. The shipped landing hero is a real screenshot of the AgentRunDrawer subagent tree view (`apps/desktop/src/renderer/components/AgentRunDrawer.tsx`) — see `PLACEHOLDERS.md` in the repo for the replacement spec.
+**A standalone desktop app that lives next to your editor and drives Claude Code, Aider, OpenCode, and a built-in agent over any LLM — with unified approval flows, multi-agent orchestration, and a first-class plugin SDK.**
 
-OpenCodex is an open-source, local-first, MIT-licensed desktop app that sits _above_ the coding-agent CLIs you already use, unifies their approval and merge-review UX, and is provider-agnostic from day one. It does not replace your editor — it drives the agents that work in it.
+<img
+  src="/hero-subagent-tree.svg"
+  alt="OpenCodex subagent tree view — parallel workers with live status, cost, and diffs"
+  width="1200"
+  height="675"
+  style={{
+    aspectRatio: '16/9',
+    width: '100%',
+    height: 'auto',
+    borderRadius: 'var(--radius-lg)',
+    border: '1px solid var(--border-strong)',
+    display: 'block',
+  }}
+  loading="eager"
+/>
 
-## The three pillars
+## What OpenCodex does
 
-- **Runners** — drive the built-in agent, Claude Code, Aider, OpenCode, or any runner shipped via a plugin. The subagent tree view (mocked in the hero above; lives in `apps/desktop/src/renderer/components/AgentRunDrawer.tsx`) shows every parallel worker live: status, tokens, cost, and the diff each one is staging in its own worktree.
-- **Multi-agent orchestration** — fan out subtasks to parallel workers, each with its own model, scope, and git worktree, then accept or reject merges per worker.
-- **MCP + plugins** — every MCP server you connect becomes a tool / resource / prompt source. Third-party packages contribute tools, providers, runners, and full UI panels via the plugin SDK.
+OpenCodex is open-source, local-first, and MIT-licensed. It sits _above_ the coding-agent CLIs you already use, unifies their approval and merge-review UX, and is provider-agnostic from day one. It does not replace your editor — it drives the agents that work in it.
 
-## Provider-agnostic as a feature, not a footnote
+<Cards>
+  <Card icon="⚡" title="Runners" href="/guides/architecture/">
+    Drive the built-in agent, Claude Code, Aider, OpenCode, or any runner shipped via a plugin. The
+    subagent tree view shows every parallel worker live: status, tokens, cost, and the diff each one
+    is staging in its own worktree.
+  </Card>
+  <Card icon="🔀" title="Multi-agent orchestration" href="/guides/architecture/#orchestration">
+    Fan out subtasks to parallel workers, each with its own model, scope, and git worktree, then
+    accept or reject merges per worker.
+  </Card>
+  <Card icon="🔌" title="MCP + Plugins" href="/guides/mcp/">
+    Every MCP server you connect becomes a tool, resource, or prompt source. Third-party packages
+    contribute tools, providers, runners, and full UI panels via the plugin SDK.
+  </Card>
+  <Card icon="🌐" title="Provider-agnostic" href="/providers/authoring/">
+    Eight providers in the box — OpenAI, Anthropic, Google Gemini, xAI Grok, Mistral, Ollama,
+    OpenRouter, Voyage — all behind a single <code>LLMProvider</code> contract. Switch
+    mid-conversation. Adding a new provider is one package and one interface implementation.
+  </Card>
+</Cards>
 
-Eight providers in the box — OpenAI, Anthropic, Google Gemini, xAI Grok, Mistral, Ollama (local), OpenRouter, Voyage (embed-only) — all behind a single `LLMProvider` contract. Switch mid-conversation. The agent loop, the tool layer, the UI never name a specific vendor. Adding a new provider is one package and one interface implementation; ship it as a plugin or upstream it.
+## Get started
 
-## What it is, at a glance
+<Cards>
+  <Card title="Architecture deep-dive" href="/guides/architecture/">
+    How the layers fit together — runners, tool registry, worktrees, and the provider abstraction.
+  </Card>
+  <Card title="Security model" href="/guides/security/">
+    Sandboxes, approval tiers, and keychain-based key storage.
+  </Card>
+  <Card title="MCP integration" href="/guides/mcp/">
+    Connect MCP servers as first-class tools and resources.
+  </Card>
+  <Card title="Plugin authoring" href="/plugins/authoring/">
+    Extend the host with tools, providers, runners, and UI panels.
+  </Card>
+  <Card title="Plugin SDK API reference" href="/plugins/api/">
+    Every exported type and hook in the plugin SDK.
+  </Card>
+  <Card title="Provider authoring" href="/providers/authoring/">
+    Bring a new LLM backend in one package.
+  </Card>
+</Cards>
+
+<details>
+<summary>Architecture & tech specs</summary>
 
 - **Electron + TypeScript** monorepo. Native app on macOS, Windows, and Linux.
 - **Any LLM**: OpenAI, Anthropic, Google, xAI, Mistral, Ollama, OpenRouter — all behind a single `LLMProvider` interface.
@@ -28,19 +81,12 @@ Eight providers in the box — OpenAI, Anthropic, Google Gemini, xAI Grok, Mistr
 - **Plugin SDK**: tools, providers, runners, and UI panels can be contributed by third-party packages.
 - **No backend**: API keys live in the OS keychain via `keytar`. Everything runs locally.
 
-## Where to start
-
-- [Architecture deep-dive](/guides/architecture/) — how the layers fit together.
-- [Security model](/guides/security/) — sandboxes, approvals, key storage.
-- [MCP integration](/guides/mcp/) — connect MCP servers as tools.
-- [Plugin authoring](/plugins/authoring/) — extend the host.
-- [Plugin SDK API reference](/plugins/api/) — every exported type.
-- [Provider authoring](/providers/authoring/) — bring a new LLM.
+</details>
 
 ## Project status
 
-OpenCodex is pre-1.0. The architecture is stable; expect minor breakages in the plugin SDK until v0.1 ships.
+OpenCodex is approaching v0.1 — the core architecture is stable and the feature set is taking shape. The plugin SDK API is being finalized ahead of that release.
 
 ## License
 
-MIT. Source code at [github.com/RealDealCPA-VR/OPEN-UI.UX](https://github.com/RealDealCPA-VR/OPEN-UI.UX).
+MIT. Source code on [GitHub](https://github.com/opencodex/OPEN-UI.UX).

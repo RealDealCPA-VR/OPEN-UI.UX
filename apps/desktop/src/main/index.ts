@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, session, shell } from 'electron';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { dirname, join as pathJoin, join } from 'node:path';
 import { z } from 'zod';
 import { logger } from './logger';
@@ -13,6 +14,8 @@ import { registerAgentHandlers } from './agent/handlers';
 import { registerAntiSycophancyHandlers } from './agent/anti-sycophancy-handlers';
 import { registerResumeHandlers } from './agent/resume-handlers';
 import { hydrateRunRegistryFromStore, promptResumeIfNeeded } from './agent/run-resume';
+import { reconcileInterruptedTurns } from './chat/turn-restore';
+import { startRunNotifier, stopRunNotifier } from './agent/run-notifier';
 import { startRunStoreBridge, stopRunStoreBridge } from './agent/run-store-bridge';
 import { runnerRegistry } from './agent/runner-registry-instance';
 import { internalRunner } from './agent/subagent';
@@ -45,8 +48,10 @@ import {
 } from './rag/multi-workspace-indexer';
 import { setWatchedWorkspace, stopWatchedWorkspace } from './rag/watcher';
 import { RoutingEmbeddingResolver } from './rag/embedding-resolver';
-import { astAwareChunkFn, registerBundledGrammars } from './rag/ast-chunk';
+import { astAwareChunkFn, registerBundledGrammars, resolveGrammarDir } from './rag/ast-chunk';
 import { registerReplayHandlers } from './replay/handlers';
+import { registerCheckpointHandlers } from './checkpoints/handlers';
+import { gc as gcCheckpoints } from './checkpoints/manager';
 import { registerReviewHandlers } from './review/handlers';
 import { registerRoutingHandlers } from './routing/handlers';
 import {
@@ -76,6 +81,7 @@ import { bootstrapVoice, registerVoiceHandlers } from './voice/handlers';
 import { unregisterPttShortcut } from './voice/global-shortcut';
 import { registerMultiWorkspaceHandlers } from './workspace/multi-workspace-handlers';
 import { installSearchWorkspaceResolver } from './workspace/search-resolver';
+import { installCodeGraphResolver } from './workspace/code-graph-resolver';
 import { resolveAppIconPath } from './app-icon';
 import { createTray, destroyTray } from './tray';
 import { initAutoUpdater, registerUpdateHandlers } from './updater';
@@ -87,6 +93,19 @@ import { registerCrashReportingHandlers } from './crash/handlers';
 import { INITIAL_THEME_ARG_PREFIX } from '../shared/theme';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const requireFromHere = createRequire(import.meta.url);
+
+// In dev there is no packaged resources dir; resolve the tree-sitter-wasms
+// package's own `out/` so AST chunking runs without a packaging step. Returns
+// '' (a non-existent path resolveGrammarDir skips) if the package is absent.
+function devGrammarDir(): string {
+  try {
+    return pathJoin(dirname(requireFromHere.resolve('tree-sitter-wasms/package.json')), 'out');
+  } catch {
+    return '';
+  }
+}
 
 const PROTOCOL = 'opencodex';
 
@@ -384,12 +403,31 @@ app.whenReady().then(() => {
     logger.warn({ err }, 'WORM mirror init failed');
   }
 
+  // Unified checkpoint manager — retention + orphan-blob GC once at startup.
+  void gcCheckpoints()
+    .then((res) => {
+      if (res.deletedCheckpoints > 0 || res.removedBlobs > 0) {
+        logger.info(res, 'checkpoint gc at startup');
+      }
+    })
+    .catch((err) => logger.warn({ err }, 'checkpoint gc at startup failed'));
+
   // Lane 2 — hydrate persisted agent runs and start the store->registry bridge.
   try {
     hydrateRunRegistryFromStore();
     startRunStoreBridge();
+    startRunNotifier();
   } catch (err) {
     logger.warn({ err }, 'run-store hydration failed');
+  }
+
+  // Crash-restore — flip any assistant rows left mid-stream by a hard crash back
+  // to 'final' (content preserved) and record them for an interrupted+Retry
+  // affordance. Runs before windows load, alongside run-registry hydration.
+  try {
+    reconcileInterruptedTurns();
+  } catch (err) {
+    logger.warn({ err }, 'chat turn reconcile failed');
   }
 
   try {
@@ -422,11 +460,13 @@ app.whenReady().then(() => {
     // Register any bundled tree-sitter grammars so the indexer can chunk along
     // AST symbol boundaries; absent assets degrade to size-based chunking.
     const resourcesBase = process.resourcesPath ?? app.getAppPath();
-    registerBundledGrammars(pathJoin(resourcesBase, 'tree-sitter'));
+    const grammarDir = resolveGrammarDir([pathJoin(resourcesBase, 'tree-sitter'), devGrammarDir()]);
+    if (grammarDir) registerBundledGrammars(grammarDir);
     const indexer = new MultiWorkspaceIndexer({
       baseDir: pathJoin(app.getPath('userData'), 'rag'),
       embeddingResolver: new RoutingEmbeddingResolver(),
       chunkFn: astAwareChunkFn,
+      getDb,
     });
     setActiveMultiWorkspaceIndexer(indexer);
     void indexer.start().catch((err: unknown) => {
@@ -442,6 +482,13 @@ app.whenReady().then(() => {
     installSearchWorkspaceResolver();
   } catch (err) {
     logger.warn({ err }, 'search workspace resolver install failed');
+  }
+
+  // Wire query_code_graph to the per-workspace persisted code graph.
+  try {
+    installCodeGraphResolver();
+  } catch (err) {
+    logger.warn({ err }, 'code graph resolver install failed');
   }
 
   // Lane 2 — defer resume prompt until renderer's webContents have loaded
@@ -505,6 +552,7 @@ app.on('before-quit', () => {
   // Lane 2 — stop run-store bridge so we don't broadcast during shutdown.
   try {
     stopRunStoreBridge();
+    stopRunNotifier();
   } catch {
     // best-effort
   }
@@ -609,6 +657,7 @@ function registerIpcHandlers(): void {
   registerMultiWorkspaceHandlers();
   registerPairHandlers();
   registerReplayHandlers();
+  registerCheckpointHandlers();
   registerReviewHandlers();
   registerRoutingHandlers();
   registerSchedulerHandlers();

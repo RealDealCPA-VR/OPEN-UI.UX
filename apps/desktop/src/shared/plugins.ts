@@ -21,6 +21,16 @@ export interface PluginPanelDescriptor {
   htmlPath: string;
 }
 
+export interface PluginSlashCommandDescriptor {
+  pluginId: string;
+  pluginName: string;
+  name: string;
+  description?: string;
+}
+
+export type RunPluginSlashCommandRequest = { pluginId: string; name: string; args: string };
+export type RunPluginSlashCommandResult = { ok: true } | { ok: false; error: string };
+
 export type InstallPluginRequest = { path: string };
 export type EnablePluginRequest = { id: string; enabled: boolean };
 export type UninstallPluginRequest = { id: string };

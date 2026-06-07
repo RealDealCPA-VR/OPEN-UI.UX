@@ -91,7 +91,7 @@ export function UpdatesPanel({ onCheckRef }: UpdatesPanelProps = {}): JSX.Elemen
   if (loadError) {
     return (
       <div className="settings-block">
-        <p className="chat-warn" role="alert">
+        <p role="alert" className="field-errors">
           Failed to load updater status: {loadError}
         </p>
         <button type="button" className="btn" onClick={() => window.location.reload()}>
@@ -104,7 +104,7 @@ export function UpdatesPanel({ onCheckRef }: UpdatesPanelProps = {}): JSX.Elemen
   if (!status) {
     return (
       <div className="settings-block">
-        <p className="updates-loading">Loading updater status…</p>
+        <p className="updates-loading settings-skeleton-pulse">Checking for updates…</p>
       </div>
     );
   }
@@ -142,7 +142,7 @@ export function UpdatesPanel({ onCheckRef }: UpdatesPanelProps = {}): JSX.Elemen
           {status.state === 'available' ? (
             <button
               type="button"
-              className="btn"
+              className="btn btn-primary"
               onClick={() => void handleDownload()}
               disabled={downloading}
             >

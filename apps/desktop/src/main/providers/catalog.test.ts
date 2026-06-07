@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import type { LLMProvider, ModelCapabilities, ProviderFactory } from '@opencodex/core';
 import { buildProviderConfig, catalog, catalogById, getAllProviderInfo } from './catalog';
+import {
+  listPluginProviders,
+  registerPluginProvider,
+  unregisterPluginProvidersFor,
+} from './plugin-provider-registry';
 
 describe('provider catalog', () => {
   it('covers all eight phase-1 adapters', () => {
@@ -108,5 +115,43 @@ describe('provider catalog', () => {
     expect(() =>
       buildProviderConfig(openai, { apiKey: 'k', baseUrl: 'not a url', extra: {} }),
     ).toThrow();
+  });
+});
+
+describe('getAllProviderInfo with plugin providers', () => {
+  afterEach(() => {
+    for (const e of listPluginProviders()) unregisterPluginProvidersFor(e.pluginId);
+  });
+
+  it('includes a registered plugin provider, marked as plugin-sourced', async () => {
+    const pluginModel: ModelCapabilities = {
+      id: 'acme-large',
+      providerId: 'acme',
+      displayName: 'Acme Large',
+      contextWindow: 32_000,
+      toolUse: true,
+      vision: false,
+      streaming: true,
+      embeddings: false,
+    };
+    const factory: ProviderFactory = {
+      id: 'acme',
+      displayName: 'Acme',
+      configSchema: z.object({ apiKey: z.string().optional() }),
+      create: () =>
+        ({
+          id: 'acme',
+          displayName: 'Acme',
+          listModels: async () => [pluginModel],
+        }) as unknown as LLMProvider,
+    } as unknown as ProviderFactory;
+
+    registerPluginProvider({ pluginId: 'p1', id: 'acme', displayName: 'Acme', factory });
+
+    const infos = await getAllProviderInfo();
+    const acme = infos.find((i) => i.id === 'acme');
+    expect(acme).toBeDefined();
+    expect(acme?.source).toBe('plugin');
+    expect(acme?.models.map((m) => m.id)).toEqual(['acme-large']);
   });
 });

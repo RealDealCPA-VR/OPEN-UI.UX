@@ -2,7 +2,24 @@ import type { ConversationSearchHit } from '../../shared/conversation-search';
 import type { CodebaseSearchHit } from '../../shared/codebase-search';
 import type { Skill } from '../../shared/skills';
 
-export type PaletteCategory = 'action' | 'message' | 'file' | 'skill' | 'mcp-tool';
+export type PaletteCategory =
+  | 'action'
+  | 'conversation'
+  | 'switch-workspace'
+  | 'message'
+  | 'file'
+  | 'skill'
+  | 'mcp-tool';
+
+export interface PaletteConversation {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
+
+export interface PaletteWorkspaceTarget {
+  path: string;
+}
 
 export interface PaletteAction {
   id: string;
@@ -31,6 +48,8 @@ export interface PaletteEntry {
   skill?: Skill;
   mcpTool?: PaletteMcpTool;
   action?: PaletteAction;
+  conversation?: PaletteConversation;
+  workspaceTarget?: PaletteWorkspaceTarget;
 }
 
 interface MergeOptions {
@@ -47,6 +66,8 @@ export function mergePaletteResults(
   options: MergeOptions & {
     mcpTools?: ReadonlyArray<PaletteMcpTool>;
     actions?: ReadonlyArray<PaletteAction>;
+    conversations?: ReadonlyArray<PaletteConversation>;
+    workspaces?: ReadonlyArray<PaletteWorkspaceTarget>;
   } = {},
 ): PaletteEntry[] {
   const limit = options.perCategoryLimit ?? DEFAULT_PER_CATEGORY;
@@ -63,6 +84,32 @@ export function mergePaletteResults(
       detail: null,
       rank: idx,
       action,
+    }));
+
+  const conversationEntries: PaletteEntry[] = (options.conversations ?? [])
+    .filter((c) => matchesConversation(c, normalizedQuery))
+    .slice(0, limit)
+    .map((conversation, idx) => ({
+      id: `conversation:${conversation.id}`,
+      category: 'conversation',
+      title: conversation.title || 'Untitled conversation',
+      subtitle: 'Open conversation',
+      detail: formatTimestamp(conversation.updatedAt),
+      rank: idx,
+      conversation,
+    }));
+
+  const workspaceEntries: PaletteEntry[] = (options.workspaces ?? [])
+    .filter((w) => matchesWorkspace(w, normalizedQuery))
+    .slice(0, limit)
+    .map((workspaceTarget, idx) => ({
+      id: `switch-workspace:${workspaceTarget.path}`,
+      category: 'switch-workspace',
+      title: basename(workspaceTarget.path),
+      subtitle: workspaceTarget.path,
+      detail: null,
+      rank: idx,
+      workspaceTarget,
     }));
 
   const messageEntries: PaletteEntry[] = messageHits.slice(0, limit).map((hit, idx) => ({
@@ -111,7 +158,15 @@ export function mergePaletteResults(
       mcpTool: tool,
     }));
 
-  return [...actionEntries, ...messageEntries, ...fileEntries, ...skillEntries, ...mcpToolEntries];
+  return [
+    ...actionEntries,
+    ...conversationEntries,
+    ...workspaceEntries,
+    ...messageEntries,
+    ...fileEntries,
+    ...skillEntries,
+    ...mcpToolEntries,
+  ];
 }
 
 function matchesAction(action: PaletteAction, normalizedQuery: string): boolean {
@@ -124,6 +179,19 @@ function matchesSkill(skill: Skill, normalizedQuery: string): boolean {
   if (!normalizedQuery) return true;
   const haystack = `${skill.name} ${skill.description}`.toLowerCase();
   return haystack.includes(normalizedQuery);
+}
+
+function matchesConversation(conversation: PaletteConversation, normalizedQuery: string): boolean {
+  if (!normalizedQuery) return true;
+  return conversation.title.toLowerCase().includes(normalizedQuery);
+}
+
+function matchesWorkspace(
+  workspaceTarget: PaletteWorkspaceTarget,
+  normalizedQuery: string,
+): boolean {
+  if (!normalizedQuery) return true;
+  return workspaceTarget.path.toLowerCase().includes(normalizedQuery);
 }
 
 function matchesMcpTool(tool: PaletteMcpTool, normalizedQuery: string): boolean {
@@ -158,6 +226,8 @@ export function groupByCategory(
 ): Record<PaletteCategory, PaletteEntry[]> {
   return {
     action: entries.filter((e) => e.category === 'action'),
+    conversation: entries.filter((e) => e.category === 'conversation'),
+    'switch-workspace': entries.filter((e) => e.category === 'switch-workspace'),
     message: entries.filter((e) => e.category === 'message'),
     file: entries.filter((e) => e.category === 'file'),
     skill: entries.filter((e) => e.category === 'skill'),
@@ -169,6 +239,8 @@ export function flattenForKeyboardNav(entries: ReadonlyArray<PaletteEntry>): Pal
   const groups = groupByCategory(entries);
   return [
     ...groups.action,
+    ...groups.conversation,
+    ...groups['switch-workspace'],
     ...groups.message,
     ...groups.file,
     ...groups.skill,

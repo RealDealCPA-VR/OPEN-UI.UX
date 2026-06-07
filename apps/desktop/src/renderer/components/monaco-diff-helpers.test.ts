@@ -373,4 +373,104 @@ describe('applyHunkDecisions', () => {
     });
     expect(result.text).toBe('a\nB\nc\nD\ne');
   });
+
+  // Per-hunk partial accept at the approval gate: a strict subset is kept.
+  it('reconstructs a 3-hunk diff with the MIDDLE hunk rejected', () => {
+    // original lines: 1=a 2=b 3=c 4=d 5=e
+    // modified lines: 1=A 2=b 3=C 4=d 5=E (hunks at 1, 3, 5)
+    const hunks: MonacoDiffHunk[] = [
+      {
+        index: 0,
+        originalStartLine: 1,
+        originalEndLine: 1,
+        modifiedStartLine: 1,
+        modifiedEndLine: 1,
+        kind: 'modify',
+      },
+      {
+        index: 1,
+        originalStartLine: 3,
+        originalEndLine: 3,
+        modifiedStartLine: 3,
+        modifiedEndLine: 3,
+        kind: 'modify',
+      },
+      {
+        index: 2,
+        originalStartLine: 5,
+        originalEndLine: 5,
+        modifiedStartLine: 5,
+        modifiedEndLine: 5,
+        kind: 'modify',
+      },
+    ];
+    const result = applyHunkDecisions({
+      originalText: 'a\nb\nc\nd\ne',
+      modifiedText: 'A\nb\nC\nd\nE',
+      hunks,
+      acceptedHunkIndexes: [0, 2],
+    });
+    // First + last accepted (A, E), middle (C) rejected → keeps original c.
+    expect(result.text).toBe('A\nb\nc\nd\nE');
+    expect(result.accepted.map((h) => h.index)).toEqual([0, 2]);
+    expect(result.rejected.map((h) => h.index)).toEqual([1]);
+  });
+
+  it('reconstructs across a CRLF original without re-emitting carriage returns', () => {
+    // splitLines normalises \r\n; the joined output uses \n.
+    const result = applyHunkDecisions({
+      originalText: 'a\r\nb\r\nc',
+      modifiedText: 'a\r\nB\r\nc',
+      hunks: [
+        {
+          index: 0,
+          originalStartLine: 2,
+          originalEndLine: 2,
+          modifiedStartLine: 2,
+          modifiedEndLine: 2,
+          kind: 'modify',
+        },
+      ],
+      acceptedHunkIndexes: [0],
+    });
+    expect(result.text).toBe('a\nB\nc');
+  });
+
+  it('handles the empty-file → content edge (new file, single add hunk)', () => {
+    const result = applyHunkDecisions({
+      originalText: '',
+      modifiedText: 'line1\nline2',
+      hunks: [
+        {
+          index: 0,
+          originalStartLine: 1,
+          originalEndLine: 0,
+          modifiedStartLine: 1,
+          modifiedEndLine: 2,
+          kind: 'add',
+        },
+      ],
+      acceptedHunkIndexes: [0],
+    });
+    expect(result.text).toBe('line1\nline2');
+  });
+
+  it('rejecting the sole add hunk on an empty file yields empty text', () => {
+    const result = applyHunkDecisions({
+      originalText: '',
+      modifiedText: 'line1\nline2',
+      hunks: [
+        {
+          index: 0,
+          originalStartLine: 1,
+          originalEndLine: 0,
+          modifiedStartLine: 1,
+          modifiedEndLine: 2,
+          kind: 'add',
+        },
+      ],
+      acceptedHunkIndexes: [],
+    });
+    expect(result.text).toBe('');
+  });
 });

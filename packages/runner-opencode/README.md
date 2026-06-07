@@ -1,6 +1,6 @@
 # @opencodex/runner-opencode
 
-First-party OpenCodex plugin that runs subagents through the [OpenCode](https://github.com/opencode-ai/opencode) CLI in headless mode.
+First-party OpenCodex plugin that runs subagents through the [OpenCode](https://github.com/opencode-ai/opencode) CLI's non-interactive `run` subcommand.
 
 ## Install
 

@@ -66,6 +66,19 @@ const KNOWN: ReadonlyArray<ModelCapabilities> = [
     promptCaching: true,
     pricing: { inputPerMillion: 0.075, outputPerMillion: 0.3, cachedInputPerMillion: 0.01875 },
   },
+  {
+    id: 'gemini-embedding-001',
+    providerId: 'google',
+    displayName: 'Gemini Embedding 001',
+    contextWindow: 2_048,
+    maxOutputTokens: 0,
+    toolUse: false,
+    vision: false,
+    streaming: false,
+    embeddings: true,
+    promptCaching: false,
+    pricing: { inputPerMillion: 0.15, outputPerMillion: 0 },
+  },
 ];
 
 export function knownModels(): ModelCapabilities[] {

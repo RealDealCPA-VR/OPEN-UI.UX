@@ -33,8 +33,7 @@
   text-align: center;
 }
 
-.pair-suggestions-empty,
-.pair-suggestions-error {
+.pair-suggestions-empty {
   font-size: 12px;
   color: var(--text-muted);
   padding: 6px 2px;
@@ -42,7 +41,13 @@
 }
 
 .pair-suggestions-error {
-  color: var(--danger, var(--text-muted));
+  font-size: 12px;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  line-height: 1.4;
 }
 
 .pair-suggestions-list {
@@ -64,7 +69,7 @@
   padding: 8px 10px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-sm);
   transition: border-color var(--duration-fast) var(--ease);
 }
 
@@ -115,9 +120,14 @@
   background: var(--accent-soft-bg);
   color: var(--accent-text);
   border: 1px solid var(--accent-soft-border, var(--accent-border));
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   white-space: nowrap;
+}
+
+.pair-suggestion-apply:focus-visible {
+  box-shadow: var(--focus-ring);
+  outline: none;
 }
 
 .pair-suggestion-apply:hover {
@@ -136,8 +146,13 @@
   background: transparent;
   color: var(--text-muted);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--radius-sm);
   cursor: pointer;
+}
+
+.pair-suggestion-dismiss:focus-visible {
+  box-shadow: var(--focus-ring);
+  outline: none;
 }
 
 .pair-suggestion-dismiss:hover {

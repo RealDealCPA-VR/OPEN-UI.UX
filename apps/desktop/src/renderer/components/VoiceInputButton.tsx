@@ -272,24 +272,19 @@ export function VoiceInputButton({ onTranscript, disabled }: VoiceInputButtonPro
     return 'Push-to-talk: hold to dictate';
   })();
 
-  const bgColor =
-    state === 'recording'
-      ? 'var(--danger-bg, rgba(239,68,68,0.18))'
-      : state === 'error'
-        ? 'var(--warn-bg, rgba(245,158,11,0.18))'
-        : 'transparent';
-  const borderColor =
-    state === 'recording'
-      ? 'var(--danger, #ef4444)'
-      : state === 'error'
-        ? 'var(--warn, #f59e0b)'
-        : 'var(--border, #2a2a32)';
-
   return (
     <HoverHint hint={hint}>
       <button
         type="button"
-        className={`voice-input-btn voice-input-btn-${state}`}
+        className={[
+          'voice-input-btn',
+          state === 'recording' ? 'voice-input-btn-recording' : '',
+          state === 'error' ? 'voice-input-btn-error' : '',
+          state === 'preparing' ? 'voice-input-btn-preparing' : '',
+          state === 'transcribing' ? 'voice-input-btn-transcribing' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
@@ -303,16 +298,33 @@ export function VoiceInputButton({ onTranscript, disabled }: VoiceInputButtonPro
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderRadius: 'var(--radius-md, 6px)',
-          background: bgColor,
-          color: 'var(--text-secondary, inherit)',
-          border: `1px solid ${borderColor}`,
+          borderRadius: 'var(--radius-sm)',
           cursor: disabled ? 'not-allowed' : 'pointer',
-          fontSize: 16,
-          lineHeight: 1,
         }}
       >
-        {state === 'transcribing' ? '…' : '🎙'}
+        {state === 'transcribing' ? (
+          <span className="mcp-inline-spinner" />
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="5" y="1" width="6" height="9" rx="3" fill="currentColor" />
+            <path
+              d="M2.5 8a5.5 5.5 0 0 0 11 0"
+              stroke="currentColor"
+              strokeWidth="1.25"
+              strokeLinecap="round"
+              fill="none"
+            />
+            <line
+              x1="8"
+              y1="13.5"
+              x2="8"
+              y2="15"
+              stroke="currentColor"
+              strokeWidth="1.25"
+              strokeLinecap="round"
+            />
+          </svg>
+        )}
       </button>
     </HoverHint>
   );

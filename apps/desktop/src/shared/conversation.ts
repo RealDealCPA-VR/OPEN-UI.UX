@@ -1,5 +1,7 @@
 import type { ContentBlock, Role } from '@opencodex/core';
 
+export type TurnStatus = 'streaming' | 'final';
+
 export interface Conversation {
   id: string;
   title: string;
@@ -19,8 +21,10 @@ export interface StoredMessage {
   modelId: string | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  cachedInputTokens: number | null;
   costUsd: number | null;
   createdAt: string;
+  turnStatus: TurnStatus;
 }
 
 export interface AppendMessageRequest {
@@ -32,7 +36,9 @@ export interface AppendMessageRequest {
   modelId?: string | null;
   inputTokens?: number | null;
   outputTokens?: number | null;
+  cachedInputTokens?: number | null;
   costUsd?: number | null;
+  turnStatus?: TurnStatus;
 }
 
 export interface ConversationUsageByModel {
@@ -41,6 +47,7 @@ export interface ConversationUsageByModel {
   messageCount: number;
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens: number;
   costUsd: number;
 }
 
@@ -49,6 +56,7 @@ export interface ConversationUsage {
   messageCount: number;
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalCachedInputTokens: number;
   totalCostUsd: number;
   byModel: ConversationUsageByModel[];
 }

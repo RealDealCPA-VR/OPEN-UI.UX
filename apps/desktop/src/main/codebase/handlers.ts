@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import type { Dirent } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { shell } from 'electron';
 import { z } from 'zod';
 import { grepTool, readIgnoreMatcherForWorkspace, resolveWithinWorkspace } from '@opencodex/tools';
@@ -9,13 +9,25 @@ import { registerInvoke } from '../ipc/registry';
 import { prepareMergeBundle } from '../agent/merge-review';
 import { listRuns } from '../agent/run-registry';
 import { toFriendlyError } from '../util/friendly-error';
+import { getDb } from '../storage/db';
+import { getWorkspaceState } from '../storage/settings';
+import { getWorkspaceByPath } from '../workspace/workspaces-store';
+import { getWorkspaceGraph } from '../rag/code-graph-store';
+import type { CodeGraphNodeRow, CodeGraphEdgeRow } from '../rag/code-graph-store';
 import type {
+  CodebaseGraphResponse,
+  CodebaseListDirFilesResponse,
   CodebasePendingEditsResponse,
   CodebaseReadFileResponse,
   CodebaseSearchHit,
   CodebaseSearchResponse,
+  GraphEdgeView,
+  GraphNodeView,
 } from '../../shared/codebase-search';
 import type { PendingEditEntry } from '../../shared/codebase-search';
+
+const DEFAULT_LIST_DIR_LIMIT = 50;
+const MAX_LIST_DIR_LIMIT = 500;
 
 const MAX_PREVIEW_BYTES = 256 * 1024;
 const MAX_FILENAME_MATCHES = 500;
@@ -41,6 +53,34 @@ const showItemSchema = z.object({
   workspaceRoot: z.string().min(1),
   path: z.string().min(1),
 });
+
+const listDirFilesSchema = z.object({
+  workspaceRoot: z.string().min(1),
+  path: z.string().min(1),
+  limit: z.number().int().min(1).max(MAX_LIST_DIR_LIMIT).optional(),
+});
+
+const graphSchema = z.object({
+  limit: z.number().int().min(1).max(2000).optional(),
+});
+
+const EMPTY_GRAPH: CodebaseGraphResponse = { nodes: [], edges: [], available: false };
+
+function toGraphNodeView(row: CodeGraphNodeRow): GraphNodeView {
+  return {
+    id: row.id,
+    label: row.label,
+    file: row.source_file,
+    startLine: row.start_line,
+    community: row.community,
+    kind: row.kind,
+    language: row.language,
+  };
+}
+
+function toGraphEdgeView(row: CodeGraphEdgeRow): GraphEdgeView {
+  return { source: row.source, target: row.target, relation: row.relation };
+}
 
 async function searchFilenames(
   workspaceRoot: string,
@@ -70,6 +110,10 @@ async function searchFilenames(
       if (entry.name === '.git') continue;
       if (ignore.matches(rel)) continue;
       if (entry.isDirectory()) {
+        if (entry.name.toLowerCase().includes(lower) || rel.toLowerCase().includes(lower)) {
+          hits.push({ path: rel, kind: 'folder' });
+        }
+        if (hits.length >= limit) return;
         await walk(abs, depth + 1);
         continue;
       }
@@ -285,6 +329,70 @@ export function registerCodebaseHandlers(): void {
       return { entries };
     },
   );
+
+  registerInvoke(
+    'codebase:list-dir-files',
+    listDirFilesSchema,
+    async (req): Promise<CodebaseListDirFilesResponse> => {
+      const limit = Math.min(req.limit ?? DEFAULT_LIST_DIR_LIMIT, MAX_LIST_DIR_LIMIT);
+      let resolved: string;
+      try {
+        resolved = await resolveWithinWorkspace(req.workspaceRoot, req.path);
+      } catch (err) {
+        throw toFriendlyError(err);
+      }
+      const ignore = readIgnoreMatcherForWorkspace(req.workspaceRoot);
+      let entries: Dirent[];
+      try {
+        entries = await fs.readdir(resolved, { withFileTypes: true });
+      } catch (err) {
+        throw toFriendlyError(err);
+      }
+      const files: string[] = [];
+      let truncated = false;
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const abs = join(resolved, entry.name);
+        const rel = relative(req.workspaceRoot, abs).split(sep).join('/');
+        if (!rel) continue;
+        if (entry.name === '.git') continue;
+        if (ignore.matches(rel)) continue;
+        if (files.length >= limit) {
+          truncated = true;
+          break;
+        }
+        files.push(rel);
+      }
+      return { files, truncated };
+    },
+  );
+
+  registerInvoke('codebase:graph', graphSchema, async (req): Promise<CodebaseGraphResponse> => {
+    const active = getWorkspaceState().active;
+    if (!active) return EMPTY_GRAPH;
+
+    let ws: ReturnType<typeof getWorkspaceByPath> = null;
+    let db: ReturnType<typeof getDb>;
+    try {
+      ws = getWorkspaceByPath(resolve(active));
+      if (!ws) return EMPTY_GRAPH;
+      db = getDb();
+    } catch (err) {
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        'codebase:graph failed to resolve workspace/db',
+      );
+      return EMPTY_GRAPH;
+    }
+
+    const { nodes, edges } = getWorkspaceGraph(db, ws.id, { limit: req.limit });
+    if (nodes.length === 0) return EMPTY_GRAPH;
+    return {
+      nodes: nodes.map(toGraphNodeView),
+      edges: edges.map(toGraphEdgeView),
+      available: true,
+    };
+  });
 
   registerInvoke('shell:show-item-in-folder', showItemSchema, async (req) => {
     try {

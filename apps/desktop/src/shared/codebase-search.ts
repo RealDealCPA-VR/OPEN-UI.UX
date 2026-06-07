@@ -9,13 +9,24 @@ export interface CodebaseSearchRequest {
 
 export interface CodebaseSearchHit {
   path: string;
-  kind: 'filename' | 'content';
+  kind: 'filename' | 'content' | 'folder';
   line?: number;
   snippet?: string;
 }
 
 export interface CodebaseSearchResponse {
   hits: CodebaseSearchHit[];
+  truncated: boolean;
+}
+
+export interface CodebaseListDirFilesRequest {
+  workspaceRoot: string;
+  path: string;
+  limit?: number;
+}
+
+export interface CodebaseListDirFilesResponse {
+  files: string[];
   truncated: boolean;
 }
 
@@ -41,4 +52,30 @@ export interface PendingEditEntry {
 
 export interface CodebasePendingEditsResponse {
   entries: PendingEditEntry[];
+}
+
+export interface GraphNodeView {
+  id: string;
+  label: string;
+  file: string;
+  startLine: number | null;
+  community: number | null;
+  kind: string | null;
+  language: string | null;
+}
+
+export interface GraphEdgeView {
+  source: string;
+  target: string;
+  relation: string;
+}
+
+export interface CodebaseGraphRequest {
+  limit?: number;
+}
+
+export interface CodebaseGraphResponse {
+  nodes: GraphNodeView[];
+  edges: GraphEdgeView[];
+  available: boolean;
 }

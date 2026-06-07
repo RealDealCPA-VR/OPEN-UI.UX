@@ -59,7 +59,7 @@ export function McpServersPanel(): JSX.Element {
   }, [resources]);
 
   const tabsHeader = (
-    <div className="mcp-tabs" role="tablist" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+    <div className="mcp-tabs" role="tablist">
       {MCP_TABS.map((t) => (
         <button
           key={t.id}
@@ -100,7 +100,7 @@ export function McpServersPanel(): JSX.Element {
     );
   }
 
-  if (!state) return <p className="settings-section-desc">Loading…</p>;
+  if (!state) return <p className="settings-block-hint">Loading…</p>;
 
   const addedIds = new Set(state.servers.map((s) => s.id));
   const availablePresets = presets.filter((p) => !addedIds.has(p.id));
@@ -159,18 +159,13 @@ export function McpServersPanel(): JSX.Element {
       {error && (
         <div className="mcp-panel-error" role="alert">
           {error}
-          <button
-            type="button"
-            className="btn"
-            onClick={() => setError(null)}
-            style={{ marginLeft: 8 }}
-          >
+          <button type="button" className="btn" onClick={() => setError(null)}>
             Dismiss
           </button>
         </div>
       )}
       {state.servers.length === 0 ? (
-        <p className="settings-section-desc">
+        <p className="settings-block-hint">
           No MCP servers configured. Add one from the curated presets below.
         </p>
       ) : (
@@ -206,7 +201,7 @@ export function McpServersPanel(): JSX.Element {
                     </span>
                   )}
                   {status && (
-                    <span style={{ display: 'inline-flex', gap: 6 }}>
+                    <span className="mcp-count-btn-group">
                       <CountButton label="tools" count={counts.tools} disabled />
                       <CountButton
                         label="resources"
@@ -232,9 +227,9 @@ export function McpServersPanel(): JSX.Element {
                     loading={resources === null}
                     render={(r) => (
                       <span key={r.resource.uri}>
-                        <code style={{ fontSize: 11 }}>{r.resource.uri}</code>
+                        <code className="mcp-expanded-item-uri">{r.resource.uri}</code>
                         {r.resource.name && r.resource.name !== r.resource.uri ? (
-                          <span style={{ color: 'var(--text-muted)' }}> — {r.resource.name}</span>
+                          <span className="mcp-expanded-item-label"> — {r.resource.name}</span>
                         ) : null}
                       </span>
                     )}
@@ -246,12 +241,9 @@ export function McpServersPanel(): JSX.Element {
                     loading={prompts === null}
                     render={(p) => (
                       <span key={p.prompt.name}>
-                        <code style={{ fontSize: 11 }}>{p.prompt.name}</code>
+                        <code className="mcp-expanded-item-uri">{p.prompt.name}</code>
                         {p.prompt.description ? (
-                          <span style={{ color: 'var(--text-muted)' }}>
-                            {' '}
-                            — {p.prompt.description}
-                          </span>
+                          <span className="mcp-expanded-item-label"> — {p.prompt.description}</span>
                         ) : null}
                       </span>
                     )}
@@ -265,7 +257,7 @@ export function McpServersPanel(): JSX.Element {
                     disabled={busy}
                   >
                     {busy ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <span className="mcp-inline-flex">
                         <InlineSpinner aria-hidden="true" /> Working…
                       </span>
                     ) : server.enabled ? (
@@ -275,7 +267,7 @@ export function McpServersPanel(): JSX.Element {
                     )}
                   </button>
                   {confirmingRemove === server.id ? (
-                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                    <span className="mcp-inline-flex">
                       <button
                         type="button"
                         className="btn btn-danger"
@@ -310,7 +302,7 @@ export function McpServersPanel(): JSX.Element {
       )}
       {availablePresets.length > 0 && (
         <div className="mcp-presets">
-          <h3>Curated presets</h3>
+          <h3 className="settings-subhead">Curated presets</h3>
           <ul className="mcp-preset-list">
             {availablePresets.map((preset) => (
               <li key={preset.id} className="mcp-preset-row">
@@ -325,7 +317,7 @@ export function McpServersPanel(): JSX.Element {
                   disabled={busyId === preset.id}
                 >
                   {busyId === preset.id ? (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span className="mcp-inline-flex">
                       <InlineSpinner aria-hidden="true" /> Adding…
                     </span>
                   ) : (
@@ -337,7 +329,6 @@ export function McpServersPanel(): JSX.Element {
           </ul>
         </div>
       )}
-      <SpinnerStyles />
     </div>
   );
 }
@@ -361,16 +352,7 @@ function CountButton({
       onClick={onClick}
       disabled={disabled}
       aria-pressed={active}
-      style={{
-        background: active ? 'var(--accent-soft-bg)' : 'transparent',
-        border: '1px solid var(--border)',
-        color: 'inherit',
-        borderRadius: 'var(--radius-pill)',
-        padding: '1px 8px',
-        fontSize: 11,
-        cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled && count === 0 ? 0.5 : 1,
-      }}
+      className="mcp-count-btn"
     >
       {label}: {count}
     </button>
@@ -387,21 +369,13 @@ function ExpandedList<T>({
   render: (item: T) => JSX.Element;
 }): JSX.Element {
   return (
-    <div
-      style={{
-        margin: '6px 0',
-        padding: '8px 10px',
-        background: 'var(--bg-elevated)',
-        borderRadius: 'var(--radius-sm)',
-        border: '1px solid var(--border)',
-      }}
-    >
+    <div className="mcp-expanded-list">
       {loading ? (
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading…</span>
+        <span className="mcp-expanded-list-loading">Loading…</span>
       ) : items.length === 0 ? (
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>None to show.</span>
+        <span className="mcp-expanded-list-empty">None to show.</span>
       ) : (
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 4 }}>
+        <ul className="mcp-expanded-list-items">
           {items.map((item, i) => (
             <li key={i}>{render(item)}</li>
           ))}
@@ -419,29 +393,5 @@ function InlineSpinner(props: { 'aria-label'?: string; 'aria-hidden'?: 'true' })
       aria-hidden={props['aria-hidden']}
       className="mcp-inline-spinner"
     />
-  );
-}
-
-function SpinnerStyles(): JSX.Element {
-  return (
-    <style>{`
-      .mcp-inline-spinner {
-        display: inline-block;
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        border: 2px solid var(--border);
-        border-top-color: var(--accent);
-        animation: mcp-spinner-rotate 0.7s linear infinite;
-        vertical-align: -1px;
-        margin-right: 4px;
-      }
-      @keyframes mcp-spinner-rotate {
-        to { transform: rotate(360deg); }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .mcp-inline-spinner { animation: none; }
-      }
-    `}</style>
   );
 }

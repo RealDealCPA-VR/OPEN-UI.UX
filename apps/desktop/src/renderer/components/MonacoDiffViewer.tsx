@@ -44,6 +44,7 @@ export interface MonacoDiffViewerProps {
   onReject?: () => void;
   onAcceptHunk?: (hunkIndex: number, hunk: MonacoDiffHunk) => void;
   onRejectHunk?: (hunkIndex: number, hunk: MonacoDiffHunk) => void;
+  onHunksChange?: (hunks: MonacoDiffHunk[]) => void;
   initialLayout?: DiffLayout;
   showLayoutToggle?: boolean;
 }
@@ -59,6 +60,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
     onReject,
     onAcceptHunk,
     onRejectHunk,
+    onHunksChange,
     initialLayout = 'side-by-side',
     showLayoutToggle = true,
   } = props;
@@ -68,6 +70,10 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
   const [hunks, setHunks] = useState<MonacoDiffHunk[]>([]);
   const [activeHunkIdx, setActiveHunkIdx] = useState(0);
   const [layout, setLayout] = useState<DiffLayout>(initialLayout);
+  // Local visual decision state — which hunk indexes the user rejected. Drives
+  // the muted/struck row styling. Independent of (and additive to) the
+  // onAcceptHunk/onRejectHunk callbacks; the j/k/a/r dispatch is unchanged.
+  const [rejected, setRejected] = useState<Set<number>>(new Set());
 
   const refreshHunks = useCallback(() => {
     const ed = editorRef.current;
@@ -76,6 +82,26 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
     const next = extractHunksFromLineChanges(changes);
     setHunks(next);
     setActiveHunkIdx((prev) => (prev >= next.length ? 0 : prev));
+    setRejected(new Set());
+    onHunksChange?.(next);
+  }, [onHunksChange]);
+
+  const markAccepted = useCallback((hunkIndex: number) => {
+    setRejected((prev) => {
+      if (!prev.has(hunkIndex)) return prev;
+      const out = new Set(prev);
+      out.delete(hunkIndex);
+      return out;
+    });
+  }, []);
+
+  const markRejected = useCallback((hunkIndex: number) => {
+    setRejected((prev) => {
+      if (prev.has(hunkIndex)) return prev;
+      const out = new Set(prev);
+      out.add(hunkIndex);
+      return out;
+    });
   }, []);
 
   useEffect(() => {
@@ -138,19 +164,21 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
         const hunk = hunks[activeHunkIdx];
         if (hunk) {
           e.preventDefault();
+          markAccepted(hunk.index);
           onAcceptHunk(hunk.index, hunk);
         }
       } else if (e.key === 'r' && onRejectHunk) {
         const hunk = hunks[activeHunkIdx];
         if (hunk) {
           e.preventDefault();
+          markRejected(hunk.index);
           onRejectHunk(hunk.index, hunk);
         }
       }
     };
     node.addEventListener('keydown', onKey);
     return () => node.removeEventListener('keydown', onKey);
-  }, [hunks, activeHunkIdx, onAcceptHunk, onRejectHunk, revealHunk]);
+  }, [hunks, activeHunkIdx, onAcceptHunk, onRejectHunk, revealHunk, markAccepted, markRejected]);
 
   return (
     <div
@@ -171,8 +199,8 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
             justifyContent: 'space-between',
             gap: 8,
             padding: '6px 10px',
-            background: 'var(--bg-elevated, #1e1e1e)',
-            borderBottom: '1px solid var(--border, #333)',
+            background: 'var(--bg-elevated)',
+            borderBottom: '1px solid var(--border)',
             fontSize: 12,
           }}
         >
@@ -180,7 +208,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
             <code
               className="monaco-diff-viewer-sticky-path"
               style={{
-                fontFamily: 'var(--font-mono, monospace)',
+                fontFamily: 'var(--font-mono)',
                 color: 'var(--text-primary)',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -198,15 +226,15 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
             className="monaco-diff-viewer-sticky-stats"
             aria-label={`${stats.added} added, ${stats.removed} removed`}
             style={{
-              fontFamily: 'var(--font-mono, monospace)',
-              color: 'var(--text-secondary, #aaa)',
+              fontFamily: 'var(--font-mono)',
+              color: 'var(--text-secondary)',
               whiteSpace: 'nowrap',
             }}
           >
-            <span style={{ color: 'var(--diff-add-fg, #4ec9b0)' }}>+{stats.added}</span>{' '}
-            <span style={{ color: 'var(--diff-del-fg, #f48771)' }}>-{stats.removed}</span>
+            <span style={{ color: 'var(--success)' }}>+{stats.added}</span>{' '}
+            <span style={{ color: 'var(--danger)' }}>-{stats.removed}</span>
           </span>
-          <span style={{ color: 'var(--text-muted, #888)', whiteSpace: 'nowrap' }}>
+          <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
             {stickyLabel === '+0 -0' ? '' : null}
           </span>
         </div>
@@ -223,8 +251,8 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                 display: 'inline-flex',
                 gap: 0,
                 marginRight: 8,
-                border: '1px solid var(--border, #333)',
-                borderRadius: 4,
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-2xs)',
                 overflow: 'hidden',
               }}
             >
@@ -237,10 +265,8 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                   padding: '2px 8px',
                   fontSize: 11,
                   background:
-                    layout === 'side-by-side'
-                      ? 'var(--bg-selected, #2c2c2c)'
-                      : 'var(--bg-elevated, #1e1e1e)',
-                  color: 'var(--text-primary, #ddd)',
+                    layout === 'side-by-side' ? 'var(--bg-elevated-strong)' : 'var(--bg-elevated)',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   cursor: 'pointer',
                 }}
@@ -256,12 +282,10 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                   padding: '2px 8px',
                   fontSize: 11,
                   background:
-                    layout === 'unified'
-                      ? 'var(--bg-selected, #2c2c2c)'
-                      : 'var(--bg-elevated, #1e1e1e)',
-                  color: 'var(--text-primary, #ddd)',
+                    layout === 'unified' ? 'var(--bg-elevated-strong)' : 'var(--bg-elevated)',
+                  color: 'var(--text-primary)',
                   border: 'none',
-                  borderLeft: '1px solid var(--border, #333)',
+                  borderLeft: '1px solid var(--border)',
                   cursor: 'pointer',
                 }}
               >
@@ -274,7 +298,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
               className="monaco-diff-viewer-keys"
               style={{
                 fontSize: 11,
-                color: 'var(--text-muted, #888)',
+                color: 'var(--text-muted)',
                 marginRight: 8,
               }}
               aria-hidden
@@ -320,9 +344,10 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
               key={hunk.index}
               className="monaco-diff-viewer-hunk"
               data-active={idx === activeHunkIdx ? 'true' : undefined}
+              data-rejected={rejected.has(hunk.index) ? 'true' : undefined}
               style={
                 idx === activeHunkIdx
-                  ? { outline: '1px solid var(--accent, #4d9aff)', outlineOffset: -1 }
+                  ? { boxShadow: 'var(--focus-ring)', outline: 'none' }
                   : undefined
               }
             >
@@ -339,6 +364,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                     className="monaco-diff-viewer-hunk-accept"
                     onClick={() => {
                       setActiveHunkIdx(idx);
+                      markAccepted(hunk.index);
                       onAcceptHunk(hunk.index, hunk);
                     }}
                   >
@@ -351,6 +377,7 @@ export function MonacoDiffViewer(props: MonacoDiffViewerProps): JSX.Element {
                     className="monaco-diff-viewer-hunk-reject"
                     onClick={() => {
                       setActiveHunkIdx(idx);
+                      markRejected(hunk.index);
                       onRejectHunk(hunk.index, hunk);
                     }}
                   >

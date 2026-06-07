@@ -399,10 +399,16 @@ export function ScheduledTaskEditorModal({
   };
 
   return (
-    <div className="approval-modal-backdrop" role="dialog" aria-modal="true" onKeyDown={onKeyDown}>
-      <div className="approval-modal agent-spawn-modal scheduled-task-editor">
+    <div
+      className="approval-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="scheduled-task-editor-title"
+      onKeyDown={onKeyDown}
+    >
+      <div className="approval-modal agent-spawn-modal scheduled-task-editor scheduled-task-editor-modal">
         <header className="approval-modal-header">
-          <h2>{isEdit ? 'Edit scheduled task' : 'New scheduled task'}</h2>
+          <h2 id="scheduled-task-editor-title">{isEdit ? 'Edit automation' : 'New automation'}</h2>
         </header>
 
         <label className="agent-spawn-field">
@@ -448,6 +454,7 @@ export function ScheduledTaskEditorModal({
                   role="radio"
                   aria-checked={active}
                   onClick={() => setTriggerType(t)}
+                  className="trigger-type-btn"
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -455,7 +462,7 @@ export function ScheduledTaskEditorModal({
                     gap: 4,
                     padding: '10px 12px',
                     border: `1px solid ${active ? 'var(--accent-border)' : 'var(--border-strong)'}`,
-                    borderRadius: 6,
+                    borderRadius: 'var(--radius-sm)',
                     background: active ? 'var(--accent-soft-bg)' : 'var(--bg-elevated)',
                     color: 'var(--text-primary)',
                     cursor: 'pointer',
@@ -774,7 +781,7 @@ export function ScheduledTaskEditorModal({
             >
               {busy ? 'Saving…' : isEdit ? 'Save' : 'Create'}
             </button>
-            <button type="button" disabled={busy} onClick={onClose}>
+            <button type="button" className="btn" disabled={busy} onClick={onClose}>
               Cancel
             </button>
           </div>

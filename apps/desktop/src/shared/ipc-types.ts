@@ -43,6 +43,14 @@ import type {
   GetCurrentSpendResponse,
   UpdateBudgetRequest,
 } from './budgets';
+import type {
+  CheckpointsChangedEvent,
+  ListCheckpointsForMessageRequest,
+  ListCheckpointsForRunRequest,
+  ListCheckpointsResponse,
+  RestoreCheckpointRequest,
+  RestoreCheckpointResponse,
+} from './checkpoints';
 import type { ConversationSearchRequest, ConversationSearchResponse } from './conversation-search';
 import type {
   GitBranchFromConversationRequest,
@@ -190,6 +198,10 @@ export type {
   OllamaProbeResult,
 } from './ollama';
 import type {
+  CodebaseGraphRequest,
+  CodebaseGraphResponse,
+  CodebaseListDirFilesRequest,
+  CodebaseListDirFilesResponse,
   CodebasePendingEditsResponse,
   CodebaseReadFileRequest,
   CodebaseReadFileResponse,
@@ -206,6 +218,9 @@ import type {
 } from './approvals';
 import type {
   ChatCancelRequest,
+  ChatListActiveResponse,
+  ChatReattachRequest,
+  ChatReattachResponse,
   ChatStartRequest,
   ChatStartResponse,
   ChatStreamEvent,
@@ -266,7 +281,10 @@ import type {
   InstallPluginRequest,
   PluginListItem,
   PluginPanelDescriptor,
+  PluginSlashCommandDescriptor,
   PluginsChangedEvent,
+  RunPluginSlashCommandRequest,
+  RunPluginSlashCommandResult,
   UninstallPluginRequest,
 } from './plugins';
 import type {
@@ -398,6 +416,20 @@ export const hoverHintsChangedEventSchema = z.object({
 
 export type HoverHintsChangedEvent = z.infer<typeof hoverHintsChangedEventSchema>;
 
+export const setAgentRunNotificationsRequestSchema = z.object({
+  enabled: z.boolean(),
+});
+
+export type SetAgentRunNotificationsRequest = z.infer<typeof setAgentRunNotificationsRequestSchema>;
+
+export const agentRunNotificationsChangedEventSchema = z.object({
+  enabled: z.boolean(),
+});
+
+export type AgentRunNotificationsChangedEvent = z.infer<
+  typeof agentRunNotificationsChangedEventSchema
+>;
+
 export const pluginPresetSchema = z.object({
   id: z.string(),
   displayName: z.string(),
@@ -480,6 +512,15 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
     request: ChatCancelRequest;
     response: void;
   };
+  // Crash-restore — reattach to in-flight turns / surface interrupted partials
+  'chat:list-active': {
+    request: void;
+    response: ChatListActiveResponse;
+  };
+  'chat:reattach': {
+    request: ChatReattachRequest;
+    response: ChatReattachResponse;
+  };
   'attachments:prepare': {
     request: PrepareAttachmentsRequest;
     response: PrepareAttachmentsResponse;
@@ -534,6 +575,14 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
   };
   'settings:set-hover-hints': {
     request: SetHoverHintsRequest;
+    response: void;
+  };
+  'settings:get-agent-run-notifications': {
+    request: void;
+    response: boolean;
+  };
+  'settings:set-agent-run-notifications': {
+    request: SetAgentRunNotificationsRequest;
     response: void;
   };
   'settings:get-runner-cli-path': {
@@ -679,6 +728,14 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
     request: { presetId: string };
     response: { plugins: PluginListItem[] };
   };
+  'plugins:list-slash-commands': {
+    request: void;
+    response: PluginSlashCommandDescriptor[];
+  };
+  'plugins:run-slash-command': {
+    request: RunPluginSlashCommandRequest;
+    response: RunPluginSlashCommandResult;
+  };
   'chat:get-read-only-mode': {
     request: void;
     response: { readOnly: boolean };
@@ -694,6 +751,10 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
   'agent:clear-runs': {
     request: void;
     response: AgentRun[];
+  };
+  'agent:mark-runs-seen': {
+    request: { runIds: string[] };
+    response: { ok: true; runs: AgentRun[] };
   };
   'agent:get-merge-bundle': {
     request: { runId: string };
@@ -739,6 +800,14 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
   'codebase:get-pending-edits': {
     request: void;
     response: CodebasePendingEditsResponse;
+  };
+  'codebase:list-dir-files': {
+    request: CodebaseListDirFilesRequest;
+    response: CodebaseListDirFilesResponse;
+  };
+  'codebase:graph': {
+    request: CodebaseGraphRequest;
+    response: CodebaseGraphResponse;
   };
   'git:is-repo': {
     request: GitIsRepoRequest;
@@ -1241,6 +1310,19 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
     request: EstimateCostsAcrossProvidersRequest;
     response: EstimateCostsAcrossProvidersResponse;
   };
+  // Unified checkpoint manager — per-turn + pre-run rollback
+  'checkpoints:list-for-message': {
+    request: ListCheckpointsForMessageRequest;
+    response: ListCheckpointsResponse;
+  };
+  'checkpoints:list-for-run': {
+    request: ListCheckpointsForRunRequest;
+    response: ListCheckpointsResponse;
+  };
+  'checkpoints:restore': {
+    request: RestoreCheckpointRequest;
+    response: RestoreCheckpointResponse;
+  };
 }
 
 export interface IpcEventChannels {
@@ -1255,6 +1337,7 @@ export interface IpcEventChannels {
   'agent:runs-changed': AgentRunsChangedEvent;
   'agent:runners-changed': RunnersChangedEvent;
   'settings:hover-hints-changed': HoverHintsChangedEvent;
+  'settings:agent-run-notifications-changed': AgentRunNotificationsChangedEvent;
   'shell:output': ShellOutputEvent;
   'telemetry:config-changed': TelemetryConfigChangedEvent;
   'crash-reporting:config-changed': CrashReportingConfigChangedEvent;
@@ -1288,6 +1371,8 @@ export interface IpcEventChannels {
   'pair:suggestion': PairSuggestionEvent;
   // Lane 18 — provider switch
   'chat:provider-switched': ProviderSwitchChangedEvent;
+  // Unified checkpoint manager
+  'checkpoints:changed': CheckpointsChangedEvent;
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

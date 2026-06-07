@@ -17,6 +17,8 @@ export function SkillsPanel(): JSX.Element {
   const [registryEntries, setRegistryEntries] = useState<SkillRegistryEntry[] | null>(null);
   const [registryError, setRegistryError] = useState<string | null>(null);
   const [registryBusy, setRegistryBusy] = useState(false);
+  const [importConfirmPending, setImportConfirmPending] = useState(false);
+  const [installConfirmEntry, setInstallConfirmEntry] = useState<SkillRegistryEntry | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,13 +95,12 @@ export function SkillsPanel(): JSX.Element {
       setActionError('Only https:// URLs are allowed');
       return;
     }
-    if (
-      !confirm(
-        `Import a skill from:\n${url}\n\nThe file will be downloaded and saved to your user skill directory. Only import URLs you trust.`,
-      )
-    ) {
-      return;
-    }
+    setImportConfirmPending(true);
+  }, [importUrl]);
+
+  const confirmImportSkill = useCallback(async () => {
+    const url = importUrl.trim();
+    setImportConfirmPending(false);
     setBusy('__import');
     setActionError(null);
     try {
@@ -175,14 +176,12 @@ export function SkillsPanel(): JSX.Element {
     }
   }, []);
 
-  const installFromRegistry = useCallback(async (entry: SkillRegistryEntry) => {
-    if (
-      !confirm(
-        `Install community skill "${entry.name}" from:\n${entry.sourceUrl}\n\nThe SKILL.md will be downloaded into your user skill directory. Only install skills you trust.`,
-      )
-    ) {
-      return;
-    }
+  const installFromRegistry = useCallback((entry: SkillRegistryEntry) => {
+    setInstallConfirmEntry(entry);
+  }, []);
+
+  const confirmInstallFromRegistry = useCallback(async (entry: SkillRegistryEntry) => {
+    setInstallConfirmEntry(null);
     setBusy(`__registry-${entry.name}`);
     setActionError(null);
     try {
@@ -196,15 +195,17 @@ export function SkillsPanel(): JSX.Element {
 
   return (
     <div className="skills-panel">
-      <div className="skills-toolbar">
-        <div className="skills-create-row">
+      <div className="settings-block">
+        <div className="settings-field-row">
           <input
             type="text"
+            className="settings-input"
             value={newSkillName}
             onChange={(e) => setNewSkillName(e.target.value)}
             placeholder="my-skill-name"
           />
           <select
+            className="settings-input settings-input-select"
             value={newSkillScope}
             onChange={(e) => setNewSkillScope(e.target.value as 'user' | 'project')}
           >
@@ -217,12 +218,13 @@ export function SkillsPanel(): JSX.Element {
             onClick={() => void createSkill()}
             disabled={busy === '__new'}
           >
-            {busy === '__new' ? '…' : 'New skill from template'}
+            {busy === '__new' ? 'Creating…' : 'New skill from template'}
           </button>
         </div>
-        <div className="skills-import-row">
+        <div className="settings-field-row">
           <input
             type="text"
+            className="settings-input"
             value={importUrl}
             onChange={(e) => setImportUrl(e.target.value)}
             placeholder="https://example.com/path/to/SKILL.md"
@@ -233,11 +235,37 @@ export function SkillsPanel(): JSX.Element {
             onClick={() => void importSkill()}
             disabled={busy === '__import'}
           >
-            {busy === '__import' ? '…' : 'Import from URL'}
+            {busy === '__import' ? 'Importing…' : 'Import from URL'}
           </button>
         </div>
-        {actionError && <p className="approvals-save-error">{actionError}</p>}
-        {loadError && <p className="approvals-save-error">Failed to load skills: {loadError}</p>}
+        {importConfirmPending && (
+          <div className="skills-confirm-row" role="alert">
+            <span className="skills-confirm-message">
+              Download and save <code>{importUrl.trim()}</code> to your user skills directory? Only
+              import URLs you trust.
+            </span>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void confirmImportSkill()}
+            >
+              Confirm Import
+            </button>
+            <button type="button" className="btn" onClick={() => setImportConfirmPending(false)}>
+              Cancel
+            </button>
+          </div>
+        )}
+        {actionError && (
+          <p className="field-errors" role="alert">
+            {actionError}
+          </p>
+        )}
+        {loadError && (
+          <p className="field-errors" role="alert">
+            Failed to load skills: {loadError}
+          </p>
+        )}
       </div>
 
       {skills === null ? (
@@ -260,7 +288,9 @@ export function SkillsPanel(): JSX.Element {
                 <div className="scheduled-task-row-info">
                   <div className="scheduled-task-name">
                     <code>/skill:{skill.name}</code>
-                    <span className={`pill${skill.scope === 'project' ? '' : ''}`}>
+                    <span
+                      className={`pill${skill.scope === 'project' ? ' pill-local' : ' pill-neutral'}`}
+                    >
                       {skill.scope}
                     </span>
                     {skill.disabled && <span className="pill pill-warn">disabled</span>}
@@ -317,25 +347,28 @@ export function SkillsPanel(): JSX.Element {
         </ul>
       )}
 
-      <div className="skills-registry-section">
+      <div className="settings-divider" />
+
+      <div className="settings-block skills-registry-section">
         <button
           type="button"
-          className="skills-registry-toggle"
+          className="btn skills-registry-toggle"
           onClick={() => setRegistryExpanded((v) => !v)}
           aria-expanded={registryExpanded}
         >
           {registryExpanded ? 'Hide community skills' : 'Browse community skills'}
         </button>
         {registryExpanded && (
-          <div className="skills-registry-body">
-            <p className="settings-section-desc">
+          <div className="settings-block skills-registry-body">
+            <p className="settings-block-hint">
               Point at any HTTPS URL that returns a JSON list of skills. There is no default
               registry — you opt in by configuring a URL you trust. Each entry has an Install button
               that prompts before downloading the SKILL.md.
             </p>
-            <div className="skills-import-row">
+            <div className="settings-field-row">
               <input
                 type="text"
+                className="settings-input"
                 value={registryUrl}
                 onChange={(e) => setRegistryUrl(e.target.value)}
                 placeholder="https://example.com/opencodex-skills.json"
@@ -346,7 +379,7 @@ export function SkillsPanel(): JSX.Element {
                 onClick={() => void saveRegistryUrl()}
                 disabled={registryBusy}
               >
-                {registryBusy ? '…' : 'Save URL'}
+                {registryBusy ? 'Saving…' : 'Save URL'}
               </button>
               <button
                 type="button"
@@ -354,28 +387,23 @@ export function SkillsPanel(): JSX.Element {
                 onClick={() => void refreshRegistry()}
                 disabled={registryBusy || !savedRegistryUrl}
               >
-                {registryBusy ? '…' : 'Refresh'}
+                {registryBusy ? 'Loading…' : 'Refresh'}
               </button>
               {registrySaved && (
-                <span
-                  aria-live="polite"
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--success)',
-                    alignSelf: 'center',
-                  }}
-                >
+                <span aria-live="polite" className="settings-saved-flash">
                   Saved
                 </span>
               )}
             </div>
             {savedRegistryUrl && (
-              <p className="settings-section-desc">
+              <p className="settings-block-hint">
                 Current: <code>{savedRegistryUrl}</code>
               </p>
             )}
             {registryError && (
-              <p className="approvals-save-error">Registry error: {registryError}</p>
+              <p className="field-errors" role="alert">
+                Registry error: {registryError}
+              </p>
             )}
             {registryEntries === null ? (
               <p className="audit-empty">
@@ -406,14 +434,37 @@ export function SkillsPanel(): JSX.Element {
                         <p className="scheduled-task-description">{entry.description}</p>
                       </div>
                       <div className="scheduled-task-actions">
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          onClick={() => void installFromRegistry(entry)}
-                          disabled={busy === `__registry-${entry.name}`}
-                        >
-                          {busy === `__registry-${entry.name}` ? '…' : 'Install'}
-                        </button>
+                        {installConfirmEntry?.name === entry.name ? (
+                          <>
+                            <span className="skills-confirm-message">
+                              Download into your user skills directory? Only install skills you
+                              trust.
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              onClick={() => void confirmInstallFromRegistry(entry)}
+                            >
+                              Confirm Install
+                            </button>
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => setInstallConfirmEntry(null)}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={() => installFromRegistry(entry)}
+                            disabled={busy === `__registry-${entry.name}`}
+                          >
+                            {busy === `__registry-${entry.name}` ? 'Installing…' : 'Install'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </li>

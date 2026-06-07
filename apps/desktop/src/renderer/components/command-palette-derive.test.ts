@@ -148,6 +148,72 @@ describe('flattenForKeyboardNav', () => {
   });
 });
 
+describe('mergePaletteResults — conversations and projects', () => {
+  const conversation = (id: string, title: string, updatedAt = '2026-05-28T12:00:00.000Z') => ({
+    id,
+    title,
+    updatedAt,
+  });
+
+  it('produces conversation and switch-workspace entries when query is empty', () => {
+    const entries = mergePaletteResults([], [], [], '', {
+      conversations: [conversation('c1', 'Refactor palette')],
+      workspaces: [{ path: '/home/user/repo-a' }],
+    });
+    const categories = entries.map((e) => e.category);
+    expect(categories).toContain('conversation');
+    expect(categories).toContain('switch-workspace');
+  });
+
+  it('orders conversation before switch-workspace, both before message/file/skill', () => {
+    const entries = mergePaletteResults([messageHit()], [fileHit()], [skill()], '', {
+      conversations: [conversation('c1', 'A chat')],
+      workspaces: [{ path: '/repo' }],
+    });
+    expect(flattenForKeyboardNav(entries).map((e) => e.category)).toEqual([
+      'conversation',
+      'switch-workspace',
+      'message',
+      'file',
+      'skill',
+    ]);
+  });
+
+  it('builds stable conversation and workspace ids with titles and paths', () => {
+    const entries = mergePaletteResults([], [], [], '', {
+      conversations: [conversation('conv-9', 'My Thread')],
+      workspaces: [{ path: '/home/user/proj' }],
+    });
+    const conversationEntry = entries.find((e) => e.category === 'conversation');
+    const workspaceEntry = entries.find((e) => e.category === 'switch-workspace');
+    expect(conversationEntry?.id).toBe('conversation:conv-9');
+    expect(conversationEntry?.title).toBe('My Thread');
+    expect(workspaceEntry?.id).toBe('switch-workspace:/home/user/proj');
+    expect(workspaceEntry?.title).toBe('proj');
+    expect(workspaceEntry?.subtitle).toBe('/home/user/proj');
+  });
+
+  it('filters conversations by title', () => {
+    const entries = mergePaletteResults([], [], [], 'alpha', {
+      conversations: [conversation('c1', 'Alpha plan'), conversation('c2', 'Beta notes')],
+    });
+    const titles = entries
+      .filter((e) => e.category === 'conversation')
+      .map((e) => e.conversation?.title);
+    expect(titles).toEqual(['Alpha plan']);
+  });
+
+  it('filters projects by path', () => {
+    const entries = mergePaletteResults([], [], [], 'repo-b', {
+      workspaces: [{ path: '/home/user/repo-a' }, { path: '/home/user/repo-b' }],
+    });
+    const paths = entries
+      .filter((e) => e.category === 'switch-workspace')
+      .map((e) => e.workspaceTarget?.path);
+    expect(paths).toEqual(['/home/user/repo-b']);
+  });
+});
+
 describe('mergePaletteResults — MCP tools', () => {
   it('produces an mcp-tool entry per tool when query is empty', () => {
     const entries = mergePaletteResults([], [], [], '', {

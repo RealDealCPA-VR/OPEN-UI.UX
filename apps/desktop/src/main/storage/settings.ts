@@ -119,6 +119,7 @@ const SettingsSchema = z.object({
   schedulerListenerPort: z.number().int().min(1).max(65535).nullable().default(null),
   skillRegistryUrl: z.string().url().nullable().default(null),
   hoverHintsEnabled: z.boolean().default(true),
+  agentRunNotificationsEnabled: z.boolean().default(true),
   runners: z
     .record(
       z.object({
@@ -545,6 +546,15 @@ export function getHoverHintsEnabled(): boolean {
 export function setHoverHintsEnabled(value: boolean): boolean {
   const next = updateSettings({ hoverHintsEnabled: value });
   return next.hoverHintsEnabled;
+}
+
+export function getAgentRunNotificationsEnabled(): boolean {
+  return getSettings().agentRunNotificationsEnabled;
+}
+
+export function setAgentRunNotificationsEnabled(value: boolean): boolean {
+  const next = updateSettings({ agentRunNotificationsEnabled: value });
+  return next.agentRunNotificationsEnabled;
 }
 
 export function getRunnerCliPath(runnerId: string): string | null {

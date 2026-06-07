@@ -162,11 +162,50 @@ describe('googleProvider', () => {
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'tool_use' });
   });
 
-  it('throws from embed because Google embeddings are not implemented yet', async () => {
-    const provider = googleProvider.create({ apiKey: 'gk' });
-    await expect(provider.embed({ model: 'text-embedding-004', inputs: ['a'] })).rejects.toThrow(
-      /not implemented/i,
+  it('embeds inputs via batchEmbedContents preserving input order', async () => {
+    const { calls } = stubFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            embeddings: [{ values: [0.1, 0.2] }, { values: [0.3, 0.4] }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
     );
+
+    const provider = googleProvider.create({ apiKey: 'gk' });
+    const result = await provider.embed({
+      model: 'gemini-embedding-001',
+      inputs: ['first', 'second'],
+    });
+
+    expect(result.embeddings).toEqual([
+      [0.1, 0.2],
+      [0.3, 0.4],
+    ]);
+
+    expect(calls[0]?.url).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents',
+    );
+    const body = JSON.parse(calls[0]?.init.body as string);
+    expect(body.requests).toEqual([
+      { model: 'models/gemini-embedding-001', content: { parts: [{ text: 'first' }] } },
+      { model: 'models/gemini-embedding-001', content: { parts: [{ text: 'second' }] } },
+    ]);
+  });
+
+  it('emits content_filter on a prompt-blocked chunk (promptFeedback.blockReason)', async () => {
+    stubFetch(() => streamResponse('data: {"promptFeedback":{"blockReason":"SAFETY"}}\n\n'));
+
+    const provider = googleProvider.create({ apiKey: 'gk' });
+    const events = await collect(
+      provider.chat({ model: 'gemini-2.5-pro', messages: [{ role: 'user', content: 'hi' }] }),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'error', code: 'content_filter', retryable: false }),
+    );
+    expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'content_filter' });
   });
 
   it('listModels and capabilities return known entries', async () => {

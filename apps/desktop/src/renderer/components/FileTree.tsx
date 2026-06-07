@@ -312,9 +312,8 @@ export function FileTree({
             fontSize: 12,
             background: 'var(--bg-input, transparent)',
             color: 'var(--text-primary)',
-            border: '1px solid var(--border, #333)',
+            border: '1px solid var(--border)',
             borderRadius: 6,
-            outline: 'none',
           }}
         />
       </div>
@@ -431,19 +430,35 @@ function FileTreeRowView({
           paddingLeft: `${depth * 14 + 6}px`,
           width: '100%',
           height: rowHeight,
-          background: selected ? 'var(--bg-selected, rgba(77,154,255,0.12))' : undefined,
+          background: selected ? 'var(--bg-selected)' : undefined,
         }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
-        <span className="file-tree-icon">
-          {node.isDirectory ? (childLoading ? '…' : expanded ? '▾' : '▸') : '·'}
-        </span>
+        {node.isDirectory ? (
+          childLoading ? (
+            <span className="file-tree-icon file-tree-icon-loading" aria-hidden="true" />
+          ) : (
+            <span
+              className={`file-tree-icon file-tree-icon-chevron${expanded ? ' file-tree-icon-chevron-open' : ''}`}
+              aria-hidden="true"
+            />
+          )
+        ) : (
+          <span className="file-tree-icon file-tree-icon-file" aria-hidden="true" />
+        )}
         <span className="file-tree-name">{node.name}</span>
         {annotation && (
           <span
             role={onOpenPendingEdit ? 'button' : undefined}
             tabIndex={onOpenPendingEdit ? 0 : -1}
+            aria-label={
+              onOpenPendingEdit
+                ? annotation.count > 1
+                  ? `${annotation.count} pending edits, open diff`
+                  : 'Open pending diff'
+                : undefined
+            }
             className={`file-tree-annotation file-tree-annotation-${annotation.status}`}
             onClick={(e) => {
               if (!onOpenPendingEdit) return;

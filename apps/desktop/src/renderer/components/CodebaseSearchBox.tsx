@@ -198,6 +198,7 @@ export function CodebaseSearchBox({
           ref={inputRef}
           type="text"
           className="codebase-search-input"
+          aria-label="Search codebase"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => {
@@ -222,6 +223,7 @@ export function CodebaseSearchBox({
                   }
                   onClick={() => setScope(s.id)}
                   disabled={disabled}
+                  aria-disabled={disabled || undefined}
                   title={disabled ? 'No current directory selected' : undefined}
                 >
                   {s.label}
@@ -230,14 +232,18 @@ export function CodebaseSearchBox({
             );
           })}
         </div>
-        {searching && <span className="codebase-search-status">…</span>}
+        {searching && (
+          <span className="codebase-search-status" aria-label="Searching…">
+            <span className="mcp-inline-spinner" aria-hidden="true" />
+          </span>
+        )}
         {!searching && result && hasQuery ? (
           <span
             className="codebase-search-timing"
             aria-live="polite"
             style={{
               fontSize: 11,
-              color: 'var(--text-muted, #888)',
+              color: 'var(--text-muted)',
               padding: '0 6px',
               whiteSpace: 'nowrap',
             }}
@@ -289,7 +295,11 @@ export function CodebaseSearchBox({
                 }}
               >
                 <span className={`codebase-search-kind codebase-search-kind-${hit.kind}`}>
-                  {hit.kind === 'filename' ? 'file' : `:${hit.line}`}
+                  {hit.kind === 'filename'
+                    ? 'file'
+                    : hit.kind === 'folder'
+                      ? 'folder'
+                      : `:${hit.line}`}
                 </span>
                 <code className="codebase-search-path">
                   <HighlightedSnippet text={hit.path} query={trimmedQuery} />

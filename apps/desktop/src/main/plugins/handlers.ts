@@ -14,6 +14,7 @@ import {
   setPluginEnabled,
   uninstallPlugin,
 } from './manager';
+import { dispatchPluginSlashCommand, listPluginSlashCommands } from './slash-dispatch';
 import { getPluginRegistryUrl, setPluginRegistryUrl } from '../storage/settings';
 import { toFriendlyError } from '../util/friendly-error';
 import { PLUGIN_PRESETS } from './presets';
@@ -123,6 +124,13 @@ export function registerPluginHandlers(): void {
       if (acceptUnsigned !== undefined) req.acceptUnsigned = acceptUnsigned;
       return installFromRegistryUrl(req);
     },
+  );
+
+  registerInvoke('plugins:list-slash-commands', z.void(), () => listPluginSlashCommands());
+  registerInvoke(
+    'plugins:run-slash-command',
+    z.object({ pluginId: z.string().min(1), name: z.string().min(1), args: z.string() }),
+    ({ pluginId, name, args }) => dispatchPluginSlashCommand(pluginId, name, args),
   );
 
   onPluginsChange((plugins) => {

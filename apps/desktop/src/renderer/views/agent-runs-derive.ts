@@ -105,6 +105,30 @@ export function hasUnresolvedWorktree(run: AgentRun): boolean {
   return run.mergeStatus === 'pending';
 }
 
+export interface InboxBuckets {
+  needsReview: AgentRun[];
+  done: AgentRun[];
+  unreadCount: number;
+}
+
+/**
+ * Buckets finished runs into "needs review" (unresolved worktree / pending
+ * merge) vs "done", and counts unread finished runs for the nav badge.
+ */
+export function deriveInbox(runs: readonly AgentRun[]): InboxBuckets {
+  const needsReview: AgentRun[] = [];
+  const done: AgentRun[] = [];
+  let unreadCount = 0;
+  for (const run of runs) {
+    const finished = run.status !== 'running';
+    if (!finished) continue;
+    if (!run.seen) unreadCount++;
+    if (hasUnresolvedWorktree(run)) needsReview.push(run);
+    else done.push(run);
+  }
+  return { needsReview, done, unreadCount };
+}
+
 export function canContinueInChat(run: AgentRun): boolean {
   return run.status === 'completed' || run.status === 'failed';
 }

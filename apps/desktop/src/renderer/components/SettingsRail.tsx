@@ -1,6 +1,15 @@
 import { useEffect, useRef } from 'react';
 import type { SettingsSection } from '../views/settings-sections';
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.classList.contains('settings-rail-search-input')) return false;
+  if (target.isContentEditable) return true;
+  if (target.closest('.monaco-editor')) return true;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
 export interface SettingsRailProps {
   sections: readonly SettingsSection[];
   activeSlug: string;
@@ -27,11 +36,11 @@ export function SettingsRail({
     const onKey = (e: Event): void => {
       const ke = e as KeyboardEvent;
       const isMeta = ke.metaKey || ke.ctrlKey;
-      if (isMeta && ke.key === 'f') {
-        ke.preventDefault();
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      }
+      if (!isMeta || ke.key !== 'f') return;
+      if (isEditableTarget(ke.target) || isEditableTarget(document.activeElement)) return;
+      ke.preventDefault();
+      inputRef.current?.focus();
+      inputRef.current?.select();
     };
     settingsRoot.addEventListener('keydown', onKey);
     return () => settingsRoot.removeEventListener('keydown', onKey);
@@ -39,7 +48,7 @@ export function SettingsRail({
 
   return (
     <nav ref={navRef} className="settings-rail" aria-label="Settings sections">
-      <div className="settings-rail-search" style={{ position: 'relative' }}>
+      <div className="settings-rail-search">
         <input
           ref={inputRef}
           type="search"
@@ -62,7 +71,26 @@ export function SettingsRail({
             onClick={() => onQueryChange('')}
             aria-label="Clear search"
           >
-            ×
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+              <line
+                x1="1"
+                y1="1"
+                x2="9"
+                y2="9"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+              <line
+                x1="9"
+                y1="1"
+                x2="1"
+                y2="9"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
           </button>
         )}
       </div>

@@ -74,6 +74,7 @@ export function recordStart(input: StartRunInput): string {
     worktreeRepoRoot: input.worktreeRepoRoot ?? null,
     mergeStatus: hasWorktree ? 'pending' : null,
     triggerSource: input.triggerSource ?? 'user',
+    seen: false,
     scheduledTaskId: input.scheduledTaskId ?? null,
   };
   runs.set(id, run);
@@ -93,6 +94,17 @@ export function setMergeStatus(id: string, status: MergeStatus): void {
   const updated: AgentRun = { ...existing, mergeStatus: status };
   runs.set(id, updated);
   emit();
+}
+
+export function markSeen(ids: readonly string[]): void {
+  let changed = false;
+  for (const id of ids) {
+    const existing = runs.get(id);
+    if (!existing || existing.seen) continue;
+    runs.set(id, { ...existing, seen: true });
+    changed = true;
+  }
+  if (changed) emit();
 }
 
 export function recordComplete(id: string, result: SubagentResult): void {

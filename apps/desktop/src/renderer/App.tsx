@@ -12,6 +12,7 @@ import { ChatProvider } from './state/chat-context';
 import { SelectedModelProvider } from './state/selected-model-context';
 import { ChatView } from './views/ChatView';
 import { AgentView } from './views/AgentView';
+import { InboxView } from './views/InboxView';
 import { AutomationsView } from './views/AutomationsView';
 import { CodebaseView } from './views/CodebaseView';
 import { ReviewView } from './views/ReviewView';
@@ -81,6 +82,14 @@ export function App(): JSX.Element {
                     element={
                       <ErrorBoundary label="AgentView">
                         <AgentView />
+                      </ErrorBoundary>
+                    }
+                  />
+                  <Route
+                    path="/inbox"
+                    element={
+                      <ErrorBoundary label="InboxView">
+                        <InboxView />
                       </ErrorBoundary>
                     }
                   />

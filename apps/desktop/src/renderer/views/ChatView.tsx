@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AddToMemoryButton } from '../components/AddToMemoryButton';
+import { CheckpointRestoreButton } from '../components/CheckpointRestoreButton';
 import { ChatBudgetOverride } from '../components/ChatBudgetOverride';
 import { CloudProviderTip } from '../components/CloudProviderTip';
 import { ModelPicker } from '../components/ModelPicker';
@@ -14,20 +15,31 @@ import {
 } from '../components/extract-file-paths';
 import { HoverHint } from '../components/HoverHint';
 import { Markdown } from '../components/Markdown';
+import { MentionPicker } from '../components/MentionPicker';
 import { SlashCommands } from '../components/SlashCommands';
 import { useToast } from '../components/Toasts';
 import {
   applyInsert,
   buildSlashGroups,
   findSkillsForTriggerText,
+  formatPluginCommandInsert,
   formatPromptInsert,
   formatSkillInsert,
   getSlashTrigger,
   type SlashCommandTrigger,
 } from '../components/slash-commands';
+import {
+  buildMentionGroups,
+  getMentionTrigger,
+  removeMentionToken,
+  selectableMentionEntries,
+  type MentionTrigger,
+} from '../components/mention-picker';
+import type { CodebaseSearchHit } from '../../shared/codebase-search';
 import { ToolCallCard } from '../components/ToolCallCard';
 import { groupContentBlocks } from '../components/tool-block-grouping';
-import { useChat, type AssistantDraft } from '../state/chat-context';
+import { useChat, type AssistantDraft, type QueuedMessage } from '../state/chat-context';
+import { useComposerDraft } from '../state/use-composer-draft';
 import { useSelectedModel } from '../state/selected-model-context';
 import { consumeTransfer, pushTransfer, useTransferPending } from '../state/transfer';
 import type { ChatAttachment } from '../../shared/attachments';
@@ -37,6 +49,7 @@ import type {
   StoredMessage,
 } from '../../shared/conversation';
 import type { McpPromptEntry } from '../../shared/mcp';
+import type { PluginSlashCommandDescriptor } from '../../shared/plugins';
 import type { Skill } from '../../shared/skills';
 
 export function ChatView(): JSX.Element {
@@ -99,17 +112,23 @@ export function ChatView(): JSX.Element {
     <section className="chat-layout">
       <div className="chat-main">
         {modelLoading ? (
-          <p className="chat-empty">Loading…</p>
+          <div className="chat-empty-center">
+            <p className="chat-empty">Loading…</p>
+          </div>
         ) : !selected ? (
-          <p className="chat-empty">
-            Pick a model in the top bar, or{' '}
-            <Link to="/settings">add a provider API key in Settings</Link>.
-          </p>
+          <div className="chat-empty-center">
+            <p className="chat-empty">
+              Pick a model in the top bar, or{' '}
+              <Link to="/settings">add a provider API key in Settings</Link>.
+            </p>
+          </div>
         ) : !selectedCapabilities ? (
-          <p className="chat-warn">
-            The previously selected model (<code>{selected.providerId}</code> ·{' '}
-            <code>{selected.modelId}</code>) isn&apos;t available. Pick another in the top bar.
-          </p>
+          <div className="chat-empty-center">
+            <p className="chat-warn chat-warn-box">
+              The previously selected model (<code>{selected.providerId}</code> ·{' '}
+              <code>{selected.modelId}</code>) isn&apos;t available. Pick another in the top bar.
+            </p>
+          </div>
         ) : (
           <ChatPane
             providerId={selected.providerId}
@@ -178,18 +197,30 @@ function ChatPane({
   onConsumeScrollTarget,
 }: ChatPaneProps): JSX.Element {
   const navigate = useNavigate();
-  const [input, setInput] = useState('');
+  const {
+    input,
+    setInput,
+    attachments,
+    setAttachments,
+    clear: clearComposerDraft,
+  } = useComposerDraft(chat.activeId);
   const [toolsEnabled, setToolsEnabled] = useState(true);
   const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
   const [mcpPrompts, setMcpPrompts] = useState<McpPromptEntry[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
+  const [pluginCommands, setPluginCommands] = useState<PluginSlashCommandDescriptor[]>([]);
   const [slashTrigger, setSlashTrigger] = useState<SlashCommandTrigger | null>(null);
   const [branching, setBranching] = useState(false);
   const toast = useToast();
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
+  // @-mention context picker — a parallel, independent set mirroring the slash
+  // machinery so the two triggers never fight.
+  const [mentionTrigger, setMentionTrigger] = useState<MentionTrigger | null>(null);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+  const [mentionHits, setMentionHits] = useState<CodebaseSearchHit[]>([]);
+  const [mentionLoading, setMentionLoading] = useState(false);
   const [debouncedInput, setDebouncedInput] = useState('');
   const [dismissedHintSkillIds, setDismissedHintSkillIds] = useState<Set<string>>(new Set());
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [preparingAttachments, setPreparingAttachments] = useState(false);
@@ -262,6 +293,26 @@ function ChatPane({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = (): void => {
+      void window.opencodex.plugins
+        .listSlashCommands()
+        .then((rows) => {
+          if (!cancelled) setPluginCommands(rows);
+        })
+        .catch(() => {
+          // Slash menu degrades gracefully when plugin commands can't load.
+        });
+    };
+    refresh();
+    const off = window.opencodex.plugins.onChanged(() => refresh());
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, []);
+
   // Lane 3 — react to inline scroll-to-message events from CommandPalette etc.
   useEffect(() => {
     const off = window.opencodex.conversations.onScrollToMessage((payload) => {
@@ -323,11 +374,55 @@ function ChatPane({
   }, [chatMessages, chatDraft]);
 
   const slashGroups = useMemo(
-    () => (slashTrigger ? buildSlashGroups(mcpPrompts, skills, slashTrigger.query) : []),
-    [slashTrigger, mcpPrompts, skills],
+    () =>
+      slashTrigger ? buildSlashGroups(mcpPrompts, skills, slashTrigger.query, pluginCommands) : [],
+    [slashTrigger, mcpPrompts, skills, pluginCommands],
   );
   const flatSlashEntries = useMemo(() => slashGroups.flatMap((g) => g.entries), [slashGroups]);
   const slashOpen = slashTrigger !== null;
+
+  const mentionGroups = useMemo(
+    () => (mentionTrigger ? buildMentionGroups(mentionHits, mentionTrigger.query) : []),
+    [mentionTrigger, mentionHits],
+  );
+  const flatMentionEntries = useMemo(
+    () => selectableMentionEntries(mentionGroups),
+    [mentionGroups],
+  );
+  const mentionOpen = mentionTrigger !== null;
+
+  // Debounced file+folder search scoped to the active workspace. Mirrors the
+  // CodebaseSearchBox debounce; results feed the @-mention dropdown only.
+  const mentionReqRef = useRef(0);
+  const mentionQuery = mentionTrigger?.query ?? null;
+  useEffect(() => {
+    const trimmed = mentionQuery === null ? '' : mentionQuery.trim();
+    if (mentionQuery === null || !activeWorkspace || trimmed.length === 0) {
+      mentionReqRef.current++;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMentionHits([]);
+      setMentionLoading(false);
+      return;
+    }
+    const reqId = ++mentionReqRef.current;
+    setMentionLoading(true);
+    const handle = window.setTimeout(() => {
+      void window.opencodex.codebase
+        .search({ workspaceRoot: activeWorkspace, query: trimmed, mode: 'filename' })
+        .then((res) => {
+          if (mentionReqRef.current !== reqId) return;
+          setMentionHits(res.hits);
+        })
+        .catch(() => {
+          if (mentionReqRef.current !== reqId) return;
+          setMentionHits([]);
+        })
+        .finally(() => {
+          if (mentionReqRef.current === reqId) setMentionLoading(false);
+        });
+    }, 200);
+    return () => window.clearTimeout(handle);
+  }, [mentionQuery, activeWorkspace]);
 
   const [lastSent, setLastSent] = useState<{ text: string; attachments: ChatAttachment[] } | null>(
     null,
@@ -335,13 +430,20 @@ function ChatPane({
 
   const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
-    if (slashOpen) return;
+    if (slashOpen || mentionOpen) return;
     const trimmed = input.trim();
-    if ((!trimmed && attachments.length === 0) || chat.streaming) return;
+    if (!trimmed && attachments.length === 0) return;
     if (preparingAttachments) return;
-    setInput('');
     const sent = attachments;
-    setAttachments([]);
+    // Mid-stream submissions queue as the next FIFO turn rather than starting a
+    // second concurrent stream; the composer still clears so the user can type more.
+    if (chat.streaming) {
+      chat.enqueue({ providerId, model: modelId, text: trimmed, attachments: sent });
+      clearComposerDraft();
+      setAttachmentError(null);
+      return;
+    }
+    clearComposerDraft();
     setAttachmentError(null);
     setLastSent({ text: trimmed, attachments: sent });
     onClearTransferOrigin?.();
@@ -434,6 +536,91 @@ function ChatPane({
     setSlashActiveIndex(0);
   };
 
+  const closeMention = (): void => {
+    setMentionTrigger(null);
+    setMentionActiveIndex(0);
+    mentionReqRef.current++;
+    setMentionHits([]);
+    setMentionLoading(false);
+  };
+
+  const consumeMentionToken = (): void => {
+    if (!mentionTrigger) return;
+    const el = inputRef.current;
+    const caret = el ? (el.selectionEnd ?? input.length) : input.length;
+    const next = removeMentionToken(input, mentionTrigger, caret);
+    setInput(next.value);
+    closeMention();
+    if (el) {
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(next.caret, next.caret);
+      });
+    }
+  };
+
+  const selectMentionFile = (hit: CodebaseSearchHit): void => {
+    if (!activeWorkspace) {
+      consumeMentionToken();
+      return;
+    }
+    const abs = joinWorkspacePath(activeWorkspace, hit.path);
+    consumeMentionToken();
+    setPreparingAttachments(true);
+    setAttachmentError(null);
+    void window.opencodex.attachments
+      .prepare({ paths: [abs] })
+      .then((result) => {
+        if (result.prepared.length > 0) {
+          setAttachments((prev) => [...prev, ...result.prepared]);
+        }
+        if (result.errors.length > 0) {
+          setAttachmentError(
+            result.errors.map((e) => `${e.path.split(/[\\/]/).pop()}: ${e.message}`).join('; '),
+          );
+        }
+      })
+      .catch((err: unknown) => {
+        setAttachmentError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setPreparingAttachments(false));
+  };
+
+  const selectMentionFolder = (hit: CodebaseSearchHit): void => {
+    if (!activeWorkspace) {
+      consumeMentionToken();
+      return;
+    }
+    const workspaceRoot = activeWorkspace;
+    consumeMentionToken();
+    setPreparingAttachments(true);
+    setAttachmentError(null);
+    void window.opencodex.codebase
+      .listDirFiles({ workspaceRoot, path: hit.path })
+      .then(async (listing) => {
+        if (listing.files.length === 0) return;
+        const paths = listing.files.map((rel) => joinWorkspacePath(workspaceRoot, rel));
+        const result = await window.opencodex.attachments.prepare({ paths });
+        if (result.prepared.length > 0) {
+          setAttachments((prev) => [...prev, ...result.prepared]);
+        }
+        const notes: string[] = [];
+        if (result.errors.length > 0) {
+          notes.push(
+            result.errors.map((e) => `${e.path.split(/[\\/]/).pop()}: ${e.message}`).join('; '),
+          );
+        }
+        if (listing.truncated) {
+          notes.push(`${hit.path}/ truncated to first ${listing.files.length} files`);
+        }
+        if (notes.length > 0) setAttachmentError(notes.join('; '));
+      })
+      .catch((err: unknown) => {
+        setAttachmentError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => setPreparingAttachments(false));
+  };
+
   const insertPrompt = (entry: McpPromptEntry): void => {
     if (!slashTrigger) return;
     const el = inputRef.current;
@@ -464,6 +651,33 @@ function ChatPane({
         el.setSelectionRange(next.caret, next.caret);
       });
     }
+  };
+
+  const insertPluginCommand = (command: PluginSlashCommandDescriptor): void => {
+    if (!slashTrigger) return;
+    const el = inputRef.current;
+    const caret = el ? (el.selectionEnd ?? input.length) : input.length;
+    const insert = formatPluginCommandInsert(command);
+    const next = applyInsert(input, slashTrigger, caret, insert);
+    setInput(next.value);
+    closeSlash();
+    if (el) {
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(next.caret, next.caret);
+      });
+    }
+    void window.opencodex.plugins
+      .runSlashCommand({ pluginId: command.pluginId, name: command.name, args: '' })
+      .then((res) => {
+        if (!res.ok) {
+          toast.show(`/${command.name} failed: ${res.error}`, { kind: 'error' });
+        }
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        toast.show(`/${command.name} failed: ${message}`, { kind: 'error' });
+      });
   };
 
   // Inline "Try /<skill>" hint — debounced 300ms; substring match against
@@ -512,15 +726,27 @@ function ChatPane({
     if (!trigger) setSlashActiveIndex(0);
   };
 
+  const updateMentionFromCaret = (value: string, caret: number): void => {
+    const trigger = getMentionTrigger(value, caret);
+    setMentionTrigger(trigger);
+    if (!trigger) {
+      setMentionActiveIndex(0);
+    }
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     const next = e.target.value;
     setInput(next);
-    updateSlashFromCaret(next, e.target.selectionEnd ?? next.length);
+    const caret = e.target.selectionEnd ?? next.length;
+    updateSlashFromCaret(next, caret);
+    updateMentionFromCaret(next, caret);
   };
 
   const handleSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>): void => {
     const el = e.currentTarget;
-    updateSlashFromCaret(el.value, el.selectionEnd ?? el.value.length);
+    const caret = el.selectionEnd ?? el.value.length;
+    updateSlashFromCaret(el.value, caret);
+    updateMentionFromCaret(el.value, caret);
   };
 
   const openSlashMenuManually = (): void => {
@@ -572,7 +798,39 @@ function ChatPane({
           const entry = flatSlashEntries[idx];
           if (entry) {
             if (entry.kind === 'mcp') insertPrompt(entry.entry);
-            else insertSkill(entry.skill);
+            else if (entry.kind === 'skill') insertSkill(entry.skill);
+            else insertPluginCommand(entry.command);
+          }
+          return;
+        }
+      }
+    }
+    if (mentionOpen) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeMention();
+        return;
+      }
+      if (flatMentionEntries.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setMentionActiveIndex((i) => (i + 1) % flatMentionEntries.length);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setMentionActiveIndex(
+            (i) => (i - 1 + flatMentionEntries.length) % flatMentionEntries.length,
+          );
+          return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          const idx = Math.min(mentionActiveIndex, flatMentionEntries.length - 1);
+          const entry = flatMentionEntries[idx];
+          if (entry) {
+            if (entry.kind === 'file') selectMentionFile(entry.hit);
+            else if (entry.kind === 'folder') selectMentionFolder(entry.hit);
           }
           return;
         }
@@ -605,15 +863,18 @@ function ChatPane({
   // Stable ref so memoized <MessageBubble /> children don't re-render on every
   // streaming text_delta. Without this, ChatPane's re-render on each delta
   // would invalidate the memo via prop identity change.
-  const handleRerun = useCallback((prompt: string): void => {
-    setInput(prompt);
-    const el = inputRef.current;
-    if (el) {
-      el.focus();
-      const len = prompt.length;
-      el.setSelectionRange(len, len);
-    }
-  }, []);
+  const handleRerun = useCallback(
+    (prompt: string): void => {
+      setInput(prompt);
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        const len = prompt.length;
+        el.setSelectionRange(len, len);
+      }
+    },
+    [setInput],
+  );
 
   const visibleMessages = chat.draft
     ? chat.messages.filter((m) => m.id !== chat.draft?.messageId)
@@ -633,7 +894,7 @@ function ChatPane({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLastAppliedSeed(seededInput);
     setInput(seededInput);
-  }, [seededInput, lastAppliedSeed]);
+  }, [seededInput, lastAppliedSeed, setInput]);
 
   useEffect(() => {
     if (!seededInput || seededInput !== lastAppliedSeed) return;
@@ -696,118 +957,102 @@ function ChatPane({
             }
           }}
         />
-        <div className="chat-header-transfer">
-          <button
-            type="button"
-            className="btn"
-            disabled={!chat.activeId || chat.streaming}
-            onClick={handleSendToAgent}
-            title="Hand the conversation to the Agent view as a new autonomous run"
-          >
-            Send to Agent
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={!chat.activeId}
-            onClick={handleSendToCodebase}
-            title="Open the Codebase view with file paths mentioned in this chat"
-          >
-            Send to Codebase
-          </button>
-          {/* Lane 9 — Branch from this conversation */}
-          <button
-            type="button"
-            className="btn"
-            disabled={!chat.activeId || branching}
-            onClick={() => {
-              if (!chat.activeId || branching) return;
-              setBranching(true);
-              void window.opencodex.git
-                .branchFromConversation({ conversationId: chat.activeId })
-                .then((res) => {
-                  if (res.ok) {
-                    toast.show(res.branch ? `Created branch ${res.branch}` : 'Branch created', {
-                      kind: 'success',
-                    });
-                  } else {
-                    toast.show(res.error ?? 'Failed to create branch', { kind: 'error' });
-                  }
-                })
-                .catch((err: unknown) => {
-                  toast.show(err instanceof Error ? err.message : String(err), { kind: 'error' });
-                })
-                .finally(() => setBranching(false));
-            }}
-            title="Create an oc/<slug> branch in the active workspace from this conversation"
-          >
-            {branching ? 'Branching…' : 'Branch from this conversation'}
-          </button>
+        <div className="chat-header-actions">
+          <div className="chat-header-transfer">
+            <button
+              type="button"
+              className="btn"
+              disabled={!chat.activeId || chat.streaming}
+              onClick={handleSendToAgent}
+              title="Hand the conversation to the Agent view as a new autonomous run"
+            >
+              Send to Agent
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={!chat.activeId}
+              onClick={handleSendToCodebase}
+              title="Open the Codebase view with file paths mentioned in this chat"
+            >
+              Send to Codebase
+            </button>
+          </div>
+          <div className="chat-header-actions-secondary">
+            {/* Lane 9 — Branch from this conversation */}
+            <button
+              type="button"
+              className="btn"
+              disabled={!chat.activeId || branching}
+              onClick={() => {
+                if (!chat.activeId || branching) return;
+                setBranching(true);
+                void window.opencodex.git
+                  .branchFromConversation({ conversationId: chat.activeId })
+                  .then((res) => {
+                    if (res.ok) {
+                      toast.show(res.branch ? `Created branch ${res.branch}` : 'Branch created', {
+                        kind: 'success',
+                      });
+                    } else {
+                      toast.show(res.error ?? 'Failed to create branch', { kind: 'error' });
+                    }
+                  })
+                  .catch((err: unknown) => {
+                    toast.show(err instanceof Error ? err.message : String(err), { kind: 'error' });
+                  })
+                  .finally(() => setBranching(false));
+              }}
+              title="Create an oc/<slug> branch in the active workspace from this conversation"
+            >
+              {branching ? 'Branching…' : 'Branch'}
+            </button>
+            {/* Lane 6 — replay this conversation against a different provider/model */}
+            <button
+              type="button"
+              className="btn"
+              disabled={!chat.activeId || chat.streaming}
+              onClick={() => setReplayModalOpen(true)}
+              title="Replay this conversation against a different provider/model and diff the outputs"
+            >
+              Replay
+            </button>
+            <ExportMenu
+              disabled={!chat.activeId || chat.streaming}
+              onExport={(fmt) => {
+                void chat.exportActive(fmt);
+              }}
+            />
+          </div>
         </div>
-        <ExportMenu
-          disabled={!chat.activeId || chat.streaming}
-          onExport={(fmt) => {
-            void chat.exportActive(fmt);
-          }}
-        />
-        {/* Lane 6 — replay this conversation against a different provider/model */}
-        <button
-          type="button"
-          className="btn"
-          disabled={!chat.activeId || chat.streaming}
-          onClick={() => setReplayModalOpen(true)}
-          title="Replay this conversation against a different provider/model and diff the outputs"
-        >
-          Replay
-        </button>
         {chat.error ? <div className="chat-error">{chat.error}</div> : null}
+        {!chat.streaming &&
+        chat.activeId !== null &&
+        chat.interruptedConversationId === chat.activeId ? (
+          <div className="chat-interrupted" role="status">
+            <span className="chat-interrupted-label">Interrupted — response was cut off.</span>{' '}
+            <button type="button" className="chat-interrupted-retry" onClick={handleRetry}>
+              Retry
+            </button>
+          </div>
+        ) : null}
       </header>
       <div className="chat-scroll" ref={scrollRef}>
         {visibleMessages.length === 0 && !chat.draft ? (
-          <div
-            className="chat-empty"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'flex-start',
-              gap: 14,
-              padding: '40px 36px',
-              maxWidth: 920,
-              margin: '0 auto',
-            }}
-          >
-            <p
-              style={{
-                margin: 0,
-                color: 'var(--text-primary)',
-                fontSize: 18,
-                fontWeight: 600,
-                letterSpacing: '-0.01em',
-              }}
-            >
-              What can I help you build?
-            </p>
-            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 13 }}>
+          <div className="chat-empty-state">
+            <p className="chat-empty-state-heading">What can I help you build?</p>
+            <p className="chat-empty-state-sub">
               Pick a starter below, or type your own question. Use{' '}
               <kbd className="chat-empty-kbd">/</kbd> to insert a skill or MCP prompt, and{' '}
               <kbd className="chat-empty-kbd">?</kbd> to see every shortcut.
             </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <div className="chat-starter-chips">
               {STARTER_CHIPS.map((chip) => (
                 <button
                   key={chip.label}
                   type="button"
+                  className="chat-starter-chip"
                   onClick={() => handleStarterChip(chip.prompt)}
-                  style={{
-                    background: 'var(--bg-elevated)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 999,
-                    padding: '6px 12px',
-                    font: 'inherit',
-                    fontSize: 12.5,
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                  }}
                 >
                   {chip.label}
                 </button>
@@ -849,6 +1094,9 @@ function ChatPane({
       >
         {/* Lane 8 — Cloud provider trust tip; self-suppresses for ollama / once dismissed */}
         <CloudProviderTip providerId={providerId} providerDisplayName={modelName} />
+        {chat.queued.length > 0 ? (
+          <QueueStrip queued={chat.queued} onRemove={chat.removeQueued} />
+        ) : null}
         {attachments.length > 0 || preparingAttachments || attachmentError ? (
           <div className="chat-attachments">
             {attachments.map((att, i) => (
@@ -872,22 +1120,49 @@ function ChatPane({
               query={slashTrigger.query}
               prompts={mcpPrompts}
               skills={skills}
+              pluginCommands={pluginCommands}
               activeIndex={Math.min(slashActiveIndex, Math.max(0, flatSlashEntries.length - 1))}
               onSelectMcp={insertPrompt}
               onSelectSkill={insertSkill}
+              onSelectPlugin={insertPluginCommand}
               onActiveIndexChange={setSlashActiveIndex}
               onClose={closeSlash}
             />
           ) : null}
+          {mentionTrigger !== null ? (
+            !activeWorkspace ? (
+              <div className="slash-commands slash-commands-empty" role="listbox">
+                <div className="slash-commands-empty-text">Pick a workspace to mention files</div>
+              </div>
+            ) : (
+              <MentionPicker
+                query={mentionTrigger.query}
+                hits={mentionHits}
+                loading={mentionLoading}
+                activeIndex={Math.min(
+                  mentionActiveIndex,
+                  Math.max(0, flatMentionEntries.length - 1),
+                )}
+                onSelectFile={selectMentionFile}
+                onSelectFolder={selectMentionFolder}
+                onActiveIndexChange={setMentionActiveIndex}
+                onClose={closeMention}
+              />
+            )
+          ) : null}
           <textarea
             ref={inputRef}
             className="chat-input"
+            aria-label="Message composer"
             value={input}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onSelect={handleSelect}
             onBlur={() => {
-              setTimeout(() => closeSlash(), 0);
+              setTimeout(() => {
+                closeSlash();
+                closeMention();
+              }, 0);
             }}
             placeholder={composerPlaceholder(modelName, transferOrigin, chat.streaming)}
             rows={5}
@@ -935,17 +1210,28 @@ function ChatPane({
           <div className="chat-composer-actions-right">
             <ModelPicker conversationId={chat.activeId} />
             {chat.streaming ? (
-              <HoverHint hint="Stop streaming (Esc)">
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    void chat.cancel();
-                  }}
-                >
-                  Stop
-                </button>
-              </HoverHint>
+              <>
+                <HoverHint hint="Stop streaming (Esc)">
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      void chat.cancel();
+                    }}
+                  >
+                    Stop
+                  </button>
+                </HoverHint>
+                <HoverHint hint="Queue for next turn">
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={input.trim().length === 0 && attachments.length === 0}
+                  >
+                    Send
+                  </button>
+                </HoverHint>
+              </>
             ) : chat.error && lastUserMessageText(chat.messages).length > 0 ? (
               <HoverHint hint="Retry last message">
                 <button type="button" className="btn btn-primary" onClick={handleRetry}>
@@ -1027,7 +1313,33 @@ function ComposerAddMenu({
             <label className="composer-add-row composer-add-row-toggle">
               <span className="composer-add-row-label">
                 <span className="composer-add-icon" aria-hidden="true">
-                  🛠
+                  {/* tools wrench */}
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    style={{ display: 'block', opacity: 0.8 }}
+                  >
+                    <mask
+                      id="icon-tools"
+                      style={{ maskType: 'alpha' }}
+                      maskUnits="userSpaceOnUse"
+                      x="0"
+                      y="0"
+                      width="16"
+                      height="16"
+                    >
+                      <path
+                        d="M10.5 1a4.5 4.5 0 0 0-4.27 5.9L1.22 11.9a1.5 1.5 0 1 0 2.12 2.12l5-5A4.5 4.5 0 0 0 14.5 4.5c0-.44-.06-.86-.17-1.27l-2.16 2.16-1.56-.44-.44-1.56 2.16-2.16A4.51 4.51 0 0 0 10.5 1Z"
+                        fill="currentColor"
+                      />
+                    </mask>
+                    <g mask="url(#icon-tools)">
+                      <rect width="16" height="16" fill="currentColor" />
+                    </g>
+                  </svg>
                 </span>
                 Tools
               </span>
@@ -1041,7 +1353,33 @@ function ComposerAddMenu({
             <div className="composer-add-row composer-add-row-disabled">
               <span className="composer-add-row-label">
                 <span className="composer-add-icon" aria-hidden="true">
-                  🛠
+                  {/* tools wrench */}
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                    style={{ display: 'block', opacity: 0.8 }}
+                  >
+                    <mask
+                      id="icon-tools-dis"
+                      style={{ maskType: 'alpha' }}
+                      maskUnits="userSpaceOnUse"
+                      x="0"
+                      y="0"
+                      width="16"
+                      height="16"
+                    >
+                      <path
+                        d="M10.5 1a4.5 4.5 0 0 0-4.27 5.9L1.22 11.9a1.5 1.5 0 1 0 2.12 2.12l5-5A4.5 4.5 0 0 0 14.5 4.5c0-.44-.06-.86-.17-1.27l-2.16 2.16-1.56-.44-.44-1.56 2.16-2.16A4.51 4.51 0 0 0 10.5 1Z"
+                        fill="currentColor"
+                      />
+                    </mask>
+                    <g mask="url(#icon-tools-dis)">
+                      <rect width="16" height="16" fill="currentColor" />
+                    </g>
+                  </svg>
                 </span>
                 Tools
               </span>
@@ -1056,7 +1394,33 @@ function ComposerAddMenu({
           >
             <span className="composer-add-row-label">
               <span className="composer-add-icon" aria-hidden="true">
-                ✦
+                {/* skills star */}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  style={{ display: 'block', opacity: 0.8 }}
+                >
+                  <mask
+                    id="icon-skills"
+                    style={{ maskType: 'alpha' }}
+                    maskUnits="userSpaceOnUse"
+                    x="0"
+                    y="0"
+                    width="16"
+                    height="16"
+                  >
+                    <path
+                      d="M8 1l1.8 3.64 4.02.58-2.91 2.84.69 4.01L8 10.1l-3.6 1.97.69-4.01L2.18 5.22l4.02-.58L8 1Z"
+                      fill="currentColor"
+                    />
+                  </mask>
+                  <g mask="url(#icon-skills)">
+                    <rect width="16" height="16" fill="currentColor" />
+                  </g>
+                </svg>
               </span>
               Skills
             </span>
@@ -1070,7 +1434,36 @@ function ComposerAddMenu({
           >
             <span className="composer-add-row-label">
               <span className="composer-add-icon" aria-hidden="true">
-                ⛓
+                {/* mcp chain links */}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  style={{ display: 'block', opacity: 0.8 }}
+                >
+                  <mask
+                    id="icon-mcp"
+                    style={{ maskType: 'alpha' }}
+                    maskUnits="userSpaceOnUse"
+                    x="0"
+                    y="0"
+                    width="16"
+                    height="16"
+                  >
+                    <path
+                      d="M6.5 9.5a3 3 0 0 0 4.24 0l2-2a3 3 0 0 0-4.24-4.24l-1.15 1.14M9.5 6.5a3 3 0 0 0-4.24 0l-2 2a3 3 0 0 0 4.24 4.24l1.14-1.14"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </mask>
+                  <g mask="url(#icon-mcp)">
+                    <rect width="16" height="16" fill="currentColor" />
+                  </g>
+                </svg>
               </span>
               MCPs
             </span>
@@ -1084,7 +1477,33 @@ function ComposerAddMenu({
           >
             <span className="composer-add-row-label">
               <span className="composer-add-icon" aria-hidden="true">
-                🧩
+                {/* plugins puzzle piece */}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  style={{ display: 'block', opacity: 0.8 }}
+                >
+                  <mask
+                    id="icon-plugins"
+                    style={{ maskType: 'alpha' }}
+                    maskUnits="userSpaceOnUse"
+                    x="0"
+                    y="0"
+                    width="16"
+                    height="16"
+                  >
+                    <path
+                      d="M6 2a1 1 0 0 0-1 1v.5H3a1 1 0 0 0-1 1V7a.5.5 0 0 0 .5.5H3a1 1 0 1 1 0 2h-.5a.5.5 0 0 0-.5.5v2.5a1 1 0 0 0 1 1h2.5a.5.5 0 0 0 .5-.5V13a1 1 0 1 1 2 0v.5a.5.5 0 0 0 .5.5H12a1 1 0 0 0 1-1V10a.5.5 0 0 0-.5-.5H12a1 1 0 1 1 0-2h.5A.5.5 0 0 0 13 7V4.5a1 1 0 0 0-1-1h-2V3a1 1 0 0 0-1-1H6Z"
+                      fill="currentColor"
+                    />
+                  </mask>
+                  <g mask="url(#icon-plugins)">
+                    <rect width="16" height="16" fill="currentColor" />
+                  </g>
+                </svg>
               </span>
               Plugins
             </span>
@@ -1144,7 +1563,24 @@ function ExportMenu({
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        Export ▾
+        Export
+        <svg
+          className="model-picker-caret"
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <path
+            d="M2 3.5L5 6.5L8 3.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
       {open ? (
         <div className="chat-export-menu" role="menu">
@@ -1208,8 +1644,9 @@ function MessageBubbleInner({ message, onRerun }: MessageBubbleProps): JSX.Eleme
         </footer>
       ) : null}
       {message.role === 'assistant' ? (
-        <div className="chat-bubble-actions" style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <div className="chat-bubble-actions">
           <AddToMemoryButton content={message.content} defaultHeading={memoryHeading} />
+          <CheckpointRestoreButton messageId={message.id} />
         </div>
       ) : null}
     </article>
@@ -1299,12 +1736,7 @@ function BlockSequence({
 }
 
 function CaretBlink(): JSX.Element {
-  const [on, setOn] = useState(true);
-  useEffect(() => {
-    const id = window.setInterval(() => setOn((v) => !v), 500);
-    return () => window.clearInterval(id);
-  }, []);
-  return <span className="chat-caret">{on ? '▍' : ' '}</span>;
+  return <span className="chat-caret" aria-hidden="true" />;
 }
 
 function composerPlaceholder(
@@ -1312,10 +1744,18 @@ function composerPlaceholder(
   transferOrigin: 'agent' | 'codebase' | null | undefined,
   streaming: boolean,
 ): string {
-  if (streaming) return 'Streaming… press Esc to stop';
+  if (streaming) return 'Generating response — press Esc to stop';
   if (transferOrigin === 'agent') return 'Continue from subagent run…';
   if (transferOrigin === 'codebase') return 'Ask about this file…';
   return `Ask ${modelName} anything…`;
+}
+
+function joinWorkspacePath(workspaceRoot: string, relativePath: string): string {
+  const sep = workspaceRoot.includes('\\') && !workspaceRoot.includes('/') ? '\\' : '/';
+  const root = workspaceRoot.replace(/[\\/]+$/, '');
+  const rel = relativePath.replace(/^[\\/]+/, '');
+  const normalizedRel = sep === '\\' ? rel.replace(/\//g, '\\') : rel;
+  return `${root}${sep}${normalizedRel}`;
 }
 
 function roleLabel(role: StoredMessage['role']): string {
@@ -1325,10 +1765,58 @@ function roleLabel(role: StoredMessage['role']): string {
     case 'assistant':
       return 'Assistant';
     case 'system':
-      return 'System';
+      return '';
     case 'tool':
-      return 'Tool';
+      return '';
   }
+}
+
+function QueueStrip({
+  queued,
+  onRemove,
+}: {
+  queued: QueuedMessage[];
+  onRemove: (id: string) => void;
+}): JSX.Element {
+  return (
+    <div className="chat-queue" role="list" aria-label="Queued messages">
+      {queued.map((q, i) => {
+        const preview = queuedPreview(q);
+        return (
+          <span
+            key={q.id}
+            className="chat-queue-chip"
+            role="listitem"
+            data-testid={`chat-queue-chip-${i}`}
+          >
+            <span className="chat-queue-chip-index">#{i + 1}</span>
+            <span className="chat-queue-chip-preview" title={preview}>
+              {preview}
+            </span>
+            <button
+              type="button"
+              className="chat-queue-chip-remove"
+              onClick={() => onRemove(q.id)}
+              aria-label={`Remove queued message ${i + 1}`}
+            >
+              ×
+            </button>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function queuedPreview(q: QueuedMessage): string {
+  const trimmed = q.text.trim();
+  if (trimmed.length > 0) return trimmed;
+  if (q.attachments.length > 0) {
+    return q.attachments.length === 1
+      ? (q.attachments[0]?.name ?? '1 attachment')
+      : `${q.attachments.length} attachments`;
+  }
+  return '';
 }
 
 function AttachmentChip({
@@ -1338,7 +1826,75 @@ function AttachmentChip({
   attachment: ChatAttachment;
   onRemove: () => void;
 }): JSX.Element {
-  const icon = attachment.kind === 'image' ? '🖼' : attachment.kind === 'text' ? '📄' : '📎';
+  const icon =
+    attachment.kind === 'image' ? (
+      /* image */
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ display: 'block' }}
+      >
+        <rect
+          x="1"
+          y="2"
+          width="14"
+          height="12"
+          rx="2"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          fill="none"
+        />
+        <circle cx="5.5" cy="6.5" r="1.5" fill="currentColor" />
+        <path
+          d="M1 12l4-4 3 3 2-2 5 5"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ) : attachment.kind === 'text' ? (
+      /* document */
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ display: 'block' }}
+      >
+        <path
+          d="M4 1h6l4 4v10H4V1Z"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          fill="none"
+        />
+        <path d="M9 1v5h4" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        <path d="M6 9h5M6 12h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    ) : (
+      /* paperclip */
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ display: 'block' }}
+      >
+        <path
+          d="M13 7.5l-5.5 5.5a4 4 0 0 1-5.66-5.66l6.36-6.36a2.5 2.5 0 0 1 3.54 3.54L5.38 10.38a1 1 0 0 1-1.42-1.42L9 4"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
   const label =
     attachment.kind === 'text' && attachment.truncated
       ? `${attachment.name} (truncated)`

@@ -41,6 +41,8 @@
       "@opencodex/mcp-client/*": ["./packages/mcp-client/src/*"],
       "@opencodex/rag-chunker": ["./packages/rag-chunker/src/index.ts"],
       "@opencodex/rag-chunker/*": ["./packages/rag-chunker/src/*"],
+      "@opencodex/code-graph": ["./packages/code-graph/src/index.ts"],
+      "@opencodex/code-graph/*": ["./packages/code-graph/src/*"],
       "@opencodex/memory-obsidian": ["./packages/memory-obsidian/src/index.ts"],
       "@opencodex/memory-obsidian/*": ["./packages/memory-obsidian/src/*"],
       "@opencodex/memory-notion": ["./packages/memory-notion/src/index.ts"],

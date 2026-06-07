@@ -30,6 +30,7 @@ const DECISION_LABELS: Record<ToolCallAuditDecision, string> = {
   'prompt-allowed': 'Prompt → allow once',
   'prompt-allowed-session': 'Prompt → session',
   'prompt-allowed-always': 'Prompt → always',
+  'prompt-allowed-partial': 'Prompt → partial hunks',
   denied: 'Denied',
 };
 
@@ -385,9 +386,9 @@ export function AuditLogPanel(): JSX.Element {
     <div className="audit-panel">
       <div className="audit-toolbar">
         <label className="audit-filter">
-          <span className="audit-filter-label">Retention</span>
+          <span className="settings-field-label">Retention</span>
           <select
-            className="approvals-select"
+            className="settings-input settings-input-select"
             value={retentionSelectValue}
             disabled={!retentionLoaded || retentionPending}
             onChange={(e) => {
@@ -405,19 +406,17 @@ export function AuditLogPanel(): JSX.Element {
           </select>
         </label>
         {clearConfirming ? (
-          <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: 'var(--danger)' }}>
-              Delete every row? This cannot be undone.
-            </span>
+          <span className="audit-confirm-row settings-field-row">
+            <span className="audit-retention-error">Delete every row? This cannot be undone.</span>
             <button
               type="button"
-              className="audit-clear-button"
+              className="btn btn-danger"
               onClick={() => {
                 void onClearLog();
               }}
               disabled={clearing || retentionPending}
             >
-              {clearing ? 'Clearing…' : 'Confirm clear'}
+              {clearing ? 'Deleting rows…' : 'Confirm clear'}
             </button>
             <button type="button" className="btn" onClick={() => setClearConfirming(false)}>
               Cancel
@@ -426,7 +425,7 @@ export function AuditLogPanel(): JSX.Element {
         ) : (
           <button
             type="button"
-            className="audit-clear-button"
+            className="btn btn-danger"
             disabled={clearing || retentionPending}
             onClick={() => setClearConfirming(true)}
           >
@@ -439,18 +438,17 @@ export function AuditLogPanel(): JSX.Element {
         )}
         <button
           type="button"
-          className="audit-clear-button"
+          className="btn"
           disabled={exporting}
           onClick={() => {
             void onExportBundle();
           }}
           title="Export a signed audit bundle (Ed25519). Verify with `npx @opencodex/audit-verify`."
         >
-          {exporting ? 'Exporting…' : 'Export bundle'}
+          {exporting ? 'Saving bundle…' : 'Export bundle'}
         </button>
         <label
           className="audit-filter"
-          style={{ marginLeft: 8 }}
           title="Best-effort append-only mirror of every tool call. On Windows this relies on filesystem ACLs (no append-only flag is available from the sandbox). On macOS/Linux the file is chmod 0o400, but a user with the same uid can still clear that bit — true append-only requires chattr +a / chflags uappnd."
         >
           <input
@@ -461,33 +459,23 @@ export function AuditLogPanel(): JSX.Element {
               void onToggleWorm(e.target.checked);
             }}
           />
-          <span className="audit-filter-label" style={{ marginLeft: 4 }}>
-            WORM
-          </span>
+          <span className="settings-field-label">WORM</span>
         </label>
         {wormEnabled && wormPath && (
-          <span
-            className="audit-retention-status"
-            title={`Append-only mirror at ${wormPath}`}
-            style={{ fontSize: 11 }}
-          >
+          <span className="audit-retention-status" title={`Append-only mirror at ${wormPath}`}>
             WORM: {wormPath}
           </span>
         )}
-        {wormWarning && wormEnabled && (
-          <span className="audit-retention-error" style={{ fontSize: 11 }}>
-            {wormWarning}
-          </span>
-        )}
+        {wormWarning && wormEnabled && <span className="audit-retention-error">{wormWarning}</span>}
         {exportStatus && <span className="audit-retention-status">{exportStatus}</span>}
         {exportError && <span className="audit-retention-error">Export error: {exportError}</span>}
       </div>
 
       <div className="audit-filters">
         <label className="audit-filter">
-          <span className="audit-filter-label">Tool</span>
+          <span className="settings-field-label">Tool</span>
           <select
-            className="approvals-select"
+            className="settings-input settings-input-select"
             value={toolFilter}
             onChange={(e) => resetPageAnd(() => setToolFilter(e.target.value))}
           >
@@ -501,9 +489,9 @@ export function AuditLogPanel(): JSX.Element {
         </label>
 
         <label className="audit-filter">
-          <span className="audit-filter-label">Decision</span>
+          <span className="settings-field-label">Decision</span>
           <select
-            className="approvals-select"
+            className="settings-input settings-input-select"
             value={decisionFilter}
             onChange={(e) => resetPageAnd(() => setDecisionFilter(e.target.value))}
           >
@@ -517,9 +505,9 @@ export function AuditLogPanel(): JSX.Element {
         </label>
 
         <label className="audit-filter">
-          <span className="audit-filter-label">Result</span>
+          <span className="settings-field-label">Result</span>
           <select
-            className="approvals-select"
+            className="settings-input settings-input-select"
             value={errorFilter}
             onChange={(e) =>
               resetPageAnd(() => setErrorFilter(e.target.value as ToolCallAuditErrorFilter))
@@ -534,9 +522,9 @@ export function AuditLogPanel(): JSX.Element {
         </label>
 
         <label className="audit-filter">
-          <span className="audit-filter-label">Time range</span>
+          <span className="settings-field-label">Time range</span>
           <select
-            className="approvals-select"
+            className="settings-input settings-input-select"
             value={timeRange}
             onChange={(e) => resetPageAnd(() => setTimeRange(e.target.value as TimeRange))}
           >
@@ -549,9 +537,9 @@ export function AuditLogPanel(): JSX.Element {
         </label>
 
         <label className="audit-filter">
-          <span className="audit-filter-label">Runner</span>
+          <span className="settings-field-label">Runner</span>
           <select
-            className="approvals-select"
+            className="settings-input settings-input-select"
             value={runnerFilter}
             onChange={(e) => resetPageAnd(() => setRunnerFilter(e.target.value))}
           >
@@ -566,9 +554,9 @@ export function AuditLogPanel(): JSX.Element {
         </label>
 
         <label className="audit-filter">
-          <span className="audit-filter-label">Trigger</span>
+          <span className="settings-field-label">Trigger</span>
           <select
-            className="approvals-select"
+            className="settings-input settings-input-select"
             value={triggerFilter}
             onChange={(e) =>
               resetPageAnd(() =>
@@ -583,10 +571,10 @@ export function AuditLogPanel(): JSX.Element {
         </label>
 
         <label className="audit-filter">
-          <span className="audit-filter-label">File path</span>
+          <span className="settings-field-label">File path</span>
           <input
             type="text"
-            className="approvals-select"
+            className="settings-input"
             placeholder="e.g. src/main"
             value={filePathDraft}
             onChange={(e) => setFilePathDraft(e.target.value)}
@@ -600,7 +588,6 @@ export function AuditLogPanel(): JSX.Element {
                 resetPageAnd(() => setFilePathFilter(filePathDraft.trim()));
               }
             }}
-            style={{ minWidth: 180 }}
           />
         </label>
       </div>
@@ -669,12 +656,42 @@ export function AuditLogPanel(): JSX.Element {
                     >
                       {row.conversationTitle}
                     </Link>
-                    <span className="audit-row-caret" aria-hidden>
-                      {isExpanded ? '▾' : '▸'}
+                    <span
+                      className="audit-row-caret"
+                      aria-hidden
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        transition:
+                          'transform var(--duration-fast, 100ms) var(--ease, cubic-bezier(.4,0,.2,1))',
+                        transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                      }}
+                    >
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 12 12"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M4.5 2.5L8 6l-3.5 3.5"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
                     </span>
                   </div>
                   {isExpanded && (
-                    <div className="audit-row-body">
+                    <div
+                      className="audit-row-body"
+                      style={{
+                        animation:
+                          'audit-row-expand var(--duration, 160ms) var(--ease-out, cubic-bezier(.16,1,.3,1)) both',
+                      }}
+                    >
                       <div className="audit-row-section">
                         <div className="audit-row-section-head">
                           <h4>Input</h4>
@@ -731,7 +748,7 @@ export function AuditLogPanel(): JSX.Element {
             <div className="audit-pagination-buttons">
               <button
                 type="button"
-                className="audit-page-button"
+                className="btn"
                 disabled={page === 0 || loading}
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
               >
@@ -739,7 +756,7 @@ export function AuditLogPanel(): JSX.Element {
               </button>
               <button
                 type="button"
-                className="audit-page-button"
+                className="btn"
                 disabled={page >= lastPage || loading}
                 onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
               >

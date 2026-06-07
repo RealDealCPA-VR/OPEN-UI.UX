@@ -61,8 +61,19 @@ export function ProviderSwitchButton({
       setError(null);
       setInitialSelection(null);
     };
+    const keyHandler = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        setError(null);
+        setInitialSelection(null);
+      }
+    };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('keydown', keyHandler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', keyHandler);
+    };
   }, [open]);
 
   const handleConfirm = async (): Promise<void> => {
@@ -91,7 +102,7 @@ export function ProviderSwitchButton({
   };
 
   const buttonLabel = selectedCapabilities
-    ? `Switch · ${selectedCapabilities.displayName}`
+    ? `Switch provider — ${selectedCapabilities.displayName}`
     : 'Switch provider';
 
   const hasChanged =
@@ -121,31 +132,30 @@ export function ProviderSwitchButton({
           aria-label="Switch provider for this conversation"
           style={{
             position: 'absolute',
-            zIndex: 50,
+            zIndex: 'var(--z-popover)' as unknown as number,
             marginTop: 4,
             background: 'var(--bg-elevated)',
             border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-md, 8px)',
+            borderRadius: 'var(--radius-lg)',
             boxShadow: 'var(--shadow-dropdown)',
             padding: 12,
             minWidth: 320,
           }}
         >
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              color: 'var(--text-muted)',
+              marginBottom: 6,
+            }}
+          >
             Pick a different provider/model
           </div>
           <ModelPicker />
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              marginTop: 10,
-              fontSize: 12,
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-            }}
-          >
+          <label className="toggle" style={{ marginTop: 10 }}>
             <input
               type="checkbox"
               checked={resendStrategy === 'summary-only'}

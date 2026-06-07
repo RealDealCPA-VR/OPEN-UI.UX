@@ -28,14 +28,14 @@ const REFRESH_AFTER_EVENT_DELAY_MS = 250;
 
 const TONE_BG: Record<'idle' | 'warn' | 'danger', string> = {
   idle: 'var(--bg-sunken)',
-  warn: 'var(--warn-bg, rgba(245, 158, 11, 0.18))',
-  danger: 'var(--danger-bg, rgba(248, 113, 113, 0.18))',
+  warn: 'var(--warn-bg)',
+  danger: 'var(--danger-bg-deep)',
 };
 
 const TONE_BORDER: Record<'idle' | 'warn' | 'danger', string> = {
   idle: 'var(--border)',
-  warn: 'var(--warn-border, var(--warn))',
-  danger: 'var(--danger-border, var(--danger))',
+  warn: 'var(--warn-border)',
+  danger: 'var(--danger-border)',
 };
 
 const TONE_FG: Record<'idle' | 'warn' | 'danger', string> = {
@@ -118,21 +118,21 @@ export function BudgetSpendIndicator({
     <Link
       to="/settings/budgets"
       title={`${state.label} — click to manage budgets`}
+      className="statusbar-mono"
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 6,
+        gap: 4,
         padding: '2px 8px',
-        borderRadius: 'var(--radius-pill, 999px)',
+        borderRadius: 'var(--radius-pill)',
         background: TONE_BG[state.tone],
         border: `1px solid ${TONE_BORDER[state.tone]}`,
         color: TONE_FG[state.tone],
-        fontSize: 11,
         textDecoration: 'none',
         whiteSpace: 'nowrap',
+        cursor: 'pointer',
       }}
     >
-      <span aria-hidden="true">$</span>
       <span>{state.label}</span>
     </Link>
   );

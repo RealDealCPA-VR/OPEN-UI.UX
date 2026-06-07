@@ -161,43 +161,55 @@ export function ScheduledTasksPanel(): JSX.Element {
 
   return (
     <div className="scheduled-tasks-panel">
-      <div className="scheduled-tasks-toolbar">
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => setEditing('new')}
-          disabled={editing !== null}
-        >
-          + New scheduled task
-        </button>
-        {actionError && <p className="approvals-save-error">{actionError}</p>}
-        {loadError && <p className="approvals-save-error">Failed to load tasks: {loadError}</p>}
+      <div className="settings-block">
+        <div className="settings-field-row">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setEditing('new')}
+            disabled={editing !== null}
+          >
+            + New scheduled task
+          </button>
+        </div>
+        {actionError && (
+          <p role="alert" className="field-errors">
+            {actionError}
+          </p>
+        )}
+        {loadError && (
+          <p role="alert" className="field-errors">
+            Failed to load tasks: {loadError}
+          </p>
+        )}
       </div>
 
-      {tasks === null ? (
-        <p className="audit-empty">Loading…</p>
-      ) : tasks.length === 0 ? (
-        <p className="audit-empty">
-          No scheduled tasks yet. Click <strong>New scheduled task</strong> to create one.
-        </p>
-      ) : (
-        <ul className="audit-list">
-          {tasks.map((task) => (
-            <ScheduledTaskCard
-              key={task.id}
-              task={task}
-              busy={busyId === task.id}
-              onRunNow={(t) => void runNow(t)}
-              onOpenHistory={(id) => setRunsDrawerTaskId(id)}
-              onEdit={(t) => setEditing(t)}
-              onToggleEnabled={(t) => void toggleEnabled(t)}
-              onReinstallHook={(t) => void reinstallHook(t)}
-              onUninstallHook={(t) => void uninstallHook(t)}
-              onDelete={(t) => void deleteTask(t)}
-            />
-          ))}
-        </ul>
-      )}
+      <div className="settings-block">
+        {tasks === null ? (
+          <p className="audit-empty">Loading…</p>
+        ) : tasks.length === 0 ? (
+          <p className="audit-empty">
+            No scheduled tasks yet. Click <strong>New scheduled task</strong> to create one.
+          </p>
+        ) : (
+          <ul className="audit-list">
+            {tasks.map((task) => (
+              <ScheduledTaskCard
+                key={task.id}
+                task={task}
+                busy={busyId === task.id}
+                onRunNow={(t) => void runNow(t)}
+                onOpenHistory={(id) => setRunsDrawerTaskId(id)}
+                onEdit={(t) => setEditing(t)}
+                onToggleEnabled={(t) => void toggleEnabled(t)}
+                onReinstallHook={(t) => void reinstallHook(t)}
+                onUninstallHook={(t) => void uninstallHook(t)}
+                onDelete={(t) => void deleteTask(t)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
 
       {editing && (
         <ScheduledTaskEditorModal

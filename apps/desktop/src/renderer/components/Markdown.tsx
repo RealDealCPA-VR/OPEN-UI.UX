@@ -424,17 +424,6 @@ function renderInlineRecursive(text: string, keyOffset: number): ReactNode {
               pushTransfer({ kind: 'chat-to-codebase', filePaths: [file], workspaceRoot: '' });
             }}
             title={`Open ${file}:${line} in Codebase`}
-            style={{
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border)',
-              borderRadius: 4,
-              padding: '0 5px',
-              font: 'inherit',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.9em',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-            }}
           >
             {tok.text}
           </button>,

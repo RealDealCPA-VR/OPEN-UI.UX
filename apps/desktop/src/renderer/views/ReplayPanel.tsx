@@ -86,12 +86,16 @@ export function ReplayPanel(): JSX.Element {
   }, [rows]);
 
   if (loading) {
-    return <p className="chat-empty">Loading applied diffs…</p>;
+    return (
+      <div className="audit-empty-state">
+        <span className="mcp-inline-spinner" aria-label="Loading" />
+      </div>
+    );
   }
 
   if (error) {
     return (
-      <div role="alert" style={{ color: 'var(--danger)', fontSize: 13 }}>
+      <div role="alert" className="field-errors">
         {error}{' '}
         <button type="button" className="btn" onClick={() => void load()}>
           Retry
@@ -103,8 +107,8 @@ export function ReplayPanel(): JSX.Element {
   if (rows.length === 0) {
     return (
       <div className="audit-empty-state">
-        <p>No applied diffs yet.</p>
-        <p className="audit-empty-sub">
+        <p className="settings-block-hint">No applied diffs yet.</p>
+        <p className="settings-block-hint">
           When the agent edits or writes a file, the change is recorded here with its prompt,
           citations, and routing decision — so you can replay it against a different model or export
           a signed provenance bundle.
@@ -114,26 +118,32 @@ export function ReplayPanel(): JSX.Element {
   }
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-        {rows.length} of {total} applied diff{total === 1 ? '' : 's'}
-        {' · '}
-        {conversations.length} conversation{conversations.length === 1 ? '' : 's'}
+    <div className="replay-panel">
+      <div className="settings-block">
+        <p className="settings-block-hint">
+          {rows.length} of {total} applied diff{total === 1 ? '' : 's'}
+          {' · '}
+          {conversations.length} conversation{conversations.length === 1 ? '' : 's'}
+        </p>
       </div>
 
-      <section style={{ display: 'grid', gap: 8 }}>
-        <h3 style={{ fontSize: 13, margin: 0 }}>Export provenance bundles</h3>
+      <div className="settings-divider" />
+
+      <div className="settings-block">
+        <h3 className="settings-subhead">Export provenance bundles</h3>
         {conversations.map((c) => (
           <ProvenanceBundleExporter key={c.id} conversationId={c.id} conversationTitle={c.title} />
         ))}
-      </section>
+      </div>
 
-      <section style={{ display: 'grid', gap: 8 }}>
-        <h3 style={{ fontSize: 13, margin: 0 }}>Replay an applied diff</h3>
+      <div className="settings-divider" />
+
+      <div className="settings-block">
+        <h3 className="settings-subhead">Replay an applied diff</h3>
         {rows.map((d) => (
           <ReplayDiffCard key={d.id} appliedDiff={d} />
         ))}
-      </section>
+      </div>
     </div>
   );
 }

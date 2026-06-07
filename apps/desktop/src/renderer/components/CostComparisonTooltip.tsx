@@ -59,12 +59,12 @@ export function CostComparisonTooltip({
       role="tooltip"
       style={{
         position: 'absolute',
-        zIndex: 100,
+        zIndex: 'var(--z-popover)' as unknown as number,
         marginTop: 4,
         right: 0,
         background: 'var(--bg-elevated)',
         border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-md, 8px)',
+        borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--shadow-dropdown)',
         padding: 10,
         minWidth: 260,

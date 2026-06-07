@@ -267,6 +267,32 @@ export function getPluginSlashCommands(id: string): RegisteredSlashCommand[] {
   return [...r.registeredCommands];
 }
 
+export interface PluginSlashCommandRef {
+  pluginId: string;
+  pluginName: string;
+  name: string;
+}
+
+export function listAllPluginSlashCommands(): PluginSlashCommandRef[] {
+  const out: PluginSlashCommandRef[] = [];
+  for (const [id, r] of runtime.entries()) {
+    if (r.status !== 'loaded') continue;
+    for (const c of r.registeredCommands) {
+      out.push({ pluginId: id, pluginName: r.manifest.displayName, name: c.name });
+    }
+  }
+  return out;
+}
+
+export function getPluginSlashCommandHandler(
+  pluginId: string,
+  name: string,
+): ((args: string) => Promise<void>) | undefined {
+  const r = runtime.get(pluginId);
+  if (!r || r.status !== 'loaded') return undefined;
+  return r.registeredCommands.find((c) => c.name === name)?.handler;
+}
+
 async function activatePlugin(id: string): Promise<void> {
   const r = runtime.get(id);
   if (!r) return;

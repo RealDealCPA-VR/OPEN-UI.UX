@@ -270,6 +270,96 @@ const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE tool_calls ADD COLUMN routing_decision_json TEXT;
     `,
   },
+  {
+    version: 17,
+    sql: `
+      ALTER TABLE messages ADD COLUMN cached_input_tokens INTEGER;
+    `,
+  },
+  {
+    version: 18,
+    sql: 'ALTER TABLE agent_runs_persistent ADD COLUMN seen INTEGER NOT NULL DEFAULT 0;',
+  },
+  {
+    version: 19,
+    sql: `
+      ALTER TABLE messages ADD COLUMN turn_status TEXT NOT NULL DEFAULT 'final';
+      CREATE INDEX idx_messages_turn_status ON messages(turn_status) WHERE turn_status = 'streaming';
+    `,
+  },
+  {
+    version: 20,
+    sql: `
+      CREATE TABLE checkpoints (
+        id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL CHECK (scope IN ('turn','run')),
+        conversation_id TEXT,
+        message_id TEXT,
+        run_id TEXT,
+        workspace_root TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('content','git')),
+        git_base_sha TEXT,
+        git_stash_ref TEXT,
+        label TEXT,
+        status TEXT NOT NULL CHECK (status IN ('active','restored','superseded')) DEFAULT 'active',
+        total_bytes INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        restored_at TEXT
+      );
+
+      CREATE INDEX idx_checkpoints_message ON checkpoints(message_id);
+      CREATE INDEX idx_checkpoints_run ON checkpoints(run_id);
+      CREATE INDEX idx_checkpoints_conversation ON checkpoints(conversation_id);
+
+      CREATE TABLE checkpoint_entries (
+        id TEXT PRIMARY KEY,
+        checkpoint_id TEXT NOT NULL REFERENCES checkpoints(id) ON DELETE CASCADE,
+        rel_path TEXT NOT NULL,
+        pre_blob_sha TEXT,
+        pre_size INTEGER NOT NULL DEFAULT 0,
+        captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(checkpoint_id, rel_path)
+      );
+
+      CREATE INDEX idx_checkpoint_entries_blob ON checkpoint_entries(pre_blob_sha);
+    `,
+  },
+  {
+    version: 21,
+    sql: `
+      CREATE TABLE code_graph_nodes (
+        workspace_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        file_type TEXT NOT NULL,
+        source_file TEXT NOT NULL,
+        start_line INTEGER,
+        end_line INTEGER,
+        language TEXT,
+        kind TEXT,
+        community INTEGER,
+        PRIMARY KEY (workspace_id, id)
+      );
+
+      CREATE INDEX idx_code_graph_nodes_workspace ON code_graph_nodes(workspace_id);
+      CREATE INDEX idx_code_graph_nodes_label ON code_graph_nodes(workspace_id, label);
+      CREATE INDEX idx_code_graph_nodes_community ON code_graph_nodes(workspace_id, community);
+
+      CREATE TABLE code_graph_edges (
+        workspace_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        target TEXT NOT NULL,
+        relation TEXT NOT NULL,
+        confidence TEXT NOT NULL,
+        confidence_score REAL NOT NULL,
+        weight REAL NOT NULL,
+        source_file TEXT NOT NULL
+      );
+
+      CREATE INDEX idx_code_graph_edges_source ON code_graph_edges(workspace_id, source);
+      CREATE INDEX idx_code_graph_edges_target ON code_graph_edges(workspace_id, target);
+    `,
+  },
 ];
 
 let db: Database.Database | null = null;

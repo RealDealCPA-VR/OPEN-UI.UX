@@ -131,7 +131,7 @@ export function FileTreeContextMenu({
                 aria-hidden
                 style={{
                   height: 1,
-                  background: 'var(--border, #333)',
+                  background: 'var(--border-row-divider)',
                   margin: '4px 6px',
                   opacity: 0.7,
                 }}
@@ -150,11 +150,7 @@ export function FileTreeContextMenu({
                   className="file-tree-context-menu-item"
                   disabled={item.disabled ?? false}
                   data-active={idx === activeIdx ? 'true' : undefined}
-                  style={
-                    idx === activeIdx
-                      ? { background: 'var(--bg-hover, rgba(255,255,255,0.06))' }
-                      : undefined
-                  }
+                  style={idx === activeIdx ? { background: 'var(--bg-row-hover)' } : undefined}
                   onMouseEnter={() => setActiveIdx(idx)}
                   onClick={() => {
                     item.onSelect();

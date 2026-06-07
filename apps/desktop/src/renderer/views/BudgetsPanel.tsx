@@ -188,23 +188,27 @@ export function BudgetsPanel(): JSX.Element {
 
   if (loadError) {
     return (
-      <div data-settings-anchor="budgets-load-error" className="chat-error">
+      <div data-settings-anchor="budgets-load-error" className="field-errors" role="alert">
         Failed to load budgets: {loadError}
       </div>
     );
   }
 
   if (budgets === null) {
-    return <p className="chat-empty">Loading budgets…</p>;
+    return (
+      <p className="settings-block-hint">
+        <span className="mcp-inline-spinner" aria-hidden="true" /> Loading budgets…
+      </p>
+    );
   }
 
   return (
     <div className="budgets-panel" data-settings-anchor="budgets">
-      <div className="settings-field-row" style={{ justifyContent: 'space-between' }}>
-        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+      <div className="settings-toggle-row">
+        <p className="settings-block-hint">
           {budgets.length === 0
-            ? 'No budgets configured. The agent runs without spending caps.'
-            : `${budgets.length} budget${budgets.length === 1 ? '' : 's'} configured.`}
+            ? 'No spending caps yet — the agent runs unconstrained. Add a budget to set limits by period or provider.'
+            : `${budgets.length} budget${budgets.length === 1 ? '' : 's'} active.`}
         </p>
         <button type="button" className="btn" onClick={startNew} disabled={editing !== null}>
           Add budget
@@ -212,36 +216,21 @@ export function BudgetsPanel(): JSX.Element {
       </div>
 
       {budgets.length > 0 ? (
-        <ul
-          style={{
-            listStyle: 'none',
-            margin: '12px 0 0',
-            padding: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-          }}
-        >
-          {budgets.map((b) => (
-            <li
-              key={b.id}
-              data-settings-anchor={`budget-${b.id}`}
-              style={{
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius)',
-                padding: 12,
-                background: 'var(--bg-panel)',
-              }}
-            >
-              <BudgetRow
-                budget={b}
-                onEdit={() => startEdit(b)}
-                onDelete={() => void deleteBudget(b)}
-                disabled={pendingId === b.id || editing !== null}
-              />
-            </li>
+        <div className="settings-block">
+          {budgets.map((b, i) => (
+            <div key={b.id}>
+              {i > 0 ? <div className="settings-divider" /> : null}
+              <div data-settings-anchor={`budget-${b.id}`}>
+                <BudgetRow
+                  budget={b}
+                  onEdit={() => startEdit(b)}
+                  onDelete={() => void deleteBudget(b)}
+                  disabled={pendingId === b.id || editing !== null}
+                />
+              </div>
+            </div>
           ))}
-        </ul>
+        </div>
       ) : null}
 
       {editing !== null ? (
@@ -271,17 +260,17 @@ function BudgetRow({
   disabled: boolean;
 }): JSX.Element {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div className="settings-toggle-row">
+      <div className="settings-block">
         <strong>
           ${budget.amountUsd.toFixed(2)} {PERIOD_LABELS[budget.period]}
         </strong>
-        <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
+        <span className="settings-block-hint">
           {formatScope(budget)} · warn at {budget.warnThresholdPct}% ·{' '}
           {budget.hardStop ? 'hard stop' : 'warn only'}
         </span>
       </div>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <div className="settings-field-row">
         <button type="button" className="btn" onClick={onEdit} disabled={disabled}>
           Edit
         </button>
@@ -313,23 +302,13 @@ function BudgetEditor({
   const patch = (next: Partial<DraftBudget>): void => onChange({ ...draft, ...next });
 
   return (
-    <div
-      style={{
-        marginTop: 16,
-        padding: 16,
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius)',
-        background: 'var(--bg-elevated)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-      }}
-    >
-      <h3 style={{ margin: 0 }}>{isNew ? 'New budget' : 'Edit budget'}</h3>
+    <div className="settings-block settings-anchor-flash">
+      <h3 className="settings-subhead">{isNew ? 'New budget' : 'Edit budget'}</h3>
 
-      <label className="field">
-        <span className="field-label">Scope</span>
+      <div className="settings-field-row">
+        <span className="settings-field-label">Scope</span>
         <select
+          className="settings-input settings-input-select"
           value={draft.scope}
           onChange={(e) => {
             const scope = e.target.value as BudgetScope;
@@ -342,12 +321,13 @@ function BudgetEditor({
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
       {draft.scope === 'provider' ? (
-        <label className="field">
-          <span className="field-label">Provider (leave empty for any provider)</span>
+        <div className="settings-field-row">
+          <span className="settings-field-label">Provider (leave empty for any provider)</span>
           <select
+            className="settings-input settings-input-select"
             value={draft.scopeId ?? ''}
             onChange={(e) => patch({ scopeId: e.target.value === '' ? null : e.target.value })}
           >
@@ -358,24 +338,28 @@ function BudgetEditor({
               </option>
             ))}
           </select>
-        </label>
+        </div>
       ) : null}
 
       {draft.scope === 'conversation' ? (
-        <label className="field">
-          <span className="field-label">Conversation id (leave empty for every conversation)</span>
+        <div className="settings-field-row">
+          <span className="settings-field-label">
+            Conversation id (leave empty for every conversation)
+          </span>
           <input
+            className="settings-input"
             type="text"
             value={draft.scopeId ?? ''}
             onChange={(e) => patch({ scopeId: e.target.value === '' ? null : e.target.value })}
             placeholder="any conversation"
           />
-        </label>
+        </div>
       ) : null}
 
-      <label className="field">
-        <span className="field-label">Period</span>
+      <div className="settings-field-row">
+        <span className="settings-field-label">Period</span>
         <select
+          className="settings-input settings-input-select"
           value={draft.period}
           onChange={(e) => patch({ period: e.target.value as BudgetPeriod })}
         >
@@ -385,21 +369,22 @@ function BudgetEditor({
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
-      <label className="field">
-        <span className="field-label">Amount (USD)</span>
+      <div className="settings-field-row">
+        <span className="settings-field-label">Amount (USD)</span>
         <input
+          className="settings-input"
           type="number"
           min={0.01}
           step={0.01}
           value={draft.amountUsd}
           onChange={(e) => patch({ amountUsd: Number(e.target.value) })}
         />
-      </label>
+      </div>
 
-      <label className="field">
-        <span className="field-label">Warn threshold: {draft.warnThresholdPct}%</span>
+      <div className="settings-field-row">
+        <span className="settings-field-label">Warn threshold: {draft.warnThresholdPct}%</span>
         <input
           type="range"
           min={0}
@@ -408,7 +393,7 @@ function BudgetEditor({
           value={draft.warnThresholdPct}
           onChange={(e) => patch({ warnThresholdPct: Number(e.target.value) })}
         />
-      </label>
+      </div>
 
       <label className="toggle">
         <input
@@ -419,9 +404,13 @@ function BudgetEditor({
         <span>Hard stop (refuse provider calls past 100%; otherwise warn only)</span>
       </label>
 
-      {saveError ? <p className="chat-error">Save failed: {saveError}</p> : null}
+      {saveError ? (
+        <p className="field-errors" role="alert">
+          Save failed: {saveError}
+        </p>
+      ) : null}
 
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+      <div className="settings-field-row">
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
         </button>

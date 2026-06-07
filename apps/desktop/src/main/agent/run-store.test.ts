@@ -35,6 +35,7 @@ function makeRun(overrides: Partial<AgentRun> = {}): AgentRun {
     worktreeRepoRoot: null,
     mergeStatus: null,
     triggerSource: 'user',
+    seen: false,
     scheduledTaskId: null,
     ...overrides,
   };
@@ -167,6 +168,28 @@ describe('run-store', () => {
     const fetched = getRunById('sched');
     expect(fetched!.triggerSource).toBe('scheduled');
     expect(fetched!.scheduledTaskId).toBe('task-99');
+  });
+
+  it('round-trips the seen flag through upsert/getRunById', () => {
+    upsertRun(makeRun({ id: 'unseen', seen: false }));
+    upsertRun(makeRun({ id: 'seen', seen: true }));
+    expect(getRunById('unseen')!.seen).toBe(false);
+    expect(getRunById('seen')!.seen).toBe(true);
+  });
+
+  it('upsert ON CONFLICT updates seen from false to true', () => {
+    upsertRun(makeRun({ id: 'r', seen: false }));
+    expect(getRunById('r')!.seen).toBe(false);
+    upsertRun(makeRun({ id: 'r', seen: true }));
+    expect(getRunById('r')!.seen).toBe(true);
+  });
+
+  it('migration 18 defaults pre-existing rows to seen=0 (false)', () => {
+    // Simulate a row written before the seen column existed by clearing it.
+    upsertRun(makeRun({ id: 'legacy', seen: true }));
+    db.prepare(`UPDATE agent_runs_persistent SET seen = 0 WHERE id = ?`).run('legacy');
+    const fetched = getRunById('legacy');
+    expect(fetched!.seen).toBe(false);
   });
 
   it('survives malformed timeline_json by falling back to defaults', () => {

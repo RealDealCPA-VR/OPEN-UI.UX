@@ -16,6 +16,20 @@ const policyEnum = z.enum(['auto', 'prompt', 'deny']);
 const decisionEnum = z.enum(['allow', 'deny']);
 const scopeEnum = z.enum(['once', 'session', 'always']);
 
+// First zod boundary for approvals:respond. The per-hunk partial override is
+// re-validated again at the tool sink (write_file's own zod inside the registry).
+export const approvalRespondSchema = z.object({
+  requestId: z.string().min(1),
+  decision: decisionEnum,
+  scope: scopeEnum,
+  override: z
+    .object({
+      toolName: z.literal('write_file'),
+      arguments: z.object({ path: z.string().min(1), content: z.string() }),
+    })
+    .optional(),
+});
+
 export function registerApprovalHandlers(): void {
   initApprovalManager(
     broadcastApprovalRequest,
@@ -50,17 +64,9 @@ export function registerApprovalHandlers(): void {
     },
   );
 
-  registerInvoke(
-    'approvals:respond',
-    z.object({
-      requestId: z.string().min(1),
-      decision: decisionEnum,
-      scope: scopeEnum,
-    }),
-    (req) => {
-      getApprovalManager().respond(req);
-    },
-  );
+  registerInvoke('approvals:respond', approvalRespondSchema, (req) => {
+    getApprovalManager().respond(req);
+  });
 
   registerInvoke(
     'approvals:read-file-preview',

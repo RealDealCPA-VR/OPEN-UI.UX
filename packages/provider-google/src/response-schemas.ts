@@ -49,6 +49,14 @@ export const streamChunkSchema = z.object({
   promptFeedback: promptFeedbackSchema.optional(),
 });
 
+export const embedContentResponseSchema = z.object({
+  embedding: z.object({ values: z.array(z.number()) }),
+});
+
+export const batchEmbedContentsResponseSchema = z.object({
+  embeddings: z.array(z.object({ values: z.array(z.number()) })),
+});
+
 export type StreamChunk = z.infer<typeof streamChunkSchema>;
 export type GoogleUsageMetadata = z.infer<typeof usageMetadataSchema>;
 export type GooglePart = z.infer<typeof partSchema>;

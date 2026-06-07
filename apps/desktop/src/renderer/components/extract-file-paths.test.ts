@@ -13,8 +13,10 @@ function makeMsg(overrides: Partial<StoredMessage>): StoredMessage {
     modelId: null,
     inputTokens: null,
     outputTokens: null,
+    cachedInputTokens: null,
     costUsd: null,
     createdAt: '2026-01-01T00:00:00Z',
+    turnStatus: 'final',
     ...overrides,
   };
 }

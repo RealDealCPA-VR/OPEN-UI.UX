@@ -164,14 +164,14 @@ export function ChatBudgetOverride({
       <BudgetSpendIndicator conversationId={conversationId} />
       <button
         type="button"
-        className="btn"
+        className={existing ? 'btn pill-ok' : 'btn'}
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="dialog"
         aria-expanded={open}
         title="Override the spending cap just for this conversation"
       >
-        {existing ? 'Budget ✓' : 'Set budget'}
+        {existing ? 'Edit budget' : 'Set budget'}
       </button>
       {open ? (
         <div
@@ -182,13 +182,13 @@ export function ChatBudgetOverride({
             position: 'absolute',
             top: 'calc(100% + 6px)',
             right: 0,
-            zIndex: 20,
+            zIndex: 900,
             background: 'var(--bg-elevated)',
             border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-md, 8px)',
+            borderRadius: 'var(--radius-lg)',
             padding: 12,
             minWidth: 240,
-            boxShadow: 'var(--shadow-popover, 0 6px 20px rgba(0,0,0,0.18))',
+            boxShadow: 'var(--shadow-dropdown)',
             display: 'flex',
             flexDirection: 'column',
             gap: 10,
@@ -198,8 +198,8 @@ export function ChatBudgetOverride({
           <strong style={{ fontSize: 12 }}>
             {existing ? 'Conversation budget' : 'New conversation budget'}
           </strong>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ color: 'var(--text-secondary)' }}>Max spend (USD)</span>
+          <label className="field">
+            <span className="field-label">Max spend (USD)</span>
             <input
               type="number"
               min={0.01}
@@ -209,8 +209,8 @@ export function ChatBudgetOverride({
               aria-label="Max spend USD"
             />
           </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ color: 'var(--text-secondary)' }}>Warn at {form.warnPct}%</span>
+          <label className="field">
+            <span className="field-label">Warn at {form.warnPct}%</span>
             <input
               type="range"
               min={0}
@@ -221,7 +221,7 @@ export function ChatBudgetOverride({
               aria-label="Warn percent"
             />
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label className="toggle">
             <input
               type="checkbox"
               checked={form.hardStop}
@@ -229,9 +229,7 @@ export function ChatBudgetOverride({
             />
             <span>Hard stop at 100%</span>
           </label>
-          {error ? (
-            <p style={{ color: 'var(--danger)', margin: 0, fontSize: 11 }}>{error}</p>
-          ) : null}
+          {error ? <p className="field-errors">{error}</p> : null}
           <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
             {existing ? (
               <button

@@ -162,6 +162,105 @@ describe('ApprovalManager', () => {
     expect(stored.toolOverrides.write_file).toBe('auto');
   });
 
+  it('carries a partial override on allow and resolves with prompt-once source', async () => {
+    const ac = new AbortController();
+    const promise = manager.requestApproval({
+      streamId: 's1',
+      toolName: 'edit_file',
+      toolDescription: 'edit',
+      permissionTier: 'write',
+      arguments: { path: 'x', oldString: 'a', newString: 'b' },
+      signal: ac.signal,
+    });
+    manager.respond({
+      requestId: broadcasts[0]!.requestId,
+      decision: 'allow',
+      scope: 'once',
+      override: { toolName: 'write_file', arguments: { path: 'x', content: 'final' } },
+    });
+    expect(await promise).toEqual({
+      decision: 'allow',
+      source: 'prompt-once',
+      override: { toolName: 'write_file', arguments: { path: 'x', content: 'final' } },
+    });
+  });
+
+  it('override + session scope MUST NOT cache a session override', async () => {
+    const ac = new AbortController();
+    const p1 = manager.requestApproval({
+      streamId: 's1',
+      toolName: 'edit_file',
+      toolDescription: 'edit',
+      permissionTier: 'write',
+      arguments: { path: 'x', oldString: 'a', newString: 'b' },
+      signal: ac.signal,
+    });
+    manager.respond({
+      requestId: broadcasts[0]!.requestId,
+      decision: 'allow',
+      scope: 'session',
+      override: { toolName: 'write_file', arguments: { path: 'x', content: 'final' } },
+    });
+    await p1;
+
+    // A subsequent same-tool/same-stream call must still PROMPT — the partial
+    // was never cached as a session override.
+    broadcasts = [];
+    const p2 = manager.requestApproval({
+      streamId: 's1',
+      toolName: 'edit_file',
+      toolDescription: 'edit',
+      permissionTier: 'write',
+      arguments: { path: 'y', oldString: 'a', newString: 'b' },
+      signal: ac.signal,
+    });
+    expect(broadcasts).toHaveLength(1);
+    manager.respond({ requestId: broadcasts[0]!.requestId, decision: 'deny', scope: 'once' });
+    await p2;
+  });
+
+  it('override + always scope MUST NOT write a tool policy', async () => {
+    const ac = new AbortController();
+    const promise = manager.requestApproval({
+      streamId: 's1',
+      toolName: 'edit_file',
+      toolDescription: 'edit',
+      permissionTier: 'write',
+      arguments: { path: 'x', oldString: 'a', newString: 'b' },
+      signal: ac.signal,
+    });
+    manager.respond({
+      requestId: broadcasts[0]!.requestId,
+      decision: 'allow',
+      scope: 'always',
+      override: { toolName: 'write_file', arguments: { path: 'x', content: 'final' } },
+    });
+    await promise;
+    expect(stored.toolOverrides.edit_file).toBeUndefined();
+    expect(stored.toolOverrides.write_file).toBeUndefined();
+  });
+
+  it('ignores an override on a deny decision', async () => {
+    const ac = new AbortController();
+    const promise = manager.requestApproval({
+      streamId: 's1',
+      toolName: 'edit_file',
+      toolDescription: 'edit',
+      permissionTier: 'write',
+      arguments: { path: 'x', oldString: 'a', newString: 'b' },
+      signal: ac.signal,
+    });
+    manager.respond({
+      requestId: broadcasts[0]!.requestId,
+      decision: 'deny',
+      scope: 'once',
+      override: { toolName: 'write_file', arguments: { path: 'x', content: 'final' } },
+    });
+    const outcome = await promise;
+    expect(outcome.decision).toBe('deny');
+    expect(outcome.override).toBeUndefined();
+  });
+
   it('abort rejects the pending request', async () => {
     const ac = new AbortController();
     const promise = manager.requestApproval({

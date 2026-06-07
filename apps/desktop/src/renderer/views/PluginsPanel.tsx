@@ -106,7 +106,7 @@ export function PluginsPanel(): JSX.Element {
   if (tab === 'search') {
     return (
       <div className="plugins-panel">
-        <div className="plugins-tabs" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <div className="plugins-tabs settings-field-row">
           <button type="button" className="btn" onClick={() => setTab('installed')}>
             Installed
           </button>
@@ -119,11 +119,11 @@ export function PluginsPanel(): JSX.Element {
     );
   }
 
-  if (!plugins) return <p className="settings-section-desc">Loading…</p>;
+  if (!plugins) return <p className="settings-block-hint">Loading…</p>;
 
   return (
     <div className="plugins-panel">
-      <div className="plugins-tabs" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      <div className="plugins-tabs settings-field-row">
         <button type="button" className="btn btn-primary" onClick={() => setTab('installed')}>
           Installed
         </button>
@@ -134,9 +134,9 @@ export function PluginsPanel(): JSX.Element {
       {error && <div className="mcp-panel-error">{error}</div>}
 
       {availablePresets.length > 0 && (
-        <section className="plugins-presets">
-          <h3 className="plugins-presets-head">Available plugins</h3>
-          <p className="plugins-presets-desc">
+        <div className="settings-block plugins-presets">
+          <h3 className="settings-subhead">Available plugins</h3>
+          <p className="settings-block-hint">
             Bundled with OpenCodex. Click Install to enable — no download required.
           </p>
           <ul className="plugins-presets-list">
@@ -163,7 +163,7 @@ export function PluginsPanel(): JSX.Element {
               );
             })}
           </ul>
-        </section>
+        </div>
       )}
 
       <div className="plugins-toolbar">
@@ -256,10 +256,8 @@ export function PluginsPanel(): JSX.Element {
                   {item.enabled ? 'Disable' : 'Enable'}
                 </button>
                 {confirmingUninstall === item.id ? (
-                  <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, color: 'var(--danger)' }}>
-                      Uninstall {item.manifest.displayName}?
-                    </span>
+                  <span className="plugin-uninstall-confirm settings-field-row">
+                    <span className="field-errors">Uninstall {item.manifest.displayName}?</span>
                     <button
                       type="button"
                       className="btn btn-danger"

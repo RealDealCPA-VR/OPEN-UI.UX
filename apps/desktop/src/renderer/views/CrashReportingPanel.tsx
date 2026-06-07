@@ -81,10 +81,14 @@ export function CrashReportingPanel(): JSX.Element {
   };
 
   if (loadError) {
-    return <p className="chat-warn">Failed to load crash-reporting config: {loadError}</p>;
+    return (
+      <div role="alert" className="crash-load-error field-errors">
+        Failed to load crash-reporting config: {loadError}
+      </div>
+    );
   }
   if (!config) {
-    return <p className="crash-loading">Loading…</p>;
+    return <p className="crash-loading settings-skeleton">Loading…</p>;
   }
 
   return (
@@ -163,7 +167,11 @@ export function CrashReportingPanel(): JSX.Element {
         </select>
       </div>
 
-      {saveError ? <p className="chat-warn">{saveError}</p> : null}
+      {saveError ? (
+        <div role="alert" className="crash-save-error field-errors">
+          {saveError}
+        </div>
+      ) : null}
     </div>
   );
 }

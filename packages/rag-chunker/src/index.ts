@@ -291,6 +291,57 @@ export async function chunkBySymbols(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Symbol / call / import extraction (same parse, different output)
+// ---------------------------------------------------------------------------
+
+import { extractFromTree, type ExtractNode, type ExtractionResult } from './symbol-extraction.js';
+
+export type {
+  ExtractionResult,
+  RawSymbol,
+  RawCall,
+  RawImport,
+  SymbolKind,
+  SourceLocation,
+} from './symbol-extraction.js';
+
+export type ExtractSymbolsOptions = {
+  code: string;
+  language: string;
+  filePath: string;
+};
+
+/**
+ * Emit an `ExtractionResult` (symbols + edges-via-parentId + raw calls +
+ * imports) from the SAME tree-sitter parse `chunkBySymbols` uses. Returns an
+ * empty result if no grammar is registered for the language or the parse fails
+ * — extraction is best-effort and never throws to the caller.
+ *
+ * The shape is a structural twin of `@opencodex/code-graph`'s contract; we do
+ * not import that package (it would create a dependency cycle).
+ */
+export async function extractSymbols(opts: ExtractSymbolsOptions): Promise<ExtractionResult> {
+  const empty: ExtractionResult = { symbols: [], calls: [], imports: [] };
+  if (!grammars.has(opts.language)) return empty;
+
+  try {
+    const Parser = await ensureParserInitialized();
+    const grammarSource = grammars.get(opts.language) as GrammarSource;
+    const lang = await Parser.Language.load(grammarSource);
+    const parser = new Parser();
+    parser.setLanguage(lang);
+    const tree = parser.parse(opts.code);
+    return extractFromTree(tree.rootNode as unknown as ExtractNode, {
+      source: opts.code,
+      language: opts.language,
+      filePath: opts.filePath,
+    });
+  } catch {
+    return empty;
+  }
+}
+
 function spansToChunks(
   spans: Array<{ start: number; end: number; name?: string }>,
   source: string,

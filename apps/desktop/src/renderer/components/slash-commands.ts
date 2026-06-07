@@ -1,4 +1,5 @@
 import type { McpPromptEntry } from '../../shared/mcp';
+import type { PluginSlashCommandDescriptor } from '../../shared/plugins';
 import type { Skill } from '../../shared/skills';
 
 export interface SlashCommandTrigger {
@@ -6,7 +7,10 @@ export interface SlashCommandTrigger {
   start: number;
 }
 
-export type SlashEntry = { kind: 'mcp'; entry: McpPromptEntry } | { kind: 'skill'; skill: Skill };
+export type SlashEntry =
+  | { kind: 'mcp'; entry: McpPromptEntry }
+  | { kind: 'skill'; skill: Skill }
+  | { kind: 'plugin'; command: PluginSlashCommandDescriptor };
 
 export interface SlashGroup {
   header: string;
@@ -99,15 +103,54 @@ export function formatSkillInsert(skill: Skill): string {
   return `${head} ${placeholders}`;
 }
 
+export function filterPluginCommands(
+  commands: ReadonlyArray<PluginSlashCommandDescriptor>,
+  query: string,
+): PluginSlashCommandDescriptor[] {
+  if (commands.length === 0) return [];
+  const q = query.trim().toLowerCase();
+  if (q === '') return [...commands];
+  return commands.filter((c) => {
+    const name = c.name.toLowerCase();
+    const pluginName = c.pluginName.toLowerCase();
+    const desc = (c.description ?? '').toLowerCase();
+    return name.includes(q) || pluginName.includes(q) || desc.includes(q);
+  });
+}
+
+export function groupByPlugin(
+  commands: ReadonlyArray<PluginSlashCommandDescriptor>,
+): Array<{ pluginId: string; pluginName: string; commands: PluginSlashCommandDescriptor[] }> {
+  const map = new Map<
+    string,
+    { pluginId: string; pluginName: string; commands: PluginSlashCommandDescriptor[] }
+  >();
+  for (const c of commands) {
+    let g = map.get(c.pluginId);
+    if (!g) {
+      g = { pluginId: c.pluginId, pluginName: c.pluginName, commands: [] };
+      map.set(c.pluginId, g);
+    }
+    g.commands.push(c);
+  }
+  return Array.from(map.values());
+}
+
+export function formatPluginCommandInsert(command: PluginSlashCommandDescriptor): string {
+  return `/${command.name} `;
+}
+
 /**
  * Build the grouped entry list shown in the dropdown. Skills land in a single
- * "Skills" group; MCP prompts get one group per server. Returns groups in the
- * order: Skills (if any), then MCP groups in their original order.
+ * "Skills" group; MCP prompts get one group per server; plugin slash commands
+ * get one group per plugin. Returns groups in the order: Skills (if any), then
+ * MCP groups, then Plugin groups, each in their original order.
  */
 export function buildSlashGroups(
   prompts: ReadonlyArray<McpPromptEntry>,
   skills: ReadonlyArray<Skill>,
   query: string,
+  pluginCommands: ReadonlyArray<PluginSlashCommandDescriptor> = [],
 ): SlashGroup[] {
   const groups: SlashGroup[] = [];
   const skillMatches = filterSkills(skills, query);
@@ -123,6 +166,14 @@ export function buildSlashGroups(
     groups.push({
       header: `MCP — ${g.serverDisplayName}`,
       entries: g.prompts.map((entry) => ({ kind: 'mcp', entry })),
+    });
+  }
+  const pluginMatches = filterPluginCommands(pluginCommands, query);
+  const pluginGroups = groupByPlugin(pluginMatches);
+  for (const g of pluginGroups) {
+    groups.push({
+      header: `Plugin — ${g.pluginName}`,
+      entries: g.commands.map((command) => ({ kind: 'plugin', command })),
     });
   }
   return groups;

@@ -86,7 +86,11 @@ export function TelemetryPanel(): JSX.Element {
   };
 
   if (loadError) {
-    return <p className="chat-warn">Failed to load telemetry config: {loadError}</p>;
+    return (
+      <p className="field-errors" role="alert">
+        Failed to load telemetry config: {loadError}
+      </p>
+    );
   }
   if (!config) {
     return <p className="telemetry-loading">Loading…</p>;
@@ -123,6 +127,11 @@ export function TelemetryPanel(): JSX.Element {
         <label className="settings-field-label" htmlFor="telemetry-api-key">
           PostHog project API key
         </label>
+        {saveError && savingField === null && savedFlash !== 'apiKey' ? (
+          <p className="field-errors" role="alert">
+            {saveError}
+          </p>
+        ) : null}
         <div className="settings-field-row">
           <input
             id="telemetry-api-key"
@@ -142,7 +151,7 @@ export function TelemetryPanel(): JSX.Element {
             Save
           </button>
           {savedFlash === 'apiKey' && (
-            <span aria-live="polite" style={{ fontSize: 12, color: 'var(--success)' }}>
+            <span aria-live="polite" className="settings-saved-flash">
               Saved
             </span>
           )}
@@ -153,6 +162,11 @@ export function TelemetryPanel(): JSX.Element {
         <label className="settings-field-label" htmlFor="telemetry-host">
           Custom host (optional)
         </label>
+        {saveError && savingField === null && savedFlash !== 'host' ? (
+          <p className="field-errors" role="alert">
+            {saveError}
+          </p>
+        ) : null}
         <div className="settings-field-row">
           <input
             id="telemetry-host"
@@ -172,15 +186,13 @@ export function TelemetryPanel(): JSX.Element {
             Save
           </button>
           {savedFlash === 'host' && (
-            <span aria-live="polite" style={{ fontSize: 12, color: 'var(--success)' }}>
+            <span aria-live="polite" className="settings-saved-flash">
               Saved
             </span>
           )}
         </div>
         <p className="settings-block-hint">Leave blank to use the PostHog default cloud host.</p>
       </div>
-
-      {saveError ? <p className="chat-warn">{saveError}</p> : null}
     </div>
   );
 }

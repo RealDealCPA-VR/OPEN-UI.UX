@@ -32,6 +32,7 @@ function makeRun(
     worktreeRepoRoot: null,
     mergeStatus: null,
     triggerSource: 'user',
+    seen: false,
     scheduledTaskId: null,
     ...overrides,
   };

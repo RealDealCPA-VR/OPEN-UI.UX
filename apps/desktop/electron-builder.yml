@@ -8,6 +8,8 @@ files:
 extraResources:
   - from: build/icon.png
     to: icon.png
+  - from: build/tree-sitter
+    to: tree-sitter
   - from: ../../packages/runner-claude-code/dist
     to: plugins/runner-claude-code/dist
   - from: ../../packages/runner-claude-code/opencodex.plugin.json

@@ -103,23 +103,9 @@ export function ApprovalsPanel(): JSX.Element {
 
   if (loadError) {
     return (
-      <div
-        className="approvals-error"
-        role="alert"
-        style={{
-          padding: 10,
-          background: 'var(--danger-bg)',
-          border: '1px solid var(--danger-border)',
-          borderRadius: 6,
-        }}
-      >
+      <div className="field-errors approvals-load-error" role="alert">
         <div>Failed to load approval policies: {loadError}</div>
-        <button
-          type="button"
-          className="btn btn-danger"
-          onClick={() => window.location.reload()}
-          style={{ marginTop: 6 }}
-        >
+        <button type="button" className="btn btn-danger" onClick={() => window.location.reload()}>
           Retry
         </button>
       </div>
@@ -135,9 +121,9 @@ export function ApprovalsPanel(): JSX.Element {
 
   return (
     <div className="approvals-panel">
-      <div className="approvals-subsection">
-        <h3 className="approvals-subhead">Tier defaults</h3>
-        <p className="approvals-subhead-desc">
+      <div className="settings-block">
+        <h3 className="settings-subhead">Tier defaults</h3>
+        <p className="settings-block-hint">
           Applies to every tool in that tier unless overridden below.
         </p>
         <ul className="approvals-list">
@@ -148,7 +134,7 @@ export function ApprovalsPanel(): JSX.Element {
                 <span className="approvals-row-desc">{TIER_DESCRIPTIONS[tier]}</span>
               </div>
               <select
-                className="approvals-select"
+                className="settings-input settings-input-select"
                 value={policies.tierDefaults[tier]}
                 disabled={pendingKey === `tier:${tier}`}
                 onChange={(e) => void setTierPolicy(tier, e.target.value as ApprovalPolicy)}
@@ -162,9 +148,11 @@ export function ApprovalsPanel(): JSX.Element {
         </ul>
       </div>
 
-      <div className="approvals-subsection">
-        <h3 className="approvals-subhead">Per-tool overrides</h3>
-        <p className="approvals-subhead-desc">
+      <div className="settings-divider" />
+
+      <div className="settings-block">
+        <h3 className="settings-subhead">Per-tool overrides</h3>
+        <p className="settings-block-hint">
           Override a single tool. <em>Inherit</em> uses the tier default above.
         </p>
         {TIER_ORDER.map((tier) =>
@@ -192,19 +180,12 @@ export function ApprovalsPanel(): JSX.Element {
                         <span className="approvals-row-desc" title={tool.description}>
                           {tool.description}
                         </span>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: 'var(--text-muted)',
-                            display: 'block',
-                            marginTop: 2,
-                          }}
-                        >
+                        <span className="approvals-row-tier-hint">
                           Default for <code>{tier}</code> tier: {POLICY_LABELS[tierDefault]}
                         </span>
                       </div>
                       <select
-                        className="approvals-select"
+                        className="settings-input settings-input-select"
                         value={value}
                         disabled={pendingKey === `tool:${tool.name}`}
                         onChange={(e) => {
@@ -229,21 +210,25 @@ export function ApprovalsPanel(): JSX.Element {
         )}
       </div>
 
-      {saveError && <p className="approvals-save-error">Failed to save: {saveError}</p>}
+      {saveError && (
+        <p className="field-errors" role="alert">
+          Failed to save: {saveError}
+        </p>
+      )}
     </div>
   );
 }
 
 function SkeletonRows({ count }: { count: number }): JSX.Element {
   return (
-    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+    <ul className="approvals-skeleton-list">
       {Array.from({ length: count }).map((_, i) => (
         <li
           key={i}
           aria-hidden="true"
           style={{
             height: 36,
-            borderRadius: 6,
+            borderRadius: 'var(--radius-sm)',
             background:
               'linear-gradient(90deg, var(--bg-elevated) 0%, var(--border) 50%, var(--bg-elevated) 100%)',
             backgroundSize: '200% 100%',
@@ -251,15 +236,6 @@ function SkeletonRows({ count }: { count: number }): JSX.Element {
           }}
         />
       ))}
-      <style>{`
-        @keyframes settings-skeleton-pulse {
-          0% { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          li[aria-hidden="true"] { animation: none !important; }
-        }
-      `}</style>
     </ul>
   );
 }

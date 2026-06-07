@@ -56,32 +56,15 @@ export function OnboardingBanner(): JSX.Element | null {
   const stepsDone = Number(providerDone) + Number(keyDone) + Number(workspaceDone) + Number(false);
 
   return (
-    <aside
-      className="onboarding-banner"
-      role="region"
-      aria-label="Welcome"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        flexWrap: 'wrap',
-      }}
-    >
-      <div className="onboarding-banner-text" style={{ flex: '1 1 320px', minWidth: 0 }}>
+    <aside className="onboarding-banner" role="region" aria-label="Welcome">
+      <div className="onboarding-banner-text">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <h2 className="onboarding-banner-title" style={{ margin: 0 }}>
-            Welcome to OpenCodex
+            Finish setting up OpenCodex
           </h2>
           <span
+            className="pill pill-muted"
             aria-label={`Setup progress: ${stepsDone} of ${TOTAL_STEPS} steps complete`}
-            style={{
-              fontSize: 11,
-              padding: '2px 8px',
-              borderRadius: 999,
-              background: 'var(--bg-elevated, rgba(255,255,255,0.06))',
-              color: 'var(--text-muted, #98a0aa)',
-              border: '1px solid var(--border, #2a2a32)',
-            }}
           >
             {stepsDone} of {TOTAL_STEPS} done
           </span>
@@ -94,7 +77,7 @@ export function OnboardingBanner(): JSX.Element | null {
               : 'Resume the welcome flow to install starter skills or finish onboarding.'}
         </p>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="onboarding-banner-actions">
         {!providerDone ? (
           <button type="button" className="btn btn-primary" onClick={goToProviders}>
             Configure a provider

@@ -103,7 +103,13 @@ export function ScheduledTaskRunsDrawer({
   return (
     <aside className="agent-run-drawer scheduled-task-runs-drawer" aria-label="Run history">
       <header className="agent-run-drawer-header">
-        <h3>History · {task.name}</h3>
+        <h3 className="agent-run-drawer-title">
+          <span className="agent-run-drawer-title-label">History</span>
+          <span className="agent-run-drawer-title-sep" aria-hidden="true">
+            ·
+          </span>
+          <span className="agent-run-drawer-title-task">{task.name}</span>
+        </h3>
         <button type="button" className="btn" onClick={onClose}>
           Close
         </button>
@@ -136,7 +142,7 @@ export function ScheduledTaskRunsDrawer({
                   {run.status}
                 </span>
                 {run.wasCatchup && <span className="pill">catchup</span>}
-                {run.errorMessage && <span className="audit-row-duration">{run.errorMessage}</span>}
+                {run.errorMessage && <span className="audit-row-error">{run.errorMessage}</span>}
               </div>
               {agentRun && (
                 <div className="audit-row-body">
@@ -159,7 +165,14 @@ export function ScheduledTaskRunsDrawer({
       {hasMore && (
         <div className="scheduled-task-runs-loadmore">
           <button type="button" className="btn" disabled={loading} onClick={() => void loadMore()}>
-            {loading ? 'Loading…' : 'Load more'}
+            {loading ? (
+              <>
+                <span className="mcp-inline-spinner" aria-hidden="true" />
+                Loading…
+              </>
+            ) : (
+              'Load more'
+            )}
           </button>
         </div>
       )}

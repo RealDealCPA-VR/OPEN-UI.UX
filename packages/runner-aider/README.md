@@ -38,11 +38,11 @@ aider --yes --message "<task>" --map-tokens 0
 
 ## Event mapping
 
-Aider emits human-readable stdout, not structured JSON. This runner sets
-`streaming: false` in the manifest so the desktop app renders a spinner-style
-progress indicator rather than a token-by-token cursor. Internally each
-stdout line is still relayed as a `text_delta` so the conversation transcript
-captures Aider's output verbatim.
+Aider emits human-readable stdout, not structured JSON. Aider itself runs with
+`--no-stream` (no token-by-token cursor), but the runner relays each stdout
+line as a separate `text_delta` as it arrives, so the `ChatEvent` iterator is
+streaming in the contract sense. The runner therefore sets `streaming: true` in
+the manifest, and the conversation transcript captures Aider's output verbatim.
 
 | Aider stdout / process state | OpenCodex `ChatEvent`                     |
 | ---------------------------- | ----------------------------------------- |

@@ -16,6 +16,7 @@ function shallowChanged(a: AgentRun, b: AgentRun): boolean {
     a.stopReason !== b.stopReason ||
     a.error !== b.error ||
     a.mergeStatus !== b.mergeStatus ||
+    a.seen !== b.seen ||
     a.toolEvents.length !== b.toolEvents.length
   );
 }

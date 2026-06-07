@@ -5,6 +5,7 @@ import type {
   ReplayResult,
 } from '../../shared/replay';
 import { useSelectedModel } from '../state/selected-model-context';
+import { Modal } from './Modal';
 
 export interface ReplayConversationModalProps {
   conversationId: string;
@@ -96,38 +97,17 @@ export function ReplayConversationModal({
       : null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="replay-modal-title"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.4)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) onClose();
-      }}
+    <Modal
+      open
+      onClose={onClose}
+      labelledBy="replay-modal-title"
+      className="approval-modal"
+      closeOnBackdrop={!busy}
     >
-      <div
-        style={{
-          background: 'var(--bg-panel)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-lg, 12px)',
-          padding: 20,
-          width: 'min(620px, 90vw)',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          boxShadow: 'var(--shadow-modal)',
-        }}
-      >
-        <h2 id="replay-modal-title" style={{ marginTop: 0, marginBottom: 12 }}>
-          Replay conversation
-        </h2>
+      <div style={{ width: 'min(620px, 90vw)', maxHeight: '90vh', overflow: 'auto' }}>
+        <header className="approval-modal-header">
+          <h2 id="replay-modal-title">Replay conversation</h2>
+        </header>
 
         <div style={{ display: 'grid', gap: 12 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -163,7 +143,7 @@ export function ReplayConversationModal({
             </select>
           </label>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label className="toggle">
             <input
               type="checkbox"
               checked={diffAgainstOriginal}
@@ -177,10 +157,10 @@ export function ReplayConversationModal({
             <div
               role="alert"
               style={{
-                background: 'var(--danger-bg, #fee)',
-                border: '1px solid var(--danger-border, #fcc)',
-                color: 'var(--danger, #900)',
-                borderRadius: 6,
+                background: 'var(--danger-bg)',
+                border: '1px solid var(--danger-border)',
+                color: 'var(--danger)',
+                borderRadius: 'var(--radius-sm)',
                 padding: 8,
                 fontSize: 13,
               }}
@@ -194,7 +174,7 @@ export function ReplayConversationModal({
               style={{
                 background: 'var(--bg-elevated)',
                 border: '1px solid var(--border)',
-                borderRadius: 6,
+                borderRadius: 'var(--radius-sm)',
                 padding: 10,
               }}
             >
@@ -212,7 +192,7 @@ export function ReplayConversationModal({
                   style={{
                     background: 'var(--bg-sunken)',
                     height: 6,
-                    borderRadius: 4,
+                    borderRadius: 'var(--radius-2xs)',
                     overflow: 'hidden',
                   }}
                 >
@@ -234,7 +214,7 @@ export function ReplayConversationModal({
               style={{
                 background: 'var(--bg-elevated)',
                 border: '1px solid var(--border)',
-                borderRadius: 6,
+                borderRadius: 'var(--radius-sm)',
                 padding: 12,
                 display: 'grid',
                 gap: 8,
@@ -297,6 +277,6 @@ export function ReplayConversationModal({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

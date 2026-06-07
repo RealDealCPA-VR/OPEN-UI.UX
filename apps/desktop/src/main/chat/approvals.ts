@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { PermissionTier } from '@opencodex/core';
 import type {
   ApprovalDecision,
+  ApprovalOverride,
   ApprovalPolicies,
   ApprovalRequest,
   ApprovalResponse,
@@ -22,6 +23,7 @@ export type ApprovalSource = 'policy' | 'prompt-once' | 'prompt-session' | 'prom
 export interface ApprovalOutcome {
   decision: ApprovalDecision;
   source: ApprovalSource;
+  override?: ApprovalOverride;
 }
 
 export type ApprovalBroadcaster = (req: ApprovalRequest) => void;
@@ -99,9 +101,15 @@ export class ApprovalManager {
     this.pending.delete(response.requestId);
     entry.signal.removeEventListener('abort', entry.onAbort);
 
-    if (response.scope === 'session') {
+    // A per-hunk partial override is carried ONLY for allow decisions, and must
+    // never be persisted as policy: a partial content reconstruction is not a
+    // reusable rule. Force once-only semantics regardless of the picked scope —
+    // do NOT setSessionOverride / writePolicies when an override is present.
+    const override = response.decision === 'allow' ? response.override : undefined;
+
+    if (!override && response.scope === 'session') {
       this.setSessionOverride(entry.streamId, entry.toolName, response.decision);
-    } else if (response.scope === 'always') {
+    } else if (!override && response.scope === 'always') {
       const policies = this.readPolicies();
       const next: ApprovalPolicies = {
         tierDefaults: policies.tierDefaults,
@@ -112,7 +120,11 @@ export class ApprovalManager {
       };
       this.writePolicies(next);
     }
-    entry.resolve({ decision: response.decision, source: scopeToSource(response.scope) });
+    entry.resolve({
+      decision: response.decision,
+      source: override ? 'prompt-once' : scopeToSource(response.scope),
+      ...(override ? { override } : {}),
+    });
   }
 
   clearSession(streamId: string): void {

@@ -4,6 +4,7 @@ import {
   canAbort,
   canContinueInChat,
   currentToolName,
+  deriveInbox,
   formatDurationMs,
   formatTokens,
   hasUnresolvedWorktree,
@@ -41,6 +42,7 @@ function makeRun(overrides: Partial<AgentRun> = {}): AgentRun {
     worktreeRepoRoot: null,
     mergeStatus: null,
     triggerSource: 'user',
+    seen: false,
     scheduledTaskId: null,
     ...overrides,
   };
@@ -268,5 +270,45 @@ describe('humaneCountdown', () => {
   });
   it('parses ISO timestamps with T separator and explicit Z', () => {
     expect(humaneCountdown('2026-05-27T12:03:00Z', now)).toBe('in 3m');
+  });
+});
+
+describe('deriveInbox', () => {
+  const reviewable = {
+    worktreePath: '/wt',
+    worktreeBranch: 'b',
+    worktreeRepoRoot: '/r',
+    mergeStatus: 'pending' as const,
+  };
+
+  it('excludes running runs from both buckets and from unreadCount', () => {
+    const inbox = deriveInbox([makeRun({ id: 'r', status: 'running', seen: false })]);
+    expect(inbox.needsReview).toHaveLength(0);
+    expect(inbox.done).toHaveLength(0);
+    expect(inbox.unreadCount).toBe(0);
+  });
+
+  it('buckets unresolved-worktree finished runs into needsReview', () => {
+    const inbox = deriveInbox([
+      makeRun({ id: 'a', status: 'completed', completedAt: 2, ...reviewable }),
+    ]);
+    expect(inbox.needsReview.map((r) => r.id)).toEqual(['a']);
+    expect(inbox.done).toHaveLength(0);
+  });
+
+  it('buckets other finished runs into done', () => {
+    const inbox = deriveInbox([makeRun({ id: 'b', status: 'completed', completedAt: 2 })]);
+    expect(inbox.done.map((r) => r.id)).toEqual(['b']);
+    expect(inbox.needsReview).toHaveLength(0);
+  });
+
+  it('counts finished unseen runs (regardless of bucket) in unreadCount', () => {
+    const inbox = deriveInbox([
+      makeRun({ id: 'a', status: 'completed', completedAt: 2, seen: false, ...reviewable }),
+      makeRun({ id: 'b', status: 'failed', completedAt: 2, seen: false }),
+      makeRun({ id: 'c', status: 'completed', completedAt: 2, seen: true }),
+      makeRun({ id: 'd', status: 'running', seen: false }),
+    ]);
+    expect(inbox.unreadCount).toBe(2);
   });
 });

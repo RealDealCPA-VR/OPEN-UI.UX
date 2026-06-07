@@ -5,6 +5,7 @@ export type ToolCallAuditDecision =
   | 'prompt-allowed'
   | 'prompt-allowed-session'
   | 'prompt-allowed-always'
+  | 'prompt-allowed-partial'
   | 'denied';
 
 export type ToolCallAuditTriggerSource = 'user' | 'scheduled';
@@ -94,6 +95,7 @@ export const TOOL_CALL_AUDIT_DECISIONS: readonly ToolCallAuditDecision[] = [
   'prompt-allowed',
   'prompt-allowed-session',
   'prompt-allowed-always',
+  'prompt-allowed-partial',
   'denied',
 ];
 

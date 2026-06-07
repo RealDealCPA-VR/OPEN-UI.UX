@@ -4,6 +4,7 @@ import {
   clear,
   getRun,
   listRuns,
+  markSeen,
   onRunsChanged,
   recordComplete,
   recordError,
@@ -172,6 +173,55 @@ describe('run-registry', () => {
     expect(getRun(id)!.mergeStatus).toBe('rejected');
     setMergeStatus('missing', 'merged');
     expect(getRun('missing')).toBeUndefined();
+  });
+
+  it('recordStart marks the run unseen', () => {
+    const id = recordStart({ task: 't', providerId: 'p', modelId: 'm' });
+    expect(getRun(id)!.seen).toBe(false);
+  });
+
+  it('markSeen flips matching runs to seen and emits the change once', () => {
+    const listener = vi.fn();
+    const a = recordStart({ task: 'a', providerId: 'p', modelId: 'm' });
+    const b = recordStart({ task: 'b', providerId: 'p', modelId: 'm' });
+    const off = onRunsChanged(listener);
+    markSeen([a, b]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(getRun(a)!.seen).toBe(true);
+    expect(getRun(b)!.seen).toBe(true);
+    off();
+  });
+
+  it('markSeen is a no-op (no emit) when nothing changes', () => {
+    const a = recordStart({ task: 'a', providerId: 'p', modelId: 'm' });
+    markSeen([a]);
+    const listener = vi.fn();
+    const off = onRunsChanged(listener);
+    markSeen([a]);
+    markSeen(['missing']);
+    expect(listener).not.toHaveBeenCalled();
+    off();
+  });
+
+  it('recordComplete preserves an already-seen run', () => {
+    const id = recordStart({ task: 't', providerId: 'p', modelId: 'm' });
+    markSeen([id]);
+    recordComplete(id, makeResult());
+    expect(getRun(id)!.seen).toBe(true);
+  });
+
+  it('setMergeStatus preserves the seen flag', () => {
+    const id = recordStart({
+      task: 't',
+      providerId: 'p',
+      modelId: 'm',
+      worktreePath: '/x',
+      worktreeBranch: 'b',
+      worktreeRepoRoot: '/r',
+    });
+    markSeen([id]);
+    setMergeStatus(id, 'merged');
+    expect(getRun(id)!.seen).toBe(true);
   });
 
   it('caps history at MAX_RUNS (100), evicting oldest', () => {

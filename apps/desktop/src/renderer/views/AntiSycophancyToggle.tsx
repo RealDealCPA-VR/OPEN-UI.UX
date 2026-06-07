@@ -34,41 +34,26 @@ export function AntiSycophancyToggle(): JSX.Element {
   }, []);
 
   return (
-    <div className="approvals-subsection" data-settings-anchor="anti-sycophancy">
-      <h3 className="approvals-subhead">Honest mode</h3>
-      <p className="approvals-subhead-desc">
-        When on, the agent is instructed to push back on incorrect premises before doing the task,
-        to disagree when it has grounds, and to skip validation-seeking language. Applies to both
-        the chat agent and the orchestrator.
-      </p>
-      <label
-        className="toggle"
-        style={{
-          padding: '8px 0',
-          cursor: enabled === null || pending ? 'progress' : 'pointer',
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={enabled ?? true}
-          disabled={enabled === null || pending}
-          onChange={(e) => void onToggle(e.target.checked)}
-        />
-        <span>Push back on wrong premises (default: on)</span>
-      </label>
+    <div data-settings-anchor="anti-sycophancy">
+      <div className="settings-block">
+        <h3 className="settings-subhead">Honest mode</h3>
+        <p className="settings-block-hint">
+          When on, the agent is instructed to push back on incorrect premises before doing the task,
+          to disagree when it has grounds, and to skip validation-seeking language. Applies to both
+          the chat agent and the orchestrator.
+        </p>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={enabled ?? true}
+            disabled={enabled === null || pending}
+            onChange={(e) => void onToggle(e.target.checked)}
+          />
+          <span>Push back on incorrect premises and skip validation-seeking language</span>
+        </label>
+      </div>
       {error !== null && (
-        <div
-          role="alert"
-          style={{
-            marginTop: 6,
-            padding: 8,
-            background: 'var(--danger-bg)',
-            color: 'var(--danger)',
-            border: '1px solid var(--danger-border)',
-            borderRadius: 6,
-            fontSize: 12,
-          }}
-        >
+        <div role="alert" className="field-errors">
           {error}
         </div>
       )}
