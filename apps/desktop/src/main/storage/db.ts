@@ -360,6 +360,13 @@ const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_code_graph_edges_target ON code_graph_edges(workspace_id, target);
     `,
   },
+  {
+    version: 22,
+    sql: `
+      ALTER TABLE conversations ADD COLUMN starred INTEGER NOT NULL DEFAULT 0;
+      CREATE INDEX idx_conversations_starred ON conversations(starred) WHERE starred = 1;
+    `,
+  },
 ];
 
 let db: Database.Database | null = null;

@@ -23,25 +23,47 @@ function msg(overrides: Partial<StoredMessage> = {}): StoredMessage {
 
 describe('messageBubblePropsEqual', () => {
   const onRerun = (): void => {};
+  const onRegenerate = (): void => {};
+  const onEdit = (): void => {};
+  const cb = { onRerun, onRegenerate, onEdit };
 
-  it('skips re-render when message identity + onRerun ref are stable', () => {
+  it('skips re-render when message identity + callback refs are stable', () => {
     const m = msg();
-    expect(messageBubblePropsEqual({ message: m, onRerun }, { message: m, onRerun })).toBe(true);
+    expect(messageBubblePropsEqual({ message: m, ...cb }, { message: m, ...cb })).toBe(true);
   });
 
   it('re-renders when onRerun reference changes', () => {
     const m = msg();
     const onRerunB = (): void => {};
     expect(
-      messageBubblePropsEqual({ message: m, onRerun }, { message: m, onRerun: onRerunB }),
+      messageBubblePropsEqual({ message: m, ...cb }, { message: m, ...cb, onRerun: onRerunB }),
+    ).toBe(false);
+  });
+
+  it('re-renders when onRegenerate reference changes', () => {
+    const m = msg();
+    const onRegenerateB = (): void => {};
+    expect(
+      messageBubblePropsEqual(
+        { message: m, ...cb },
+        { message: m, ...cb, onRegenerate: onRegenerateB },
+      ),
+    ).toBe(false);
+  });
+
+  it('re-renders when onEdit reference changes', () => {
+    const m = msg();
+    const onEditB = (): void => {};
+    expect(
+      messageBubblePropsEqual({ message: m, ...cb }, { message: m, ...cb, onEdit: onEditB }),
     ).toBe(false);
   });
 
   it('re-renders when message content changes', () => {
     expect(
       messageBubblePropsEqual(
-        { message: msg({ content: 'a' }), onRerun },
-        { message: msg({ content: 'b' }), onRerun },
+        { message: msg({ content: 'a' }), ...cb },
+        { message: msg({ content: 'b' }), ...cb },
       ),
     ).toBe(false);
   });
@@ -49,8 +71,8 @@ describe('messageBubblePropsEqual', () => {
   it('re-renders when contentBlocks reference changes', () => {
     expect(
       messageBubblePropsEqual(
-        { message: msg({ contentBlocks: [{ type: 'text', text: 'x' }] }), onRerun },
-        { message: msg({ contentBlocks: [{ type: 'text', text: 'x' }] }), onRerun },
+        { message: msg({ contentBlocks: [{ type: 'text', text: 'x' }] }), ...cb },
+        { message: msg({ contentBlocks: [{ type: 'text', text: 'x' }] }), ...cb },
       ),
     ).toBe(false);
   });
@@ -59,14 +81,14 @@ describe('messageBubblePropsEqual', () => {
     const blocks = [{ type: 'text' as const, text: 'x' }];
     const a = msg({ contentBlocks: blocks });
     const b = msg({ contentBlocks: blocks });
-    expect(messageBubblePropsEqual({ message: a, onRerun }, { message: b, onRerun })).toBe(true);
+    expect(messageBubblePropsEqual({ message: a, ...cb }, { message: b, ...cb })).toBe(true);
   });
 
   it('re-renders when usage fields change (token settle after stream done)', () => {
     expect(
       messageBubblePropsEqual(
-        { message: msg({ inputTokens: null, outputTokens: null }), onRerun },
-        { message: msg({ inputTokens: 42, outputTokens: 7 }), onRerun },
+        { message: msg({ inputTokens: null, outputTokens: null }), ...cb },
+        { message: msg({ inputTokens: 42, outputTokens: 7 }), ...cb },
       ),
     ).toBe(false);
   });

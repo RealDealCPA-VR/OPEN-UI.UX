@@ -17,23 +17,45 @@ import { getBridge } from '../bridge';
 import { deriveInbox } from '../views/agent-runs-derive';
 import brandLogoUrl from '../assets/brand.png';
 
+type NavZone = 'primary' | 'tools' | 'settings';
+
 interface NavItem {
   to: string;
   label: string;
   hint: string;
   shortcut: string;
   routeKey: LeftColumnRoute;
+  zone: NavZone;
 }
 
+// NOTE: array order (and therefore the ⌘1–⌘6 index mapping in the keydown
+// handler) is intentionally unchanged. `zone` only drives visual grouping so
+// the rail reads as a content-first primary set + a quieter tools set, without
+// renumbering any shortcut.
 const NAV_ITEMS: readonly NavItem[] = [
-  { to: '/chat', label: 'Chat', hint: 'Chat conversations', shortcut: '⌘1', routeKey: 'chat' },
-  { to: '/agent', label: 'Agent', hint: 'Agent runs', shortcut: '⌘2', routeKey: 'agent' },
+  {
+    to: '/chat',
+    label: 'Chat',
+    hint: 'Chat conversations',
+    shortcut: '⌘1',
+    routeKey: 'chat',
+    zone: 'primary',
+  },
+  {
+    to: '/agent',
+    label: 'Agent',
+    hint: 'Agent runs',
+    shortcut: '⌘2',
+    routeKey: 'agent',
+    zone: 'primary',
+  },
   {
     to: '/runners',
     label: 'Runners',
     hint: 'Configure agent runners',
     shortcut: '⌘3',
     routeKey: 'runners',
+    zone: 'tools',
   },
   {
     to: '/codebase',
@@ -41,6 +63,7 @@ const NAV_ITEMS: readonly NavItem[] = [
     hint: 'Browse codebase',
     shortcut: '⌘4',
     routeKey: 'codebase',
+    zone: 'primary',
   },
   {
     to: '/review',
@@ -48,6 +71,7 @@ const NAV_ITEMS: readonly NavItem[] = [
     hint: 'Diff-based code reviews',
     shortcut: '⌘5',
     routeKey: 'review',
+    zone: 'tools',
   },
   {
     to: '/automations',
@@ -55,6 +79,7 @@ const NAV_ITEMS: readonly NavItem[] = [
     hint: 'Scheduled automations',
     shortcut: '⌘6',
     routeKey: 'automations',
+    zone: 'tools',
   },
   {
     to: '/settings',
@@ -62,8 +87,13 @@ const NAV_ITEMS: readonly NavItem[] = [
     hint: 'Open settings',
     shortcut: '⌘,',
     routeKey: 'settings',
+    zone: 'settings',
   },
 ];
+
+const PRIMARY_ITEMS = NAV_ITEMS.filter((i) => i.zone === 'primary');
+const TOOL_ITEMS = NAV_ITEMS.filter((i) => i.zone === 'tools');
+const SETTINGS_ITEM = NAV_ITEMS.find((i) => i.zone === 'settings');
 
 export function AppShell(): JSX.Element {
   const [version, setVersion] = useState<string>('?');
@@ -154,6 +184,34 @@ export function AppShell(): JSX.Element {
     return () => document.removeEventListener('keydown', onKey);
   }, [toggleCollapsed, navigate]);
 
+  const renderNavItem = (item: NavItem): JSX.Element => {
+    const linkClass = item.zone === 'tools' ? 'sidebar-link sidebar-link-tool' : 'sidebar-link';
+    return (
+      <li key={item.to}>
+        <HoverHint hint={item.hint} shortcut={item.shortcut} placement="right">
+          <NavLink
+            to={item.to}
+            end={item.to === '/chat'}
+            className={({ isActive }) => (isActive ? `${linkClass} active` : linkClass)}
+            aria-label={
+              item.routeKey === 'agent' && unreadCount > 0
+                ? `${item.label} (${unreadCount} unread)`
+                : item.label
+            }
+            title={item.label}
+          >
+            <span className="sidebar-link-label">{item.label}</span>
+            {item.routeKey === 'agent' && unreadCount > 0 && (
+              <span className="badge nav-badge" aria-hidden="true">
+                {unreadCount}
+              </span>
+            )}
+          </NavLink>
+        </HoverHint>
+      </li>
+    );
+  };
+
   const shellClass = ['app-shell', 'app-shell-unified', collapsed ? 'context-collapsed' : '']
     .filter(Boolean)
     .join(' ');
@@ -209,32 +267,15 @@ export function AppShell(): JSX.Element {
             </HoverHint>
           </div>
           <ul className="sidebar-nav">
-            {NAV_ITEMS.map((item) => (
-              <li key={item.to}>
-                <HoverHint hint={item.hint} shortcut={item.shortcut} placement="right">
-                  <NavLink
-                    to={item.to}
-                    end={item.to === '/chat'}
-                    className={({ isActive }) =>
-                      isActive ? 'sidebar-link active' : 'sidebar-link'
-                    }
-                    aria-label={
-                      item.routeKey === 'agent' && unreadCount > 0
-                        ? `${item.label} (${unreadCount} unread)`
-                        : item.label
-                    }
-                    title={item.label}
-                  >
-                    <span className="sidebar-link-label">{item.label}</span>
-                    {item.routeKey === 'agent' && unreadCount > 0 && (
-                      <span className="badge nav-badge" aria-hidden="true">
-                        {unreadCount}
-                      </span>
-                    )}
-                  </NavLink>
-                </HoverHint>
-              </li>
-            ))}
+            {PRIMARY_ITEMS.map(renderNavItem)}
+            <li className="nav-rail-divider" aria-hidden="true" />
+            {TOOL_ITEMS.map(renderNavItem)}
+            {SETTINGS_ITEM ? (
+              <>
+                <li className="nav-rail-divider nav-rail-divider-settings" aria-hidden="true" />
+                {renderNavItem(SETTINGS_ITEM)}
+              </>
+            ) : null}
           </ul>
         </nav>
         {!collapsed && activeRoute !== 'settings' ? (

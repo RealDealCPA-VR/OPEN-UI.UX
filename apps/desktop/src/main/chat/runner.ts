@@ -27,6 +27,7 @@ import { recordToolCall, type ToolCallAuditDecision } from '../storage/tool-audi
 import { type ApprovalManager, type ApprovalOutcome, getApprovalManager } from './approvals';
 import { BudgetExceededError, getBudgetManager } from './budget-manager';
 import { buildChatSystemPrompt } from './system-prompt-builder';
+import { autoTitleConversation } from './auto-title';
 
 const MAX_TOOL_ITERATIONS = 10;
 const MAX_RETRY_ATTEMPTS = 3;
@@ -106,6 +107,8 @@ export interface StartChatStreamOptions {
   buildProvider?: (id: string) => Promise<LLMProvider>;
   toolRegistry?: ToolRegistry | null;
   approvalManager?: ApprovalManager | null;
+  /** When true, name a still-untitled conversation from its first exchange. */
+  autoTitle?: boolean;
 }
 
 interface ActiveStream {
@@ -263,6 +266,7 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
     toolRegistry: registry,
     approvalManager: approvals,
     routingTracker,
+    autoTitle: opts.autoTitle ?? false,
   }).finally(() => {
     active.delete(streamId);
     if (activeByConversation.get(opts.conversationId) === activeEntry) {
@@ -304,6 +308,7 @@ interface RunStreamArgs {
   toolRegistry: ToolRegistry | null;
   approvalManager: ApprovalManager | null;
   routingTracker?: RoutingDecisionTracker;
+  autoTitle: boolean;
 }
 
 interface RoutingDecisionTracker {
@@ -582,6 +587,16 @@ async function runStream(args: RunStreamArgs): Promise<void> {
         { err, assistantMessageId: args.assistantMessageId },
         'failed to persist assistant message',
       );
+    }
+    // Best-effort: name a still-untitled conversation from its first exchange.
+    // Fire-and-forget so it never delays stream teardown; failures are silent.
+    if (args.autoTitle && !args.signal.aborted && buffer.trim().length > 0) {
+      void autoTitleConversation({
+        conversationId: args.conversationId,
+        provider: args.provider,
+        modelId: args.modelId,
+        assistantText: buffer,
+      });
     }
   }
 }

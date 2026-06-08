@@ -22,6 +22,7 @@ const conversations: Conversation[] = [
     modelId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-02T00:00:00.000Z',
+    starred: false,
   },
   {
     id: 'conv-2',
@@ -30,6 +31,7 @@ const conversations: Conversation[] = [
     modelId: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-02T00:00:00.000Z',
+    starred: false,
   },
 ];
 

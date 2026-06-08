@@ -334,6 +334,11 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     icon: resolveAppIconPath(),
+    // macOS: tuck the traffic lights into an inset titlebar for an edge-to-edge,
+    // Claude-like flat top. Windows/Linux keep their native frame (a custom
+    // frameless titlebar + window controls needs a running app to validate, so
+    // it is deliberately not shipped blind here).
+    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       sandbox: true,

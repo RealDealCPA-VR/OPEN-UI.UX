@@ -9,6 +9,7 @@ export interface Conversation {
   modelId: string | null;
   createdAt: string;
   updatedAt: string;
+  starred: boolean;
 }
 
 export interface StoredMessage {

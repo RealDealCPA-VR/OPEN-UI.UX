@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { THEME_OPTIONS, type ThemePreference } from '../../shared/theme';
+import { getStoredPalette, PALETTES, setStoredPalette, type PaletteId } from '../state/palette';
 
 export function ThemePanel(): JSX.Element {
   const [preference, setPreference] = useState<ThemePreference | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState<ThemePreference | null>(null);
+  const [palette, setPalette] = useState<PaletteId>(() => getStoredPalette());
+
+  const handleSelectPalette = useCallback((id: PaletteId) => {
+    setStoredPalette(id);
+    setPalette(id);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +85,41 @@ export function ThemePanel(): JSX.Element {
             Failed: {saveError}
           </p>
         )}
+      </div>
+
+      <div className="settings-block">
+        <h3 className="settings-block-title">Color palette</h3>
+        <p className="settings-block-desc">
+          Re-tint the accent across the whole app. Works with both light and dark themes.
+        </p>
+        <ul className="palette-options" role="radiogroup" aria-label="Color palette">
+          {PALETTES.map((opt) => {
+            const selected = palette === opt.id;
+            return (
+              <li key={opt.id}>
+                <label
+                  className={`palette-option-label${selected ? ' palette-option-selected' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="color-palette"
+                    value={opt.id}
+                    checked={selected}
+                    onChange={() => handleSelectPalette(opt.id)}
+                  />
+                  <span
+                    className="palette-swatch"
+                    style={{ background: opt.swatch }}
+                    aria-hidden="true"
+                  />
+                  <span className="palette-option-name" title={opt.description}>
+                    {opt.label}
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
       </div>
     </div>
   );

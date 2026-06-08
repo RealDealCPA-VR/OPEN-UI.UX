@@ -89,7 +89,11 @@ function CodeBlock({ language, body }: { language: string | null; body: string }
               {wrap ? 'Unwrap' : 'Wrap'}
             </button>
           ) : null}
-          <button type="button" className="md-code-copy" onClick={handleCopy}>
+          <button
+            type="button"
+            className={copied ? 'md-code-copy copied' : 'md-code-copy'}
+            onClick={handleCopy}
+          >
             {copied ? 'Copied' : 'Copy'}
           </button>
         </span>

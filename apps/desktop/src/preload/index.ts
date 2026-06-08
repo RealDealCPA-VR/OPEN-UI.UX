@@ -366,6 +366,8 @@ const conversations = {
   }): Promise<Conversation> => ipcRenderer.invoke('conversations:create', req),
   rename: (req: { id: string; title: string }): Promise<Conversation> =>
     ipcRenderer.invoke('conversations:rename', req),
+  setStarred: (req: { id: string; starred: boolean }): Promise<Conversation> =>
+    ipcRenderer.invoke('conversations:setStarred', req),
   delete: (req: { id: string }): Promise<void> => ipcRenderer.invoke('conversations:delete', req),
   messages: (req: { id: string }): Promise<StoredMessage[]> =>
     ipcRenderer.invoke('conversations:messages', req),
@@ -385,6 +387,12 @@ const conversations = {
     };
     window.addEventListener('conversation:scroll-to-message', wrapped);
     return () => window.removeEventListener('conversation:scroll-to-message', wrapped);
+  },
+  onChanged: (listener: (payload: { conversations: Conversation[] }) => void): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: { conversations: Conversation[] }): void =>
+      listener(payload);
+    ipcRenderer.on('conversations:changed', wrapped);
+    return () => ipcRenderer.off('conversations:changed', wrapped);
   },
 };
 

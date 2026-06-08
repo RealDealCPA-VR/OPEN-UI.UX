@@ -1,6 +1,9 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AddToMemoryButton } from '../components/AddToMemoryButton';
+import { ArtifactPanel } from '../components/ArtifactPanel';
+import { pickLatestArtifact } from '../components/extract-artifacts';
+import { useCollapseState } from '../state/use-collapse-state';
 import { CheckpointRestoreButton } from '../components/CheckpointRestoreButton';
 import { ChatBudgetOverride } from '../components/ChatBudgetOverride';
 import { CloudProviderTip } from '../components/CloudProviderTip';
@@ -13,6 +16,7 @@ import {
   extractFilePathsFromMessages,
   lastUserMessageText,
 } from '../components/extract-file-paths';
+import { splitThinkingSegments } from '../components/extract-thinking';
 import { HoverHint } from '../components/HoverHint';
 import { Markdown } from '../components/Markdown';
 import { MentionPicker } from '../components/MentionPicker';
@@ -876,9 +880,53 @@ function ChatPane({
     [setInput],
   );
 
+  // Refs keep handleRegenerate identity stable across streaming deltas so the
+  // memoized <MessageBubble /> children don't re-render (same rationale as the
+  // handleRerun comment above). Synced in an effect — never written during render.
+  const messagesRef = useRef(chat.messages);
+  const sendRef = useRef(chat.send);
+  const streamingRef = useRef(chat.streaming);
+  useEffect(() => {
+    messagesRef.current = chat.messages;
+    sendRef.current = chat.send;
+    streamingRef.current = chat.streaming;
+  });
+
+  // Regenerate an assistant reply by re-issuing the user turn that preceded it.
+  const handleRegenerate = useCallback(
+    (assistantId: string): void => {
+      if (streamingRef.current) return;
+      const msgs = messagesRef.current;
+      const idx = msgs.findIndex((m) => m.id === assistantId);
+      if (idx < 0) return;
+      let userText = '';
+      for (let i = idx - 1; i >= 0; i -= 1) {
+        if (msgs[i]?.role === 'user') {
+          userText = msgs[i]?.content ?? '';
+          break;
+        }
+      }
+      if (userText.trim().length === 0) return;
+      void sendRef.current({ providerId, modelId, userMessage: userText });
+    },
+    [providerId, modelId],
+  );
+
   const visibleMessages = chat.draft
     ? chat.messages.filter((m) => m.id !== chat.draft?.messageId)
     : chat.messages;
+
+  // Artifacts — live preview of the latest previewable block (html/svg/markdown)
+  // an assistant produced, shown in a collapsible right-side panel.
+  const artifact = useMemo(
+    () =>
+      pickLatestArtifact(
+        visibleMessages.map((m) => ({ id: m.id, role: m.role, content: m.content })),
+      ),
+    [visibleMessages],
+  );
+  const [artifactCollapsed, , setArtifactCollapsed] = useCollapseState('artifact-panel', false);
+  const showArtifact = artifact !== null && !artifactCollapsed;
 
   const streamWorkspaceRoot = chat.streamWorkspaceRoot;
   const showWorkspaceMismatch =
@@ -1023,6 +1071,17 @@ function ChatPane({
                 void chat.exportActive(fmt);
               }}
             />
+            {artifact ? (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setArtifactCollapsed(showArtifact)}
+                title="Toggle live preview of the latest generated artifact"
+                aria-pressed={showArtifact}
+              >
+                {showArtifact ? 'Hide preview' : 'Preview'}
+              </button>
+            ) : null}
           </div>
         </div>
         {chat.error ? <div className="chat-error">{chat.error}</div> : null}
@@ -1037,221 +1096,241 @@ function ChatPane({
           </div>
         ) : null}
       </header>
-      <div className="chat-scroll" ref={scrollRef}>
-        {visibleMessages.length === 0 && !chat.draft ? (
-          <div className="chat-empty-state">
-            <p className="chat-empty-state-heading">What can I help you build?</p>
-            <p className="chat-empty-state-sub">
-              Pick a starter below, or type your own question. Use{' '}
-              <kbd className="chat-empty-kbd">/</kbd> to insert a skill or MCP prompt, and{' '}
-              <kbd className="chat-empty-kbd">?</kbd> to see every shortcut.
-            </p>
-            <div className="chat-starter-chips">
-              {STARTER_CHIPS.map((chip) => (
-                <button
-                  key={chip.label}
-                  type="button"
-                  className="chat-starter-chip"
-                  onClick={() => handleStarterChip(chip.prompt)}
-                >
-                  {chip.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div
-            className="chat-messages"
-            role="log"
-            aria-live="polite"
-            aria-relevant="additions text"
-            aria-atomic="false"
-            aria-label="Chat conversation"
-          >
-            {visibleMessages.map((m) => (
-              <MessageBubble key={m.id} message={m} onRerun={handleRerun} />
-            ))}
-            {chat.draft ? <DraftBubble draft={chat.draft} onRerun={handleRerun} /> : null}
-          </div>
-        )}
-      </div>
-      {showWorkspaceMismatch ? (
-        <div className="chat-workspace-banner" role="status">
-          <span className="chat-workspace-banner-label">Workspace changed mid-chat.</span>{' '}
-          <span className="chat-workspace-banner-body">
-            This response is still running against{' '}
-            <code className="chat-workspace-banner-path">{streamWorkspaceRoot}</code>. The next
-            message will use <code className="chat-workspace-banner-path">{activeWorkspace}</code>.
-          </span>
-        </div>
-      ) : null}
-      <form
-        className={dragOver ? 'chat-composer drag-over' : 'chat-composer'}
-        onSubmit={handleSubmit}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-      >
-        {/* Lane 8 — Cloud provider trust tip; self-suppresses for ollama / once dismissed */}
-        <CloudProviderTip providerId={providerId} providerDisplayName={modelName} />
-        {chat.queued.length > 0 ? (
-          <QueueStrip queued={chat.queued} onRemove={chat.removeQueued} />
-        ) : null}
-        {attachments.length > 0 || preparingAttachments || attachmentError ? (
-          <div className="chat-attachments">
-            {attachments.map((att, i) => (
-              <AttachmentChip
-                key={`${att.path}-${i}`}
-                attachment={att}
-                onRemove={() => removeAttachment(i)}
-              />
-            ))}
-            {preparingAttachments ? (
-              <span className="chat-attachment-loading">Preparing files…</span>
-            ) : null}
-            {attachmentError ? (
-              <span className="chat-attachment-error">{attachmentError}</span>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="chat-input-wrap">
-          {slashTrigger !== null ? (
-            <SlashCommands
-              query={slashTrigger.query}
-              prompts={mcpPrompts}
-              skills={skills}
-              pluginCommands={pluginCommands}
-              activeIndex={Math.min(slashActiveIndex, Math.max(0, flatSlashEntries.length - 1))}
-              onSelectMcp={insertPrompt}
-              onSelectSkill={insertSkill}
-              onSelectPlugin={insertPluginCommand}
-              onActiveIndexChange={setSlashActiveIndex}
-              onClose={closeSlash}
-            />
-          ) : null}
-          {mentionTrigger !== null ? (
-            !activeWorkspace ? (
-              <div className="slash-commands slash-commands-empty" role="listbox">
-                <div className="slash-commands-empty-text">Pick a workspace to mention files</div>
+      <div className="chat-body">
+        <div className="chat-main-col">
+          <div className="chat-scroll" ref={scrollRef}>
+            {visibleMessages.length === 0 && !chat.draft ? (
+              <div className="chat-empty-state">
+                <p className="chat-empty-state-heading">What can I help you build?</p>
+                <p className="chat-empty-state-sub">
+                  Pick a starter below, or type your own question. Use{' '}
+                  <kbd className="chat-empty-kbd">/</kbd> to insert a skill or MCP prompt, and{' '}
+                  <kbd className="chat-empty-kbd">?</kbd> to see every shortcut.
+                </p>
+                <div className="chat-starter-chips">
+                  {STARTER_CHIPS.map((chip) => (
+                    <button
+                      key={chip.label}
+                      type="button"
+                      className="chat-starter-chip"
+                      onClick={() => handleStarterChip(chip.prompt)}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
-              <MentionPicker
-                query={mentionTrigger.query}
-                hits={mentionHits}
-                loading={mentionLoading}
-                activeIndex={Math.min(
-                  mentionActiveIndex,
-                  Math.max(0, flatMentionEntries.length - 1),
-                )}
-                onSelectFile={selectMentionFile}
-                onSelectFolder={selectMentionFolder}
-                onActiveIndexChange={setMentionActiveIndex}
-                onClose={closeMention}
-              />
-            )
-          ) : null}
-          <textarea
-            ref={inputRef}
-            className="chat-input"
-            aria-label="Message composer"
-            value={input}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onSelect={handleSelect}
-            onBlur={() => {
-              setTimeout(() => {
-                closeSlash();
-                closeMention();
-              }, 0);
-            }}
-            placeholder={composerPlaceholder(modelName, transferOrigin, chat.streaming)}
-            rows={5}
-            style={{ maxHeight: 'calc(1.5em * 12 + 24px)', overflowY: 'auto' }}
-          />
-        </div>
-        {triggerHintSkill && !slashOpen ? (
-          <div className="chat-skill-hint" role="status">
-            <span>
-              Try{' '}
-              <button type="button" className="chat-skill-hint-link" onClick={applyTriggerHint}>
-                <code>/skill:{triggerHintSkill.name}</code>
-              </button>{' '}
-              for this
-            </span>
-            <HoverHint hint="Dismiss suggestion">
-              <button
-                type="button"
-                className="chat-skill-hint-dismiss"
-                onClick={dismissTriggerHint}
-                aria-label="Dismiss skill suggestion"
+              <div
+                className="chat-messages"
+                role="log"
+                aria-live="polite"
+                aria-relevant="additions text"
+                aria-atomic="false"
+                aria-label="Chat conversation"
               >
-                ×
-              </button>
-            </HoverHint>
-          </div>
-        ) : null}
-        <div className="chat-composer-actions">
-          <div className="chat-composer-actions-left">
-            <ComposerAddMenu
-              supportsTools={supportsTools}
-              toolsEnabled={toolsEnabled}
-              onToolsEnabledChange={setToolsEnabled}
-            />
-            <VoiceInputButton
-              disabled={chat.streaming}
-              onTranscript={(text) => {
-                setInput((prev) =>
-                  prev.length > 0 && !prev.endsWith(' ') ? `${prev} ${text}` : `${prev}${text}`,
-                );
-                inputRef.current?.focus();
-              }}
-            />
-          </div>
-          <div className="chat-composer-actions-right">
-            <ModelPicker conversationId={chat.activeId} />
-            {chat.streaming ? (
-              <>
-                <HoverHint hint="Stop streaming (Esc)">
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => {
-                      void chat.cancel();
-                    }}
-                  >
-                    Stop
-                  </button>
-                </HoverHint>
-                <HoverHint hint="Queue for next turn">
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={input.trim().length === 0 && attachments.length === 0}
-                  >
-                    Send
-                  </button>
-                </HoverHint>
-              </>
-            ) : chat.error && lastUserMessageText(chat.messages).length > 0 ? (
-              <HoverHint hint="Retry last message">
-                <button type="button" className="btn btn-primary" onClick={handleRetry}>
-                  Retry
-                </button>
-              </HoverHint>
-            ) : (
-              <HoverHint hint="Send message">
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={input.trim().length === 0 && attachments.length === 0}
-                >
-                  Send
-                </button>
-              </HoverHint>
+                {visibleMessages.map((m) => (
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    onRerun={handleRerun}
+                    onRegenerate={handleRegenerate}
+                    onEdit={handleRerun}
+                  />
+                ))}
+                {chat.draft ? <DraftBubble draft={chat.draft} onRerun={handleRerun} /> : null}
+              </div>
             )}
           </div>
+          {showWorkspaceMismatch ? (
+            <div className="chat-workspace-banner" role="status">
+              <span className="chat-workspace-banner-label">Workspace changed mid-chat.</span>{' '}
+              <span className="chat-workspace-banner-body">
+                This response is still running against{' '}
+                <code className="chat-workspace-banner-path">{streamWorkspaceRoot}</code>. The next
+                message will use{' '}
+                <code className="chat-workspace-banner-path">{activeWorkspace}</code>.
+              </span>
+            </div>
+          ) : null}
+          <form
+            className={dragOver ? 'chat-composer drag-over' : 'chat-composer'}
+            onSubmit={handleSubmit}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+          >
+            {/* Lane 8 — Cloud provider trust tip; self-suppresses for ollama / once dismissed */}
+            <CloudProviderTip providerId={providerId} providerDisplayName={modelName} />
+            {chat.queued.length > 0 ? (
+              <QueueStrip queued={chat.queued} onRemove={chat.removeQueued} />
+            ) : null}
+            {attachments.length > 0 || preparingAttachments || attachmentError ? (
+              <div className="chat-attachments">
+                {attachments.map((att, i) => (
+                  <AttachmentChip
+                    key={`${att.path}-${i}`}
+                    attachment={att}
+                    onRemove={() => removeAttachment(i)}
+                  />
+                ))}
+                {preparingAttachments ? (
+                  <span className="chat-attachment-loading">Preparing files…</span>
+                ) : null}
+                {attachmentError ? (
+                  <span className="chat-attachment-error">{attachmentError}</span>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="chat-input-wrap">
+              {slashTrigger !== null ? (
+                <SlashCommands
+                  query={slashTrigger.query}
+                  prompts={mcpPrompts}
+                  skills={skills}
+                  pluginCommands={pluginCommands}
+                  activeIndex={Math.min(slashActiveIndex, Math.max(0, flatSlashEntries.length - 1))}
+                  onSelectMcp={insertPrompt}
+                  onSelectSkill={insertSkill}
+                  onSelectPlugin={insertPluginCommand}
+                  onActiveIndexChange={setSlashActiveIndex}
+                  onClose={closeSlash}
+                />
+              ) : null}
+              {mentionTrigger !== null ? (
+                !activeWorkspace ? (
+                  <div className="slash-commands slash-commands-empty" role="listbox">
+                    <div className="slash-commands-empty-text">
+                      Pick a workspace to mention files
+                    </div>
+                  </div>
+                ) : (
+                  <MentionPicker
+                    query={mentionTrigger.query}
+                    hits={mentionHits}
+                    loading={mentionLoading}
+                    activeIndex={Math.min(
+                      mentionActiveIndex,
+                      Math.max(0, flatMentionEntries.length - 1),
+                    )}
+                    onSelectFile={selectMentionFile}
+                    onSelectFolder={selectMentionFolder}
+                    onActiveIndexChange={setMentionActiveIndex}
+                    onClose={closeMention}
+                  />
+                )
+              ) : null}
+              <textarea
+                ref={inputRef}
+                className="chat-input"
+                aria-label="Message composer"
+                value={input}
+                onChange={handleChange}
+                onKeyDown={handleKeyDown}
+                onSelect={handleSelect}
+                onBlur={() => {
+                  setTimeout(() => {
+                    closeSlash();
+                    closeMention();
+                  }, 0);
+                }}
+                placeholder={composerPlaceholder(modelName, transferOrigin, chat.streaming)}
+                rows={5}
+                style={{ maxHeight: 'calc(1.5em * 12 + 24px)', overflowY: 'auto' }}
+              />
+            </div>
+            {triggerHintSkill && !slashOpen ? (
+              <div className="chat-skill-hint" role="status">
+                <span>
+                  Try{' '}
+                  <button type="button" className="chat-skill-hint-link" onClick={applyTriggerHint}>
+                    <code>/skill:{triggerHintSkill.name}</code>
+                  </button>{' '}
+                  for this
+                </span>
+                <HoverHint hint="Dismiss suggestion">
+                  <button
+                    type="button"
+                    className="chat-skill-hint-dismiss"
+                    onClick={dismissTriggerHint}
+                    aria-label="Dismiss skill suggestion"
+                  >
+                    ×
+                  </button>
+                </HoverHint>
+              </div>
+            ) : null}
+            <div className="chat-composer-actions">
+              <div className="chat-composer-actions-left">
+                <ComposerAddMenu
+                  supportsTools={supportsTools}
+                  toolsEnabled={toolsEnabled}
+                  onToolsEnabledChange={setToolsEnabled}
+                />
+                <VoiceInputButton
+                  disabled={chat.streaming}
+                  onTranscript={(text) => {
+                    setInput((prev) =>
+                      prev.length > 0 && !prev.endsWith(' ') ? `${prev} ${text}` : `${prev}${text}`,
+                    );
+                    inputRef.current?.focus();
+                  }}
+                />
+              </div>
+              <div className="chat-composer-actions-right">
+                <ModelPicker conversationId={chat.activeId} />
+                {chat.streaming ? (
+                  <>
+                    <HoverHint hint="Stop streaming (Esc)">
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => {
+                          void chat.cancel();
+                        }}
+                      >
+                        Stop
+                      </button>
+                    </HoverHint>
+                    <HoverHint hint="Queue for next turn">
+                      <button
+                        type="submit"
+                        className="btn btn-primary chat-send"
+                        disabled={input.trim().length === 0 && attachments.length === 0}
+                      >
+                        Send
+                      </button>
+                    </HoverHint>
+                  </>
+                ) : chat.error && lastUserMessageText(chat.messages).length > 0 ? (
+                  <HoverHint hint="Retry last message">
+                    <button
+                      type="button"
+                      className="btn btn-primary chat-send"
+                      onClick={handleRetry}
+                    >
+                      Retry
+                    </button>
+                  </HoverHint>
+                ) : (
+                  <HoverHint hint="Send message">
+                    <button
+                      type="submit"
+                      className="btn btn-primary chat-send"
+                      disabled={input.trim().length === 0 && attachments.length === 0}
+                    >
+                      Send
+                    </button>
+                  </HoverHint>
+                )}
+              </div>
+            </div>
+          </form>
         </div>
-      </form>
+        {showArtifact ? (
+          <ArtifactPanel artifact={artifact} onClose={() => setArtifactCollapsed(true)} />
+        ) : null}
+      </div>
       {replayModalOpen && chat.activeId ? (
         <ReplayConversationModal
           conversationId={chat.activeId}
@@ -1615,9 +1694,39 @@ function ExportMenu({
 interface MessageBubbleProps {
   message: StoredMessage;
   onRerun: (prompt: string) => void;
+  onRegenerate: (assistantId: string) => void;
+  onEdit: (text: string) => void;
 }
 
-function MessageBubbleInner({ message, onRerun }: MessageBubbleProps): JSX.Element {
+// Discreet "copy this message" affordance, mirroring the code-block copy button.
+function CopyMessageButton({ content }: { content: string }): JSX.Element | null {
+  const [copied, setCopied] = useState(false);
+  const text = content.trim();
+  if (text.length === 0) return null;
+  const onCopy = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // Clipboard can reject without a user gesture / permission — ignore.
+    }
+  };
+  return (
+    <HoverHint hint="Copy message">
+      <button type="button" className="btn btn-ghost btn-tiny" onClick={() => void onCopy()}>
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </HoverHint>
+  );
+}
+
+function MessageBubbleInner({
+  message,
+  onRerun,
+  onRegenerate,
+  onEdit,
+}: MessageBubbleProps): JSX.Element {
   const hasBlocks = message.contentBlocks !== null && message.contentBlocks.length > 0;
   const memoryHeading = useMemo(
     () => `Chat ${new Date(message.createdAt).toISOString().slice(0, 10)}`,
@@ -1631,6 +1740,8 @@ function MessageBubbleInner({ message, onRerun }: MessageBubbleProps): JSX.Eleme
       <header className="chat-bubble-head">{roleLabel(message.role)}</header>
       {hasBlocks ? (
         <BlockSequence blocks={message.contentBlocks ?? []} onRerun={onRerun} />
+      ) : message.role === 'assistant' ? (
+        <AssistantText text={message.content} />
       ) : (
         <Markdown text={message.content} />
       )}
@@ -1645,10 +1756,33 @@ function MessageBubbleInner({ message, onRerun }: MessageBubbleProps): JSX.Eleme
       ) : null}
       {message.role === 'assistant' ? (
         <div className="chat-bubble-actions">
+          <CopyMessageButton content={message.content} />
+          <HoverHint hint="Regenerate this reply">
+            <button
+              type="button"
+              className="btn btn-ghost btn-tiny"
+              onClick={() => onRegenerate(message.id)}
+            >
+              Retry
+            </button>
+          </HoverHint>
           <AddToMemoryButton content={message.content} defaultHeading={memoryHeading} />
           <CheckpointRestoreButton messageId={message.id} />
         </div>
-      ) : null}
+      ) : (
+        <div className="chat-bubble-actions">
+          <CopyMessageButton content={message.content} />
+          <HoverHint hint="Edit & resend">
+            <button
+              type="button"
+              className="btn btn-ghost btn-tiny"
+              onClick={() => onEdit(message.content)}
+            >
+              Edit
+            </button>
+          </HoverHint>
+        </div>
+      )}
     </article>
   );
 }
@@ -1662,6 +1796,8 @@ export function messageBubblePropsEqual(
   next: MessageBubbleProps,
 ): boolean {
   if (prev.onRerun !== next.onRerun) return false;
+  if (prev.onRegenerate !== next.onRegenerate) return false;
+  if (prev.onEdit !== next.onEdit) return false;
   const a = prev.message;
   const b = next.message;
   return (
@@ -1691,8 +1827,10 @@ function DraftBubble({
       <header className="chat-bubble-head">Assistant{!draft.done ? <CaretBlink /> : null}</header>
       {hasBlocks ? (
         <BlockSequence blocks={draft.blocks} onRerun={onRerun} />
+      ) : draft.done ? (
+        <Markdown text="" />
       ) : (
-        <Markdown text={draft.done ? '' : '…'} />
+        <ThinkingDots />
       )}
       {draft.error ? <p className="chat-warn">{draft.error}</p> : null}
       {draft.inputTokens !== null ? (
@@ -1717,7 +1855,7 @@ function BlockSequence({
     <div className="chat-bubble-body">
       {items.map((item, idx) => {
         if (item.kind === 'text') {
-          return <Markdown key={idx} text={item.text} />;
+          return <AssistantText key={idx} text={item.text} />;
         }
         if (item.kind === 'tool') {
           return (
@@ -1737,6 +1875,69 @@ function BlockSequence({
 
 function CaretBlink(): JSX.Element {
   return <span className="chat-caret" aria-hidden="true" />;
+}
+
+function ThinkingDots(): JSX.Element {
+  return (
+    <div className="chat-thinking-dots" role="status" aria-label="Thinking">
+      <span aria-hidden="true" />
+      <span aria-hidden="true" />
+      <span aria-hidden="true" />
+    </div>
+  );
+}
+
+// A distinct, collapsible reasoning block (default collapsed). Renders the
+// chain-of-thought that some reasoning models emit inline via <think> tags.
+function ThinkingBlock({ text }: { text: string }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const trimmed = text.trim();
+  const lineCount = trimmed.length === 0 ? 0 : trimmed.split('\n').length;
+  return (
+    <div className={open ? 'chat-thinking chat-thinking-open' : 'chat-thinking'}>
+      <button
+        type="button"
+        className="chat-thinking-head"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="chat-thinking-chevron" aria-hidden="true">
+          ▸
+        </span>
+        <span className="chat-thinking-label">Thinking</span>
+        {lineCount > 0 ? (
+          <span className="chat-thinking-meta">
+            {lineCount} {lineCount === 1 ? 'line' : 'lines'}
+          </span>
+        ) : null}
+      </button>
+      {open && trimmed.length > 0 ? (
+        <div className="chat-thinking-body">
+          <Markdown text={text} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// Renders assistant text, splitting out any inline <think> reasoning into
+// collapsible ThinkingBlocks. Falls back to plain Markdown when there is none.
+function AssistantText({ text }: { text: string }): JSX.Element {
+  const segments = useMemo(() => splitThinkingSegments(text), [text]);
+  if (segments.length === 1 && segments[0]?.kind === 'text') {
+    return <Markdown text={text} />;
+  }
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.kind === 'think' ? (
+          <ThinkingBlock key={i} text={seg.text} />
+        ) : (
+          <Markdown key={i} text={seg.text} />
+        ),
+      )}
+    </>
+  );
 }
 
 function composerPlaceholder(

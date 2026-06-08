@@ -55,6 +55,8 @@ interface ChatContextValue {
   selectConversation(id: string | null): void;
   createConversation(providerId: string | null, modelId: string | null): Promise<Conversation>;
   deleteConversation(id: string): Promise<void>;
+  renameConversation(id: string, title: string): Promise<void>;
+  toggleStarConversation(id: string): Promise<void>;
   send(args: {
     providerId: string;
     modelId: string;
@@ -157,6 +159,16 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
       cancelled = true;
     };
   }, [reloadKey]);
+
+  // Live-update the sidebar when the main process changes the list (auto-title,
+  // rename, star, delete). Guarded so test bridges without onChanged are safe.
+  useEffect(() => {
+    const subscribe = window.opencodex.conversations.onChanged;
+    if (typeof subscribe !== 'function') return;
+    return subscribe((payload) => {
+      setConversations(payload.conversations);
+    });
+  }, []);
 
   useEffect(() => {
     if (!activeId) return;
@@ -406,6 +418,42 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
     [activeId],
   );
 
+  const renameConversation = useCallback(async (id: string, title: string): Promise<void> => {
+    const trimmed = title.trim();
+    if (trimmed.length === 0) return;
+    // Optimistic — the main process also broadcasts conversations:changed, which
+    // reconciles the list shortly after.
+    setConversations((prev) =>
+      prev ? prev.map((c) => (c.id === id ? { ...c, title: trimmed } : c)) : prev,
+    );
+    try {
+      await window.opencodex.conversations.rename({ id, title: trimmed });
+    } catch (err) {
+      const list = await window.opencodex.conversations.list();
+      setConversations(list);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  const toggleStarConversation = useCallback(async (id: string): Promise<void> => {
+    let nextStarred = false;
+    setConversations((prev) => {
+      if (!prev) return prev;
+      return prev.map((c) => {
+        if (c.id !== id) return c;
+        nextStarred = !c.starred;
+        return { ...c, starred: nextStarred };
+      });
+    });
+    try {
+      await window.opencodex.conversations.setStarred({ id, starred: nextStarred });
+    } catch (err) {
+      const list = await window.opencodex.conversations.list();
+      setConversations(list);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
   const exportActive = useCallback(
     async (format: ConversationExportFormat): Promise<ExportConversationResult | null> => {
       if (!activeId) return null;
@@ -525,6 +573,8 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
       selectConversation,
       createConversation,
       deleteConversation,
+      renameConversation,
+      toggleStarConversation,
       send,
       cancel,
       exportActive,
@@ -547,6 +597,8 @@ export function ChatProvider({ children }: { children: ReactNode }): JSX.Element
       selectConversation,
       createConversation,
       deleteConversation,
+      renameConversation,
+      toggleStarConversation,
       send,
       cancel,
       exportActive,

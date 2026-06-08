@@ -20,6 +20,7 @@ interface ConversationRow {
   model_id: string | null;
   created_at: string;
   updated_at: string;
+  starred: number;
 }
 
 interface MessageRow {
@@ -44,6 +45,9 @@ const MESSAGE_COLUMNS = `id, conversation_id, role, content, content_blocks_json
 
 const VALID_ROLES: ReadonlySet<Role> = new Set(['system', 'user', 'assistant', 'tool']);
 
+/** Title given to a freshly-created conversation until it is (auto-)renamed. */
+export const DEFAULT_CONVERSATION_TITLE = 'New conversation';
+
 function normalizeTurnStatus(raw: string): TurnStatus {
   return raw === 'streaming' ? 'streaming' : 'final';
 }
@@ -56,6 +60,7 @@ function rowToConversation(row: ConversationRow): Conversation {
     modelId: row.model_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    starred: row.starred === 1,
   };
 }
 
@@ -105,8 +110,8 @@ export interface CreateConversationInput {
 export function listConversations(db: Database.Database = getDb()): Conversation[] {
   const rows = db
     .prepare(
-      `SELECT id, title, provider_id, model_id, created_at, updated_at
-       FROM conversations ORDER BY updated_at DESC`,
+      `SELECT id, title, provider_id, model_id, created_at, updated_at, starred
+       FROM conversations ORDER BY starred DESC, updated_at DESC`,
     )
     .all() as ConversationRow[];
   return rows.map(rowToConversation);
@@ -115,7 +120,7 @@ export function listConversations(db: Database.Database = getDb()): Conversation
 export function getConversation(id: string, db: Database.Database = getDb()): Conversation | null {
   const row = db
     .prepare(
-      `SELECT id, title, provider_id, model_id, created_at, updated_at
+      `SELECT id, title, provider_id, model_id, created_at, updated_at, starred
        FROM conversations WHERE id = ?`,
     )
     .get(id) as ConversationRow | undefined;
@@ -127,7 +132,7 @@ export function createConversation(
   db: Database.Database = getDb(),
 ): Conversation {
   const id = randomUUID();
-  const title = (input.title?.trim() || 'New conversation').slice(0, 200);
+  const title = (input.title?.trim() || DEFAULT_CONVERSATION_TITLE).slice(0, 200);
   const now = new Date().toISOString();
   withSqliteBusyRetry(() =>
     db
@@ -158,6 +163,20 @@ export function renameConversation(
   if (result.changes === 0) throw new Error(`conversation ${id} not found`);
   const conversation = getConversation(id, db);
   if (!conversation) throw new Error(`conversation ${id} not found after rename`);
+  return conversation;
+}
+
+export function setConversationStarred(
+  id: string,
+  starred: boolean,
+  db: Database.Database = getDb(),
+): Conversation {
+  const result = withSqliteBusyRetry(() =>
+    db.prepare(`UPDATE conversations SET starred = ? WHERE id = ?`).run(starred ? 1 : 0, id),
+  );
+  if (result.changes === 0) throw new Error(`conversation ${id} not found`);
+  const conversation = getConversation(id, db);
+  if (!conversation) throw new Error(`conversation ${id} not found after star toggle`);
   return conversation;
 }
 

@@ -14,6 +14,7 @@ import {
   listConversations,
   listMessages,
   renameConversation,
+  setConversationStarred,
 } from '../storage/conversations';
 import { getSettings } from '../storage/settings';
 import {
@@ -26,6 +27,7 @@ import {
 import { chatReattachRequestSchema, type ChatListActiveResponse } from '../../shared/chat';
 import { consumeInterruptedTurn, listInterruptedTurns } from './turn-restore';
 import { prepareAttachments } from './attachments';
+import { broadcastConversationsChanged } from './conversations-events';
 
 const roleSchema = z.enum(['system', 'user', 'assistant', 'tool']);
 
@@ -54,22 +56,40 @@ export function registerChatHandlers(): void {
       providerId: z.string().nullable().optional(),
       modelId: z.string().nullable().optional(),
     }),
-    (req) =>
-      createConversation({
+    (req) => {
+      const created = createConversation({
         ...(req.title !== undefined ? { title: req.title } : {}),
         providerId: req.providerId ?? null,
         modelId: req.modelId ?? null,
-      }),
+      });
+      broadcastConversationsChanged(listConversations());
+      return created;
+    },
   );
 
   registerInvoke(
     'conversations:rename',
     z.object({ id: z.string().min(1), title: z.string().min(1) }),
-    (req) => renameConversation(req.id, req.title),
+    (req) => {
+      const renamed = renameConversation(req.id, req.title);
+      broadcastConversationsChanged(listConversations());
+      return renamed;
+    },
+  );
+
+  registerInvoke(
+    'conversations:setStarred',
+    z.object({ id: z.string().min(1), starred: z.boolean() }),
+    (req) => {
+      const updated = setConversationStarred(req.id, req.starred);
+      broadcastConversationsChanged(listConversations());
+      return updated;
+    },
   );
 
   registerInvoke('conversations:delete', z.object({ id: z.string().min(1) }), (req) => {
     deleteConversation(req.id);
+    broadcastConversationsChanged(listConversations());
   });
 
   registerInvoke('conversations:messages', z.object({ id: z.string().min(1) }), (req) =>
@@ -199,6 +219,7 @@ export function registerChatHandlers(): void {
         attachments: req.attachments ?? [],
         sink: broadcast(),
         workspaceRoot,
+        autoTitle: true,
       });
     },
   );

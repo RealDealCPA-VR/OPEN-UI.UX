@@ -60,7 +60,7 @@ export function OnboardingBanner(): JSX.Element | null {
       <div className="onboarding-banner-text">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <h2 className="onboarding-banner-title" style={{ margin: 0 }}>
-            Finish setting up OpenCodex
+            You&rsquo;re almost ready
           </h2>
           <span
             className="pill pill-muted"
@@ -71,16 +71,16 @@ export function OnboardingBanner(): JSX.Element | null {
         </div>
         <p className="onboarding-banner-desc">
           {!providerDone
-            ? 'To start chatting, add an API key for at least one provider. Keys stay in your OS keychain and never leave this machine.'
+            ? 'Add an API key so we can start chatting. Your key stays in your OS keychain and never leaves this machine.'
             : !workspaceDone
-              ? 'You can finish onboarding any time — pick a workspace folder so the agent has a sandbox.'
+              ? 'Almost there — pick a workspace folder so the agent has a sandbox to work in.'
               : 'Resume the welcome flow to install starter skills or finish onboarding.'}
         </p>
       </div>
       <div className="onboarding-banner-actions">
         {!providerDone ? (
           <button type="button" className="btn btn-primary" onClick={goToProviders}>
-            Configure a provider
+            Add an API key
           </button>
         ) : null}
         <button

@@ -484,6 +484,10 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
     request: { id: string; title: string };
     response: Conversation;
   };
+  'conversations:setStarred': {
+    request: { id: string; starred: boolean };
+    response: Conversation;
+  };
   'conversations:delete': {
     request: { id: string };
     response: void;

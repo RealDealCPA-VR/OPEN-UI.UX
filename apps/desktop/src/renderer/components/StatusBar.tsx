@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useChat } from '../state/chat-context';
 import { useSelectedModel } from '../state/selected-model-context';
+import { useCollapseState } from '../state/use-collapse-state';
 import { BudgetSpendIndicator } from './BudgetSpendIndicator';
 import {
   computeTokenMeterSegments,
@@ -17,6 +18,9 @@ export function StatusBar(): JSX.Element {
   const { streaming, draft, usage, error } = useChat();
   const { selectedCapabilities } = useSelectedModel();
   const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
+  // Demoted by default — quiet developer instrumentation that reveals full
+  // detail on hover; the chevron pins it expanded.
+  const [compact, toggleCompact] = useCollapseState('statusbar-compact', true);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,8 +92,30 @@ export function StatusBar(): JSX.Element {
   };
 
   return (
-    <footer className={`statusbar statusbar-${state}`} role="status" aria-live="polite">
+    <footer
+      className={`statusbar statusbar-${state}${compact ? ' compact' : ''}`}
+      role="status"
+      aria-live="polite"
+    >
       <div className="statusbar-left">
+        <button
+          type="button"
+          className="statusbar-toggle"
+          onClick={toggleCompact}
+          aria-label={compact ? 'Expand status details' : 'Collapse status details'}
+          aria-pressed={!compact}
+          title={compact ? 'Expand status details' : 'Collapse status details'}
+        >
+          <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none">
+            <path
+              d="M4 10l4-4 4 4"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
         <span className={`statusbar-dot statusbar-dot-${state}`} aria-hidden="true" />
         <span className="statusbar-state">{stateLabel(state)}</span>
         {runningTool ? (

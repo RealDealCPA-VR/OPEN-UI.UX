@@ -5,6 +5,7 @@ import type { ConversationSearchHit } from '../../../shared/conversation-search'
 import { useChat } from '../../state/chat-context';
 import { useSelectedModel } from '../../state/selected-model-context';
 import { MultiWorkspaceSelector } from '../MultiWorkspaceSelector';
+import { recencyOf, relativeTime } from '../relative-time';
 import { SuggestionsPane } from '../SuggestionsPane';
 
 const MESSAGE_SEARCH_DEBOUNCE_MS = 200;
@@ -12,13 +13,35 @@ const MESSAGE_SEARCH_MIN_CHARS = 2;
 const MESSAGE_SEARCH_LIMIT = 20;
 
 export default function ChatContextPane(): JSX.Element {
-  const { conversations, activeId, selectConversation, createConversation, deleteConversation } =
-    useChat();
+  const {
+    conversations,
+    activeId,
+    selectConversation,
+    createConversation,
+    deleteConversation,
+    renameConversation,
+    toggleStarConversation,
+  } = useChat();
   const { selected } = useSelectedModel();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   // Lane 15 — switch between Conversations list and Pair Suggestions
   const [tab, setTab] = useState<'conversations' | 'suggestions'>('conversations');
+
+  // Cmd/Ctrl+K focuses the conversation/message search.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setTab('conversations');
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const trimmedQuery = query.trim();
   const messageSearchActive = trimmedQuery.length >= MESSAGE_SEARCH_MIN_CHARS;
@@ -121,27 +144,23 @@ export default function ChatContextPane(): JSX.Element {
         <WorkspaceChip />
         <MultiWorkspaceSelector conversationId={activeId} />
       </div>
-      <div className="lcc-pane-head lcc-pane-head-chat">
-        <span className="lcc-pane-title">Conversations</span>
-        <button
-          type="button"
-          className="lcc-pane-new-icon"
-          onClick={() => {
-            void createConversation(selected?.providerId ?? null, selected?.modelId ?? null);
-          }}
-          aria-label="New chat"
-          title="New chat"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-            <path
-              d="M7 2.5v9M2.5 7h9"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-      </div>
+      <button
+        type="button"
+        className="lcc-new-chat-btn"
+        onClick={() => {
+          void createConversation(selected?.providerId ?? null, selected?.modelId ?? null);
+        }}
+      >
+        <svg width="15" height="15" viewBox="0 0 14 14" aria-hidden="true">
+          <path
+            d="M7 2.5v9M2.5 7h9"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+          />
+        </svg>
+        New Chat
+      </button>
       <div className="lcc-pane-search-row">
         <span className="lcc-pane-search-icon" aria-hidden="true">
           <svg width="12" height="12" viewBox="0 0 12 12">
@@ -150,11 +169,12 @@ export default function ChatContextPane(): JSX.Element {
           </svg>
         </span>
         <input
+          ref={searchRef}
           type="search"
           className="lcc-pane-search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search"
+          placeholder="Search  (⌘K)"
           aria-label="Search conversations and messages"
         />
       </div>
@@ -174,6 +194,12 @@ export default function ChatContextPane(): JSX.Element {
               onSelect={() => selectConversation(c.id)}
               onDelete={() => {
                 void deleteConversation(c.id);
+              }}
+              onRename={(title) => {
+                void renameConversation(c.id, title);
+              }}
+              onToggleStar={() => {
+                void toggleStarConversation(c.id);
               }}
             />
           ))
@@ -211,14 +237,21 @@ function ConversationRow({
   active,
   onSelect,
   onDelete,
+  onRename,
+  onToggleStar,
 }: {
   conversation: Conversation;
   active: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  onRename: (title: string) => void;
+  onToggleStar: () => void;
 }): JSX.Element {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(conversation.title);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Auto-focus the Cancel button when confirmation appears so Escape/Tab work naturally
   useEffect(() => {
@@ -226,6 +259,56 @@ function ConversationRow({
       cancelRef.current?.focus();
     }
   }, [confirmingDelete]);
+
+  useEffect(() => {
+    if (editing) {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.select();
+      }
+    }
+  }, [editing]);
+
+  const beginEdit = (): void => {
+    setDraftTitle(conversation.title);
+    setEditing(true);
+  };
+
+  const commitEdit = (): void => {
+    const next = draftTitle.trim();
+    if (next.length > 0 && next !== conversation.title) onRename(next);
+    setEditing(false);
+  };
+
+  const cancelEdit = (): void => {
+    setDraftTitle(conversation.title);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <li className={`chat-conversation-row editing${active ? ' active' : ''}`}>
+        <input
+          ref={inputRef}
+          className="chat-conversation-rename-input"
+          value={draftTitle}
+          onChange={(e) => setDraftTitle(e.target.value)}
+          onBlur={commitEdit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commitEdit();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              cancelEdit();
+            }
+          }}
+          aria-label={`Rename conversation "${conversation.title}"`}
+        />
+      </li>
+    );
+  }
 
   return (
     <li
@@ -271,11 +354,72 @@ function ConversationRow({
         </div>
       ) : (
         <>
-          <button type="button" className="chat-conversation-btn" onClick={onSelect}>
+          <button
+            type="button"
+            className="chat-conversation-btn"
+            onClick={onSelect}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              beginEdit();
+            }}
+          >
             <span className="chat-conversation-title">{conversation.title}</span>
-            <span className="chat-conversation-meta">
-              {new Date(conversation.updatedAt).toLocaleDateString()}
+            <span
+              className={`chat-conversation-meta chat-conversation-meta--${recencyOf(
+                conversation.updatedAt,
+                new Date(),
+              )}`}
+              title={new Date(conversation.updatedAt).toLocaleString()}
+            >
+              {relativeTime(conversation.updatedAt, new Date())}
             </span>
+          </button>
+          <button
+            type="button"
+            className={`chat-conversation-star${conversation.starred ? ' starred' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleStar();
+            }}
+            aria-label={
+              conversation.starred ? `Unstar ${conversation.title}` : `Star ${conversation.title}`
+            }
+            aria-pressed={conversation.starred}
+            title={conversation.starred ? 'Unstar' : 'Star'}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 16 16"
+              aria-hidden="true"
+              fill={conversation.starred ? 'currentColor' : 'none'}
+            >
+              <path
+                d="M8 1.6l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.9 4.2 13.4l.7-4.3-3.1-3 4.3-.6L8 1.6z"
+                stroke="currentColor"
+                strokeWidth="1.1"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="chat-conversation-rename"
+            onClick={(e) => {
+              e.stopPropagation();
+              beginEdit();
+            }}
+            aria-label={`Rename ${conversation.title}`}
+            title="Rename"
+          >
+            <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true" fill="none">
+              <path
+                d="M9.5 2.5l2 2L5 11l-2.5.5L3 9l6.5-6.5z"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
           <button
             type="button"
