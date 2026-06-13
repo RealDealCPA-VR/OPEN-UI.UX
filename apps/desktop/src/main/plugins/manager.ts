@@ -7,15 +7,17 @@ import {
   assertPluginProvider,
   assertPluginRunner,
   assertPluginTool,
+  hashPluginFiles,
   loadPluginModule,
   readManifest,
   satisfiesEngineRange,
-  verifyManifest,
+  verifyPluginIntegrity,
   type Permission,
   type Plugin,
   type PluginHost,
   type PluginLogger,
   type PluginManifest,
+  type PluginVerification,
 } from '@opencodex/plugin-sdk';
 import type { ProviderFactory, SubagentRunner, Tool } from '@opencodex/core';
 import type { PluginListItem, PluginPanelDescriptor, PluginStatus } from '../../shared/plugins';
@@ -105,6 +107,11 @@ export function listPanels(): PluginPanelDescriptor[] {
   const out: PluginPanelDescriptor[] = [];
   for (const [id, r] of runtime.entries()) {
     if (r.status !== 'loaded') continue;
+    // Panel HTML is loaded into a script-enabled iframe in the renderer, so
+    // surfacing it requires the same consent gate registerTool/registerRunner
+    // apply — without this, a zero-permission plugin auto-activates and its
+    // panel renders with no grant step.
+    if (!r.grantedPermissions.includes('ui.panel')) continue;
     const panels = r.manifest.contributions.panels;
     if (!panels) continue;
     for (const p of panels) {
@@ -293,11 +300,36 @@ export function getPluginSlashCommandHandler(
   return r.registeredCommands.find((c) => c.name === name)?.handler;
 }
 
+// Integrity gate for every activation path (install, loadStoredPlugins,
+// enable, re-grant): a plugin signed by a trusted publisher must still match
+// the signed manifest + entry-file hashes at activation time, not just at
+// install — otherwise on-disk tampering between startups goes undetected.
+// Unsigned / untrusted-signature plugins keep the existing sideload behavior.
+async function verifyInstalledPlugin(
+  installPath: string,
+  manifest: PluginManifest,
+): Promise<PluginVerification> {
+  const signature = await readSignature(installPath);
+  if (!signature) return { status: 'unsigned', reason: 'no opencodex.plugin.sig present' };
+  const actualFiles = await hashPluginFiles(installPath, manifest, { ignoreMissing: true });
+  return verifyPluginIntegrity(manifest, signature, getTrustedPublisherKeys(), actualFiles);
+}
+
 async function activatePlugin(id: string): Promise<void> {
   const r = runtime.get(id);
   if (!r) return;
   if (!r.enabled) {
     r.status = 'disabled';
+    return;
+  }
+  const verification = await verifyInstalledPlugin(r.installPath, r.manifest);
+  if (verification.status === 'tampered') {
+    r.status = 'tampered';
+    r.lastError = verification.reason;
+    logger.warn(
+      { pluginId: id, signer: verification.signer, reason: verification.reason },
+      'plugin failed signature integrity check; refusing to activate',
+    );
     return;
   }
   const missing = r.manifest.permissions.filter((p) => !r.grantedPermissions.includes(p));
@@ -412,23 +444,25 @@ export async function installPluginFromPath(
       HOST_PLUGIN_ENGINE_VERSION,
     );
   }
-  const signature = await readSignature(installPath);
-  const trusted = getTrustedPublisherKeys();
-  let signed = false;
-  let signer: string | null = null;
-  if (signature) {
-    const result = verifyManifest(manifest, signature, trusted);
-    if (result.ok && result.signer) {
-      signed = true;
-      signer = result.signer;
-    } else {
-      logger.warn(
-        { pluginName: manifest.name, reason: result.reason },
-        'plugin signature did not verify against any trusted publisher key',
-      );
-    }
+  const verification = await verifyInstalledPlugin(installPath, manifest);
+  const signed = verification.status === 'signed';
+  const tampered = verification.status === 'tampered';
+  if (verification.status === 'untrusted') {
+    logger.warn(
+      { pluginName: manifest.name, reason: verification.reason },
+      'plugin signature did not verify against any trusted publisher key',
+    );
   }
-  if (!signed && !options.acceptUnsigned) {
+  if (tampered) {
+    logger.warn(
+      { pluginName: manifest.name, signer: verification.signer, reason: verification.reason },
+      'plugin failed signature integrity check at install; quarantining as tampered',
+    );
+  }
+  // A tampered plugin is quarantined (status 'tampered', never activated)
+  // rather than routed through the unsigned-consent path — acceptUnsigned is
+  // consent for missing signatures, not for failed integrity of a trusted one.
+  if (!signed && !tampered && !options.acceptUnsigned) {
     logger.warn(
       { pluginName: manifest.name },
       'refusing to install unsigned plugin without explicit acceptUnsigned consent',
@@ -439,9 +473,9 @@ export async function installPluginFromPath(
     pluginName: manifest.name,
     pluginVersion: manifest.version,
     signed,
-    signer,
+    signer: signed ? verification.signer : null,
     installedAt: new Date().toISOString(),
-    userAcceptedUnsigned: !signed,
+    userAcceptedUnsigned: !signed && !tampered,
   });
   const id = `${manifest.name}-${randomUUID()}`;
   const autoGrant = options.autoGrantPermissions === true;
@@ -450,14 +484,15 @@ export async function installPluginFromPath(
     installPath,
     enabled: true,
     grantedPermissions: autoGrant ? [...manifest.permissions] : [],
-    status: 'pending-permissions',
+    status: tampered ? 'tampered' : 'pending-permissions',
+    ...(tampered ? { lastError: verification.reason } : {}),
     registeredTools: [],
     registeredProviders: [],
     registeredCommands: [],
     registeredRunners: [],
   });
   persist();
-  if (autoGrant || manifest.permissions.length === 0) await activatePlugin(id);
+  if (!tampered && (autoGrant || manifest.permissions.length === 0)) await activatePlugin(id);
   emit();
   return snapshot();
 }
@@ -468,6 +503,15 @@ export async function grantPermissions(
 ): Promise<PluginListItem[]> {
   const r = runtime.get(id);
   if (!r) throw new Error(`unknown plugin ${id}`);
+  // The review-then-grant trust model only covers what the manifest declared;
+  // granting anything beyond it would let a single IPC call escalate a plugin
+  // past what the user reviewed.
+  const undeclared = permissions.filter((p) => !r.manifest.permissions.includes(p));
+  if (undeclared.length > 0) {
+    throw new Error(
+      `plugin ${id} cannot be granted undeclared permission(s): ${undeclared.join(', ')}`,
+    );
+  }
   r.grantedPermissions = Array.from(new Set([...r.grantedPermissions, ...permissions]));
   persist();
   if (r.enabled) {

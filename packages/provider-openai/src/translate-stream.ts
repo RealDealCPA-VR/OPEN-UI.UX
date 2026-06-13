@@ -1,4 +1,4 @@
-import type { ChatEvent, StopReason } from '@opencodex/core';
+import type { ChatEvent, ModelPricing, StopReason } from '@opencodex/core';
 import { computeCostUsd } from '@opencodex/core';
 import type { ChatChunk } from './response-schemas';
 import { findModel } from './models';
@@ -19,13 +19,22 @@ function mapStopReason(finish: string | null | undefined): StopReason {
     case 'tool_calls':
     case 'function_call':
       return 'tool_use';
+    case 'content_filter':
+      return 'content_filter';
     default:
       return 'end_turn';
   }
 }
 
 export interface StreamChunksOptions {
+  /** Looked up in the OpenAI model catalog for pricing. */
   model?: string;
+  /**
+   * Explicit pricing for cost computation — takes precedence over `model`.
+   * Lets OpenAI-compatible providers (xAI, OpenRouter) reuse this translator
+   * with their own catalogs.
+   */
+  pricing?: ModelPricing;
 }
 
 export async function* streamChunksToEvents(
@@ -35,7 +44,7 @@ export async function* streamChunksToEvents(
   const pending = new Map<string, PendingToolCall>();
   let finishReason: string | null | undefined;
   let nextOrder = 0;
-  const pricing = opts.model ? findModel(opts.model)?.pricing : undefined;
+  const pricing = opts.pricing ?? (opts.model ? findModel(opts.model)?.pricing : undefined);
 
   for await (const chunk of chunks) {
     if (chunk.usage) {

@@ -1,8 +1,9 @@
 import { promises as fs } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { rmTmp } from '../../test/rm-tmp';
 import { downloadModel, isModelDownloaded, modelFilePath } from './model-downloader';
 import type { WhisperModel } from '../../shared/voice';
 
@@ -13,7 +14,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await rm(workDir, { recursive: true, force: true });
+  await rmTmp(workDir);
 });
 
 function makeBigResponse(bytes: number, headers: Record<string, string> = {}): Response {

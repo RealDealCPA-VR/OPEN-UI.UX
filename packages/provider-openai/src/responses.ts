@@ -8,6 +8,7 @@ import type {
   ToolDefinition,
 } from '@opencodex/core';
 import { computeCostUsd, fetchWithRetry, sanitizeErrorDetail } from '@opencodex/core';
+import { httpErrorEvent } from './http-error';
 import type { OpenAIConfig } from './config';
 import { findModel } from './models';
 import { sseEvents } from './sse';
@@ -470,11 +471,7 @@ export async function* responsesStream(
     } catch {
       // keep default
     }
-    yield {
-      type: 'error',
-      message: `OpenAI responses HTTP ${response.status}: ${detail}`,
-      retryable: response.status >= 500 || response.status === 429,
-    };
+    yield httpErrorEvent(`OpenAI responses HTTP ${response.status}: ${detail}`, response.status);
     yield { type: 'done', stopReason: 'error' };
     return;
   }

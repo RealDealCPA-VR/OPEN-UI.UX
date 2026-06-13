@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false,
+    "rootDir": "../..",
+    // assert-provider-honors-abort.test.ts exercises sibling providers; vitest
+    // resolves them via the root vitest.config.ts aliases, so mirror that here.
+    "paths": {
+      "@opencodex/provider-anthropic": ["../provider-anthropic/src/index.ts"],
+      "@opencodex/provider-google": ["../provider-google/src/index.ts"],
+      "@opencodex/provider-mistral": ["../provider-mistral/src/index.ts"],
+      "@opencodex/provider-ollama": ["../provider-ollama/src/index.ts"],
+      "@opencodex/provider-xai": ["../provider-xai/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": []
+}

@@ -21,7 +21,7 @@ async function makeVault(files: Record<string, string>): Promise<Tmp> {
   }
   return {
     root,
-    cleanup: () => fs.rm(root, { recursive: true, force: true }),
+    cleanup: () => fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }),
   };
 }
 

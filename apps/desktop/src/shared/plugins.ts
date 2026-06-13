@@ -1,6 +1,6 @@
 import type { Permission, PluginManifest } from '@opencodex/plugin-sdk';
 
-export type PluginStatus = 'loaded' | 'failed' | 'disabled' | 'pending-permissions';
+export type PluginStatus = 'loaded' | 'failed' | 'disabled' | 'pending-permissions' | 'tampered';
 
 export interface PluginListItem {
   id: string;

@@ -49,7 +49,7 @@ describe('buildResponsesRequestBody params', () => {
       {
         stream: false,
       },
-    ) as Record<string, unknown>;
+    ) as unknown as Record<string, unknown>;
     expect(body.stop).toBeUndefined();
   });
 });
@@ -188,7 +188,7 @@ describe('responsesStream (OpenAI Responses API)', () => {
     const events = await collect(
       provider.chat({ model: 'gpt-5', messages: [{ role: 'user', content: 'hi' }] }),
     );
-    expect(events[0]).toMatchObject({ type: 'error', retryable: true });
+    expect(events[0]).toMatchObject({ type: 'error', retryable: true, code: 'rate_limit' });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'error' });
   });
 

@@ -139,7 +139,7 @@ describe('ollamaProvider', () => {
     const events = await collect(
       provider.chat({ model: 'llama3.1', messages: [{ role: 'user', content: 'hi' }] }),
     );
-    expect(events[0]).toMatchObject({ type: 'error', retryable: false });
+    expect(events[0]).toMatchObject({ type: 'error', retryable: false, code: 'invalid_request' });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'error' });
   });
 

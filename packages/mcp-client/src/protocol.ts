@@ -76,6 +76,12 @@ export const mcpContentBlockSchema = z.union([
     data: z.string(),
     mimeType: z.string(),
   }),
+  // 2025-03-26
+  z.object({
+    type: z.literal('audio'),
+    data: z.string(),
+    mimeType: z.string(),
+  }),
   z.object({
     type: z.literal('resource'),
     resource: z.object({
@@ -85,10 +91,20 @@ export const mcpContentBlockSchema = z.union([
       blob: z.string().optional(),
     }),
   }),
+  // 2025-06-18
+  z.object({
+    type: z.literal('resource_link'),
+    uri: z.string(),
+    name: z.string(),
+    title: z.string().optional(),
+    description: z.string().optional(),
+    mimeType: z.string().optional(),
+  }),
 ]);
 
 export const mcpCallToolResultSchema = z.object({
   content: z.array(mcpContentBlockSchema),
+  structuredContent: z.unknown().optional(),
   isError: z.boolean().optional(),
 });
 

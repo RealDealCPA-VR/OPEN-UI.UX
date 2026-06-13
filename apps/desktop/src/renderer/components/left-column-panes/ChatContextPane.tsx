@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Conversation } from '../../../shared/conversation';
 import type { ConversationSearchHit } from '../../../shared/conversation-search';
+import type { Project } from '../../../shared/projects';
 import { useChat } from '../../state/chat-context';
 import { useSelectedModel } from '../../state/selected-model-context';
 import { MultiWorkspaceSelector } from '../MultiWorkspaceSelector';
@@ -21,6 +22,11 @@ export default function ChatContextPane(): JSX.Element {
     deleteConversation,
     renameConversation,
     toggleStarConversation,
+    projects,
+    createProject,
+    deleteProject,
+    setProjectInstructions,
+    assignConversationToProject,
   } = useChat();
   const { selected } = useSelectedModel();
   const navigate = useNavigate();
@@ -29,10 +35,20 @@ export default function ChatContextPane(): JSX.Element {
   // Lane 15 — switch between Conversations list and Pair Suggestions
   const [tab, setTab] = useState<'conversations' | 'suggestions'>('conversations');
 
-  // Cmd/Ctrl+K focuses the conversation/message search.
+  // Cmd/Ctrl+K focuses the conversation/message search — unless the user is
+  // typing in another field (mirrors AppShell's isEditableTarget guard), so it
+  // can't hijack focus from the composer or an inline-rename input.
   useEffect(() => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      if (target === searchRef.current) return false;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      return target.isContentEditable;
+    };
     const onKey = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+        if (isEditableTarget(e.target)) return;
         e.preventDefault();
         setTab('conversations');
         searchRef.current?.focus();
@@ -89,6 +105,57 @@ export default function ChatContextPane(): JSX.Element {
     trimmedQuery.length === 0
       ? conversations
       : conversations.filter((c) => c.title.toLowerCase().includes(trimmedQuery.toLowerCase()));
+
+  // CD-21 — group assigned conversations under their project; a conversation
+  // pointing at an unknown project (stale broadcast) stays in the flat list.
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [projectDraft, setProjectDraft] = useState('');
+  const projectInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (creatingProject) projectInputRef.current?.focus();
+  }, [creatingProject]);
+  const knownProjectIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
+  const byProject = useMemo(() => {
+    const groups = new Map<string, Conversation[]>();
+    for (const c of filtered) {
+      if (c.projectId && knownProjectIds.has(c.projectId)) {
+        const group = groups.get(c.projectId) ?? [];
+        group.push(c);
+        groups.set(c.projectId, group);
+      }
+    }
+    return groups;
+  }, [filtered, knownProjectIds]);
+  const ungrouped = useMemo(
+    () => filtered.filter((c) => !c.projectId || !knownProjectIds.has(c.projectId)),
+    [filtered, knownProjectIds],
+  );
+
+  const commitProjectDraft = (): void => {
+    const name = projectDraft.trim();
+    if (name.length > 0) void createProject(name);
+    setProjectDraft('');
+    setCreatingProject(false);
+  };
+
+  const rowProps = (c: Conversation): Parameters<typeof ConversationRow>[0] => ({
+    conversation: c,
+    active: c.id === activeId,
+    projects,
+    onSelect: () => selectConversation(c.id),
+    onDelete: () => {
+      void deleteConversation(c.id);
+    },
+    onRename: (title: string) => {
+      void renameConversation(c.id, title);
+    },
+    onToggleStar: () => {
+      void toggleStarConversation(c.id);
+    },
+    onAssignProject: (projectId: string | null) => {
+      void assignConversationToProject(c.id, projectId);
+    },
+  });
 
   if (tab === 'suggestions') {
     return (
@@ -178,6 +245,57 @@ export default function ChatContextPane(): JSX.Element {
           aria-label="Search conversations and messages"
         />
       </div>
+      <div className="chat-projects-head">
+        <span>Projects</span>
+        <button
+          type="button"
+          className="chat-project-add"
+          onClick={() => setCreatingProject(true)}
+          aria-label="New project"
+          title="New project"
+        >
+          +
+        </button>
+      </div>
+      {creatingProject ? (
+        <input
+          className="chat-conversation-rename-input chat-project-name-input"
+          value={projectDraft}
+          onChange={(e) => setProjectDraft(e.target.value)}
+          onBlur={commitProjectDraft}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commitProjectDraft();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              setProjectDraft('');
+              setCreatingProject(false);
+            }
+          }}
+          placeholder="Project name"
+          aria-label="New project name"
+          ref={projectInputRef}
+        />
+      ) : null}
+      {projects.length > 0 ? (
+        <ul className="chat-project-list">
+          {projects.map((p) => (
+            <ProjectGroup
+              key={p.id}
+              project={p}
+              conversations={byProject.get(p.id) ?? []}
+              renderRow={(c) => <ConversationRow key={c.id} {...rowProps(c)} />}
+              onDelete={() => {
+                void deleteProject(p.id);
+              }}
+              onSaveInstructions={(instructions) => {
+                void setProjectInstructions(p.id, instructions);
+              }}
+            />
+          ))}
+        </ul>
+      ) : null}
       <ul className="chat-conversation-list">
         {filtered.length === 0 ? (
           <li className="chat-conversation-empty">
@@ -186,23 +304,7 @@ export default function ChatContextPane(): JSX.Element {
               : 'No matches'}
           </li>
         ) : (
-          filtered.map((c) => (
-            <ConversationRow
-              key={c.id}
-              conversation={c}
-              active={c.id === activeId}
-              onSelect={() => selectConversation(c.id)}
-              onDelete={() => {
-                void deleteConversation(c.id);
-              }}
-              onRename={(title) => {
-                void renameConversation(c.id, title);
-              }}
-              onToggleStar={() => {
-                void toggleStarConversation(c.id);
-              }}
-            />
-          ))
+          ungrouped.map((c) => <ConversationRow key={c.id} {...rowProps(c)} />)
         )}
       </ul>
       {currentHits !== null ? (
@@ -232,22 +334,122 @@ export default function ChatContextPane(): JSX.Element {
   );
 }
 
+function ProjectGroup({
+  project,
+  conversations,
+  renderRow,
+  onDelete,
+  onSaveInstructions,
+}: {
+  project: Project;
+  conversations: Conversation[];
+  renderRow: (c: Conversation) => JSX.Element;
+  onDelete: () => void;
+  onSaveInstructions: (instructions: string) => void;
+}): JSX.Element {
+  const [editingInstructions, setEditingInstructions] = useState(false);
+  const [draft, setDraft] = useState(project.instructions);
+
+  return (
+    <li className="chat-project-group">
+      <div className="chat-project-header">
+        <span className="chat-project-name" title={project.name}>
+          {project.name}
+        </span>
+        <button
+          type="button"
+          className="chat-project-action"
+          onClick={() => {
+            setDraft(project.instructions);
+            setEditingInstructions((open) => !open);
+          }}
+          aria-label={`Edit instructions for ${project.name}`}
+          title="Project instructions"
+        >
+          <svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true" fill="none">
+            <path
+              d="M3 2.5h8M3 5.5h8M3 8.5h5"
+              stroke="currentColor"
+              strokeWidth="1.3"
+              strokeLinecap="round"
+            />
+            <path
+              d="M10.2 9l1.3 1.3L8 13.8l-1.7.4.4-1.7L10.2 9z"
+              stroke="currentColor"
+              strokeWidth="1.1"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className="chat-project-action chat-project-delete"
+          onClick={onDelete}
+          aria-label={`Delete project ${project.name}`}
+          title="Delete project (conversations are kept)"
+        >
+          ×
+        </button>
+      </div>
+      {editingInstructions ? (
+        <div className="chat-project-instructions">
+          <textarea
+            className="chat-project-instructions-input"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={4}
+            placeholder="Custom instructions for every chat in this project…"
+            aria-label={`Instructions for ${project.name}`}
+          />
+          <div className="chat-project-instructions-actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                onSaveInstructions(draft);
+                setEditingInstructions(false);
+              }}
+            >
+              Save
+            </button>
+            <button type="button" className="btn" onClick={() => setEditingInstructions(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+      <ul className="chat-conversation-list chat-project-conversations">
+        {conversations.length === 0 ? (
+          <li className="chat-project-empty">No conversations</li>
+        ) : (
+          conversations.map(renderRow)
+        )}
+      </ul>
+    </li>
+  );
+}
+
 function ConversationRow({
   conversation,
   active,
+  projects,
   onSelect,
   onDelete,
   onRename,
   onToggleStar,
+  onAssignProject,
 }: {
   conversation: Conversation;
   active: boolean;
+  projects: Project[];
   onSelect: () => void;
   onDelete: () => void;
   onRename: (title: string) => void;
   onToggleStar: () => void;
+  onAssignProject: (projectId: string | null) => void;
 }): JSX.Element {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [assigning, setAssigning] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(conversation.title);
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -306,6 +508,37 @@ function ConversationRow({
           }}
           aria-label={`Rename conversation "${conversation.title}"`}
         />
+      </li>
+    );
+  }
+
+  if (assigning) {
+    return (
+      <li className={`chat-conversation-row editing${active ? ' active' : ''}`}>
+        <select
+          className="chat-conversation-project-select"
+          value={conversation.projectId ?? ''}
+          onChange={(e) => {
+            const next = e.target.value === '' ? null : e.target.value;
+            setAssigning(false);
+            if (next !== (conversation.projectId ?? null)) onAssignProject(next);
+          }}
+          onBlur={() => setAssigning(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              setAssigning(false);
+            }
+          }}
+          aria-label={`Move ${conversation.title} to project`}
+        >
+          <option value="">No project</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
       </li>
     );
   }
@@ -402,6 +635,27 @@ function ConversationRow({
               />
             </svg>
           </button>
+          {projects.length > 0 ? (
+            <button
+              type="button"
+              className="chat-conversation-project"
+              onClick={(e) => {
+                e.stopPropagation();
+                setAssigning(true);
+              }}
+              aria-label={`Move ${conversation.title} to a project`}
+              title="Move to project"
+            >
+              <svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true" fill="none">
+                <path
+                  d="M1.5 3.5a1 1 0 0 1 1-1h2.7a1 1 0 0 1 .77.36l.78.93a1 1 0 0 0 .77.36H11.5a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V3.5z"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          ) : null}
           <button
             type="button"
             className="chat-conversation-rename"

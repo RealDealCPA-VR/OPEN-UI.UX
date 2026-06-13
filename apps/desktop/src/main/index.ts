@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, nativeTheme, screen, session, shell } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { dirname, join as pathJoin, join } from 'node:path';
@@ -63,15 +63,18 @@ import { registerNetworkPolicyHandlers } from './security/handlers';
 import { registerSkillHandlers } from './skills/handlers';
 import { startSkills, stopSkills } from './skills/manager';
 import { registerSelectedModelHandlers } from './selected-model/handlers';
-import { closeDb, getDb, openDb } from './storage/db';
+import { closeDb, getDb, openDb, UnsupportedSchemaVersionError } from './storage/db';
 import {
   getAuditRetentionDays,
   getAuditWormEnabled,
   getSchedulerEnabledInDev,
   getSettings,
   getTheme,
+  getWindowBounds,
+  setWindowBounds,
   settingsStore,
 } from './storage/settings';
+import { resolveInitialWindowPlacement } from './storage/window-state';
 import { purgeToolCallsOlderThan } from './storage/tool-audit';
 import { registerThemeHandlers } from './theme/handlers';
 import { registerToolAuditHandlers } from './tool-audit/handlers';
@@ -85,6 +88,8 @@ import { installCodeGraphResolver } from './workspace/code-graph-resolver';
 import { resolveAppIconPath } from './app-icon';
 import { createTray, destroyTray } from './tray';
 import { initAutoUpdater, registerUpdateHandlers } from './updater';
+import { registerWindowChromeHandlers } from './window/window-chrome-handlers';
+import { titleBarOverlayForPreference } from './window/titlebar-overlay';
 import { registerWorkspaceHandlers } from './workspace/handlers';
 import { initTelemetry, shutdownTelemetry, track } from './telemetry/manager';
 import { registerTelemetryHandlers } from './telemetry/handlers';
@@ -325,20 +330,41 @@ function warnIfPermissiveNetworkPolicy(): void {
   }
 }
 
+const PERSIST_BOUNDS_DEBOUNCE_MS = 500;
+
 function createWindow(): void {
   const initialTheme = getTheme();
+  const placement = resolveInitialWindowPlacement(
+    getWindowBounds(),
+    screen.getAllDisplays().map((d) => d.workArea),
+  );
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    width: placement.width,
+    height: placement.height,
+    ...(placement.x !== undefined && placement.y !== undefined
+      ? { x: placement.x, y: placement.y }
+      : {}),
     minWidth: 900,
     minHeight: 600,
     show: false,
     icon: resolveAppIconPath(),
-    // macOS: tuck the traffic lights into an inset titlebar for an edge-to-edge,
-    // Claude-like flat top. Windows/Linux keep their native frame (a custom
-    // frameless titlebar + window controls needs a running app to validate, so
-    // it is deliberately not shipped blind here).
+    // Frameless chrome per platform for an edge-to-edge, Claude-like flat top:
+    // macOS tucks the traffic lights into an inset titlebar; Windows hides the
+    // frame and lets Electron draw native caption buttons over web content
+    // (overlay colors follow the persisted theme, double-click-to-maximize
+    // stays native); Linux drops the frame entirely and the renderer supplies
+    // WindowControls wired to the window:* IPC handlers.
     ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' as const } : {}),
+    ...(process.platform === 'win32'
+      ? {
+          titleBarStyle: 'hidden' as const,
+          titleBarOverlay: titleBarOverlayForPreference(
+            initialTheme,
+            nativeTheme.shouldUseDarkColors,
+          ),
+        }
+      : {}),
+    ...(process.platform === 'linux' ? { frame: false } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       sandbox: true,
@@ -348,7 +374,36 @@ function createWindow(): void {
     },
   });
 
+  const win = mainWindow;
+  let persistBoundsTimer: NodeJS.Timeout | null = null;
+  const persistBounds = (): void => {
+    if (win.isDestroyed()) return;
+    try {
+      const bounds = win.getNormalBounds();
+      setWindowBounds({
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        maximized: win.isMaximized(),
+      });
+    } catch (err) {
+      logger.warn({ err }, 'failed to persist window bounds');
+    }
+  };
+  const schedulePersistBounds = (): void => {
+    if (persistBoundsTimer) clearTimeout(persistBoundsTimer);
+    persistBoundsTimer = setTimeout(persistBounds, PERSIST_BOUNDS_DEBOUNCE_MS);
+  };
+  win.on('resize', schedulePersistBounds);
+  win.on('move', schedulePersistBounds);
+  win.on('close', () => {
+    if (persistBoundsTimer) clearTimeout(persistBoundsTimer);
+    persistBounds();
+  });
+
   mainWindow.on('ready-to-show', () => {
+    if (placement.maximized) mainWindow?.maximize();
     mainWindow?.show();
     if (pendingDeepLink) {
       const url = pendingDeepLink;
@@ -382,11 +437,22 @@ app.whenReady().then(() => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error({ err }, 'failed to open database');
+    // Every storage-backed IPC handler depends on the db, so ANY open failure
+    // is fatal — falling through would launch a zombie app with db = null.
     if (message.includes('NODE_MODULE_VERSION') || message.includes('ERR_DLOPEN_FAILED')) {
       showNativeAbiMismatchDialog(message);
-      app.exit(1);
-      return;
+    } else if (err instanceof UnsupportedSchemaVersionError) {
+      dialog.showErrorBox('OpenCodex — database from a newer version', err.message);
+    } else {
+      dialog.showErrorBox(
+        'OpenCodex — failed to open local database',
+        `OpenCodex could not open its local database and cannot start.\n\n` +
+          `The database file may be corrupted or locked by another process.\n\n` +
+          `Underlying error:\n${message}`,
+      );
     }
+    app.exit(1);
+    return;
   }
 
   try {
@@ -668,4 +734,5 @@ function registerIpcHandlers(): void {
   registerSchedulerHandlers();
   registerSkillHandlers();
   registerVoiceHandlers();
+  registerWindowChromeHandlers();
 }

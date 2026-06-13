@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron';
 import { z } from 'zod';
+import type { ProviderConfig } from '@opencodex/core';
 import { registerInvoke } from '../ipc/registry';
 import { logger } from '../logger';
 import { deleteSecret, getSecret, setSecret } from '../storage/secrets';
@@ -24,8 +25,13 @@ import {
   getPluginProviderInfo,
   getProviderInfo,
   invalidateProviderInfo,
+  type CatalogEntry,
 } from './catalog';
-import { listPluginProviders } from './plugin-provider-registry';
+import {
+  getPluginProvider,
+  listPluginProviders,
+  type PluginProviderEntry,
+} from './plugin-provider-registry';
 import { ping } from './ping';
 
 const apiKeyAccount = (id: string): string => `provider:${id}:apiKey`;
@@ -80,8 +86,40 @@ async function buildStatus(id: string): Promise<ProviderStatus> {
 
 async function buildItem(id: string): Promise<ProviderListItem | null> {
   const info = await getProviderInfo(id);
-  if (!info) return null;
-  return { info, status: await buildStatus(id) };
+  if (info) return { info, status: await buildStatus(id) };
+  const plugin = getPluginProvider(id);
+  if (!plugin) return null;
+  return { info: await getPluginProviderInfo(plugin), status: await buildStatus(id) };
+}
+
+type ResolvedProvider =
+  | { kind: 'catalog'; entry: CatalogEntry }
+  | { kind: 'plugin'; entry: PluginProviderEntry };
+
+// providers:list surfaces plugin-contributed providers, so save/delete/test
+// must resolve them too — otherwise they render in the UI but every attempt
+// to configure them throws "Unknown provider".
+function resolveProvider(id: string): ResolvedProvider {
+  const entry = catalogById.get(id);
+  if (entry) return { kind: 'catalog', entry };
+  const plugin = getPluginProvider(id);
+  if (plugin) return { kind: 'plugin', entry: plugin };
+  throw new Error(`Unknown provider "${id}"`);
+}
+
+// Plugin providers declare no extraFields, so forward every stored extra and
+// let the plugin's own configSchema decide what is valid.
+function buildPluginProviderConfig(
+  entry: PluginProviderEntry,
+  input: { apiKey: string | undefined; baseUrl: string | null; extra: Record<string, string> },
+): ProviderConfig {
+  const raw: Record<string, unknown> = {};
+  if (input.apiKey) raw['apiKey'] = input.apiKey;
+  if (input.baseUrl) raw['baseUrl'] = input.baseUrl;
+  for (const [key, value] of Object.entries(input.extra)) {
+    if (value !== '') raw[key] = value;
+  }
+  return entry.factory.configSchema.parse(raw);
 }
 
 export function registerProviderHandlers(): void {
@@ -106,8 +144,7 @@ export function registerProviderHandlers(): void {
       extra: z.record(z.string()).optional(),
     }),
     async (req): Promise<ProviderSaveResponse> => {
-      const entry = catalogById.get(req.id);
-      if (!entry) throw new Error(`Unknown provider "${req.id}"`);
+      const resolved = resolveProvider(req.id);
 
       const current = getProviderEntry(req.id);
       const existingKey = await getSecret(apiKeyAccount(req.id));
@@ -122,11 +159,13 @@ export function registerProviderHandlers(): void {
             : null;
 
       try {
-        buildProviderConfig(entry, {
+        const input = {
           apiKey: nextKey ?? undefined,
           baseUrl: nextBaseUrl,
           extra: nextExtra,
-        });
+        };
+        if (resolved.kind === 'catalog') buildProviderConfig(resolved.entry, input);
+        else buildPluginProviderConfig(resolved.entry, input);
       } catch (err) {
         const errors: ProviderConfigIssue[] = [];
         if (err instanceof z.ZodError) {
@@ -176,8 +215,7 @@ export function registerProviderHandlers(): void {
     'providers:delete',
     z.object({ id: z.string() }),
     async (req): Promise<ProviderListItem> => {
-      const entry = catalogById.get(req.id);
-      if (!entry) throw new Error(`Unknown provider "${req.id}"`);
+      resolveProvider(req.id);
 
       await deleteSecret(apiKeyAccount(req.id));
       deleteProviderEntry(req.id);
@@ -193,12 +231,14 @@ export function registerProviderHandlers(): void {
     'providers:test',
     z.object({ id: z.string() }),
     async (req): Promise<ProviderTestResult> => {
-      const entry = catalogById.get(req.id);
-      if (!entry) throw new Error(`Unknown provider "${req.id}"`);
+      const resolved = resolveProvider(req.id);
       const stored = getProviderEntry(req.id);
       const apiKey = (await getSecret(apiKeyAccount(req.id))) ?? undefined;
 
-      if (entry.requiresApiKey && !apiKey) {
+      // Plugin providers are surfaced with requiresApiKey: true (see
+      // getPluginProviderInfo), so testing them keeps the same gate.
+      const requiresApiKey = resolved.kind === 'catalog' ? resolved.entry.requiresApiKey : true;
+      if (requiresApiKey && !apiKey) {
         const result: ProviderTestResult = {
           ok: false,
           code: 'config',
@@ -211,12 +251,21 @@ export function registerProviderHandlers(): void {
         return result;
       }
 
-      const spec = entry.buildPingSpec({
-        apiKey,
-        baseUrl: stored.baseUrl ?? undefined,
-        extra: stored.extra,
-      });
-      const result = await ping(spec);
+      let result: ProviderTestResult;
+      if (resolved.kind === 'catalog') {
+        const spec = resolved.entry.buildPingSpec({
+          apiKey,
+          baseUrl: stored.baseUrl ?? undefined,
+          extra: stored.extra,
+        });
+        result = await ping(spec);
+      } else {
+        result = await testPluginProvider(resolved.entry, {
+          apiKey,
+          baseUrl: stored.baseUrl,
+          extra: stored.extra,
+        });
+      }
       setProviderEntry(req.id, {
         lastTestedAt: new Date().toISOString(),
         lastTestResult: result,
@@ -224,4 +273,33 @@ export function registerProviderHandlers(): void {
       return result;
     },
   );
+}
+
+// Plugin providers expose no ping endpoint, so construct the provider with the
+// stored config and list models — the closest generic reachability check the
+// factory contract offers.
+async function testPluginProvider(
+  entry: PluginProviderEntry,
+  input: { apiKey: string | undefined; baseUrl: string | null; extra: Record<string, string> },
+): Promise<ProviderTestResult> {
+  let config: ProviderConfig;
+  try {
+    config = buildPluginProviderConfig(entry, input);
+  } catch (err) {
+    return {
+      ok: false,
+      code: 'config',
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+  try {
+    const models = await entry.factory.create(config).listModels();
+    return { ok: true, code: 'ok', message: `Provider responded with ${models.length} model(s)` };
+  } catch (err) {
+    return {
+      ok: false,
+      code: 'unknown',
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
 }

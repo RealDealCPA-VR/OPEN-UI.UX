@@ -125,7 +125,11 @@ async function main() {
     license: 'MIT',
     entry: 'dist/index.js',
     engines: { opencodex: '^0.1.0' },
-    permissions: [],
+    // Must match what src/index.ts registers: a 'read'-tier tool needs
+    // workspace.read, the runner needs agent.runner, and the panel needs
+    // ui.panel — with permissions: [] the host auto-activates and activation
+    // throws, leaving the plugin failed with nothing for the user to grant.
+    permissions: ['workspace.read', 'agent.runner', 'ui.panel'],
     contributions: {
       tools: [toolId],
       runners: [{ id: runnerId, displayName: `${displayName} Runner` }],
@@ -290,10 +294,12 @@ In the OpenCodex Plugins panel, choose **Sideload from folder…** and select th
 
 ## Permissions
 
-The scaffold ships with \`permissions: []\` — the minimum needed for the host
-to accept the manifest. Each capability requires explicit consent from the
-user, and OpenCodex refuses to register contributions the manifest does not
-claim. Add only the permissions you actually use:
+The scaffold declares \`["workspace.read", "agent.runner", "ui.panel"]\` —
+exactly what the generated tool, runner, and panel contributions need. After
+sideloading, OpenCodex parks the plugin in *pending permissions* until you
+grant them from the Plugins panel; only then does activation run. The host
+refuses to register a contribution whose permission was not granted, so keep
+this list in sync with what your code actually registers:
 
 | Permission        | Required to                                            |
 | ----------------- | ------------------------------------------------------ |
@@ -306,9 +312,8 @@ claim. Add only the permissions you actually use:
 | \`settings.read\`   | Call \`host.getSetting(key)\`                            |
 | \`settings.write\`  | Call \`host.setSetting(key, value)\`                     |
 
-The generated entry registers a \`read\` tool plus a runner, so you will
-typically want \`["workspace.read", "agent.runner"]\` — and \`"ui.panel"\` if
-you keep the panel contribution.
+If you delete a contribution, remove its permission too (e.g. drop
+\`"ui.panel"\` if you delete \`panel.html\`) — declare only what you use.
 
 ## UI panel trust model
 

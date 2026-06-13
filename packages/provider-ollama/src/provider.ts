@@ -7,7 +7,7 @@ import type {
   ModelCapabilities,
   ProviderFactory,
 } from '@opencodex/core';
-import { sanitizeErrorDetail } from '@opencodex/core';
+import { mapHttpStatusToErrorCode, sanitizeErrorDetail } from '@opencodex/core';
 import { ollamaConfigSchema, type OllamaConfig } from './config';
 import { findModel, knownModels } from './models';
 import { ndjsonLines } from './ndjson';
@@ -28,10 +28,13 @@ class OllamaProvider implements LLMProvider {
     const response = await this.post('/api/chat', body, req.signal);
     if (!response.ok || !response.body) {
       const detail = await this.safeReadText(response);
+      const code = mapHttpStatusToErrorCode(response.status);
       yield {
         type: 'error',
         message: `Ollama chat HTTP ${response.status}: ${detail}`,
-        retryable: response.status >= 500 || response.status === 429,
+        retryable:
+          code === 'rate_limit' || code === 'server' || code === 'timeout' || code === 'network',
+        code,
       };
       yield { type: 'done', stopReason: 'error' };
       return;

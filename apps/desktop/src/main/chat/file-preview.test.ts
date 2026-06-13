@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { rmTmp } from '../../test/rm-tmp';
 import { readFilePreview } from './file-preview';
 
 interface Tmp {
@@ -18,7 +19,7 @@ async function createTmp(files: Record<string, string | Buffer> = {}): Promise<T
   }
   return {
     root,
-    cleanup: () => fs.rm(root, { recursive: true, force: true }),
+    cleanup: () => rmTmp(root),
   };
 }
 

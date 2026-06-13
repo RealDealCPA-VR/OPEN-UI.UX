@@ -1388,6 +1388,31 @@ body {
   margin: 0 auto;
 }
 
+.artifact-panel-status {
+  padding: 20px 24px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.artifact-panel-error {
+  padding: 20px 24px;
+  font-size: 13px;
+}
+
+.artifact-panel-error-title {
+  margin: 0 0 8px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.artifact-panel-error-detail {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .chat-empty {
   margin: 0;
   padding: 24px 32px;
@@ -9669,6 +9694,50 @@ select,
 [contenteditable='true'] {
   -webkit-app-region: no-drag;
 }
+
+/* win32 frameless: Electron draws the native caption buttons (titleBarOverlay)
+   over the top-right of the web content. Reserve their footprint so header
+   content never sits under them. min-height mirrors TITLEBAR_OVERLAY_HEIGHT in
+   main/window/titlebar-overlay.ts; 144px ≈ three 46px-wide Win11 buttons. */
+:root[data-platform='win32'] .main-column-header {
+  min-height: 36px;
+  padding-right: 144px;
+}
+
+/* linux frameless: renderer-drawn window controls (WindowControls.tsx). */
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.window-control-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-2xs);
+  cursor: default;
+  transition:
+    background-color var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.window-control-btn:hover {
+  background: var(--bg-btn-hover);
+  color: var(--text-primary);
+}
+
+.window-control-btn.window-control-close:hover {
+  background: #e81123;
+  color: #ffffff;
+}
 .pill-muted {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -9903,4 +9972,187 @@ select,
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Projects (CD-21) — grouped conversations + per-project instructions
+   --------------------------------------------------------------------------- */
+
+.chat-projects-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.chat-project-add {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition:
+    color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.chat-project-add:hover {
+  color: var(--accent-text);
+  background: var(--accent-soft-bg);
+}
+
+.chat-project-name-input {
+  margin: 0 var(--space-3) var(--space-2);
+  width: auto;
+}
+
+.chat-project-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.chat-project-group {
+  margin-bottom: var(--space-2);
+}
+
+.chat-project-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px var(--space-2) 2px var(--space-3);
+}
+
+.chat-project-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-project-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 1;
+  border-radius: 6px;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.chat-project-header:hover .chat-project-action {
+  opacity: 1;
+}
+
+.chat-project-action:hover {
+  color: var(--accent-text);
+  background: var(--accent-soft-bg);
+}
+
+.chat-project-action.chat-project-delete:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.chat-project-conversations {
+  margin-left: var(--space-2);
+}
+
+.chat-project-empty {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  padding: 2px var(--space-3) var(--space-1);
+}
+
+.chat-project-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3) var(--space-2);
+}
+
+.chat-project-instructions-input {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+
+.chat-project-instructions-input:focus {
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
+.chat-project-instructions-actions {
+  display: flex;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}
+
+/* Hover-revealed "move to project" affordance — mirrors star/rename */
+.chat-conversation-project {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 8px;
+  border-radius: 8px;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
+    background var(--duration-fast) var(--ease);
+}
+
+.chat-conversation-row:hover .chat-conversation-project,
+.chat-conversation-row.active .chat-conversation-project {
+  opacity: 1;
+}
+
+.chat-conversation-project:hover {
+  color: var(--accent-text);
+  background: var(--accent-soft-bg);
+}
+
+.chat-conversation-project-select {
+  flex: 1;
+  margin: 6px 10px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 6px 8px;
+  outline: none;
 }

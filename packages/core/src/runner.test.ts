@@ -80,6 +80,34 @@ describe('collectSubagentResult', () => {
     expect(result.toolEvents[0]?.isError).toBe(true);
   });
 
+  it('flushes unresolved tool calls as errored events when the stream ends without a tool_result', async () => {
+    const result = await collectSubagentResult(
+      fromArray([
+        { type: 'tool_call', id: 'call_1', name: 'write_file', arguments: { path: 'b.ts' } },
+        { type: 'done', stopReason: 'cancelled' },
+      ]),
+    );
+    expect(result.stopReason).toBe('cancelled');
+    expect(result.toolEvents).toHaveLength(1);
+    expect(result.toolEvents[0]?.name).toBe('write_file');
+    expect(result.toolEvents[0]?.isError).toBe(true);
+    expect(result.toolEvents[0]?.output).toBeUndefined();
+  });
+
+  it('flushes unresolved tool calls when the abort break exits the loop', async () => {
+    const controller = new AbortController();
+    async function* stream(): AsyncIterable<ChatEvent> {
+      yield { type: 'tool_call', id: 'call_1', name: 'read_file', arguments: { path: 'a.ts' } };
+      controller.abort('stop');
+      yield { type: 'text_delta', delta: 'never collected' };
+    }
+    const result = await collectSubagentResult(stream(), controller.signal);
+    expect(result.stopReason).toBe('cancelled');
+    expect(result.toolEvents).toHaveLength(1);
+    expect(result.toolEvents[0]?.name).toBe('read_file');
+    expect(result.toolEvents[0]?.isError).toBe(true);
+  });
+
   it('does not emit name="" for orphan tool_result events', async () => {
     const result = await collectSubagentResult(
       fromArray([

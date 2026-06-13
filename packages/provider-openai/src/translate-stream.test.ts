@@ -164,6 +164,32 @@ describe('streamChunksToEvents', () => {
     });
   });
 
+  it('maps finish_reason content_filter to a content_filter stop', async () => {
+    const chunks: ChatChunk[] = [
+      { choices: [{ index: 0, delta: { content: 'partial' }, finish_reason: 'content_filter' }] },
+    ];
+    const events = await collect(streamChunksToEvents(fromArray(chunks)));
+    expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'content_filter' });
+  });
+
+  it('prefers explicit pricing over the catalog model lookup', async () => {
+    const chunks: ChatChunk[] = [
+      {
+        choices: [],
+        usage: { prompt_tokens: 1_000_000, completion_tokens: 0, total_tokens: 1_000_000 },
+      },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+    ];
+    const events = await collect(
+      streamChunksToEvents(fromArray(chunks), {
+        model: 'gpt-4o',
+        pricing: { inputPerMillion: 7, outputPerMillion: 0 },
+      }),
+    );
+    const usage = events.find((e) => e.type === 'usage');
+    expect(usage).toMatchObject({ type: 'usage', costUsd: 7 });
+  });
+
   it('emits costUsd when a known model is supplied', async () => {
     const chunks: ChatChunk[] = [
       {

@@ -522,8 +522,44 @@ async function restoreGitCheckpoint(
     }
   }
 
-  // Delete untracked files the run created (those we blobbed at capture time).
   const entries = getCheckpointEntries(checkpoint.id, db);
+
+  // Delete untracked files the run created: anything currently untracked with
+  // no entry for this checkpoint did not exist at capture time (entries are
+  // only recorded for pre-run untracked files), so remove it to make the
+  // working tree match the pre-run state.
+  const preRunRelPaths = new Set(entries.map((e) => e.relPath));
+  try {
+    const { stdout } = await runGit(root, ['ls-files', '--others', '--exclude-standard', '-z']);
+    const currentUntracked = stdout.split('\0').filter((s) => s.length > 0);
+    for (const relPath of currentUntracked) {
+      if (preRunRelPaths.has(relPath)) continue;
+      let resolved: string;
+      try {
+        resolved = await resolveWithinWorkspace(root, relPath);
+      } catch (err) {
+        skipped.push({
+          relPath,
+          reason: err instanceof PathEscapesWorkspaceError ? 'path-escape' : 'error',
+        });
+        continue;
+      }
+      try {
+        await fs.rm(resolved, { force: true });
+        deletedCount++;
+      } catch (err) {
+        logger.error({ err, relPath }, 'git restore: delete of run-created untracked file failed');
+        skipped.push({ relPath, reason: 'error' });
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      { err, runId: checkpoint.runId },
+      'git restore: ls-files --others failed — run-created untracked files not deleted',
+    );
+  }
+
+  // Write back the blobbed pre-existing untracked files.
   for (const entry of entries) {
     if (entry.preBlobSha === TOO_LARGE_SENTINEL) {
       skipped.push({ relPath: entry.relPath, reason: 'too-large' });

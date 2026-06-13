@@ -196,6 +196,7 @@ import type {
   ExportConversationResult,
   StoredMessage,
 } from '../shared/conversation';
+import type { Project, ProjectsChangedEvent } from '../shared/projects';
 import type {
   ProviderDeleteRequest,
   ProviderListItem,
@@ -341,6 +342,32 @@ function applyEffectiveTheme(preference: ThemePreference): void {
 
 applyEffectiveTheme(initialThemePreference);
 
+try {
+  // CSS hook for platform-specific titlebar chrome (e.g. reserving the win32
+  // titleBarOverlay caption-button footprint).
+  document.documentElement.setAttribute('data-platform', process.platform);
+} catch {
+  // document may not yet be available in extremely early preload phases
+}
+
+if (process.platform === 'win32') {
+  // The native titleBarOverlay buttons are drawn by the OS, so recolor them
+  // whenever the persisted theme preference changes. System dark/light flips
+  // are handled in main via nativeTheme directly.
+  ipcRenderer.on('settings:theme-changed', () => {
+    void ipcRenderer.invoke('window:sync-titlebar-overlay');
+  });
+}
+
+const windowChrome = {
+  platform: process.platform,
+  minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
+  toggleMaximize: (): Promise<{ maximized: boolean }> =>
+    ipcRenderer.invoke('window:toggle-maximize'),
+  close: (): Promise<void> => ipcRenderer.invoke('window:close'),
+  isMaximized: (): Promise<{ maximized: boolean }> => ipcRenderer.invoke('window:is-maximized'),
+};
+
 const providers = {
   list: (): Promise<ProviderListItem[]> => ipcRenderer.invoke('providers:list'),
   save: (req: ProviderSaveRequest): Promise<ProviderSaveResponse> =>
@@ -369,6 +396,9 @@ const conversations = {
   setStarred: (req: { id: string; starred: boolean }): Promise<Conversation> =>
     ipcRenderer.invoke('conversations:setStarred', req),
   delete: (req: { id: string }): Promise<void> => ipcRenderer.invoke('conversations:delete', req),
+  // CD-21 — assign to / unassign from a project
+  assignProject: (req: { id: string; projectId: string | null }): Promise<Conversation> =>
+    ipcRenderer.invoke('conversations:assignProject', req),
   messages: (req: { id: string }): Promise<StoredMessage[]> =>
     ipcRenderer.invoke('conversations:messages', req),
   appendMessage: (req: AppendMessageRequest): Promise<StoredMessage> =>
@@ -393,6 +423,23 @@ const conversations = {
       listener(payload);
     ipcRenderer.on('conversations:changed', wrapped);
     return () => ipcRenderer.off('conversations:changed', wrapped);
+  },
+};
+
+// CD-21 — projects with custom instructions
+const projects = {
+  list: (): Promise<Project[]> => ipcRenderer.invoke('projects:list'),
+  create: (req: { name: string }): Promise<Project> => ipcRenderer.invoke('projects:create', req),
+  rename: (req: { id: string; name: string }): Promise<Project> =>
+    ipcRenderer.invoke('projects:rename', req),
+  setInstructions: (req: { id: string; instructions: string }): Promise<Project> =>
+    ipcRenderer.invoke('projects:setInstructions', req),
+  delete: (req: { id: string }): Promise<void> => ipcRenderer.invoke('projects:delete', req),
+  onChanged: (listener: (payload: ProjectsChangedEvent) => void): (() => void) => {
+    const wrapped = (_event: IpcRendererEvent, payload: ProjectsChangedEvent): void =>
+      listener(payload);
+    ipcRenderer.on('projects:changed', wrapped);
+    return () => ipcRenderer.off('projects:changed', wrapped);
   },
 };
 
@@ -1198,6 +1245,7 @@ const api = {
   providers,
   selectedModel,
   conversations,
+  projects,
   chat,
   attachments,
   approvals,
@@ -1205,6 +1253,7 @@ const api = {
   toolAudit,
   theme,
   settings,
+  windowChrome,
   workspace,
   workspaces,
   mcp,

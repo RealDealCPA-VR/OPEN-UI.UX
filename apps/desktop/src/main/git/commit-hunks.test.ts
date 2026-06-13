@@ -1,9 +1,10 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { rmTmp } from '../../test/rm-tmp';
 import { commitHunks } from './commit-hunks';
 
 const execFileAsync = promisify(execFile);
@@ -40,7 +41,7 @@ describeIfGit('commitHunks (real git repo)', () => {
   afterAll(async () => {
     if (repoRoot) {
       try {
-        await rm(repoRoot, { recursive: true, force: true });
+        await rmTmp(repoRoot);
       } catch {
         // best-effort
       }

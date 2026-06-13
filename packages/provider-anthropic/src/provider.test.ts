@@ -103,7 +103,7 @@ describe('anthropicProvider', () => {
     expect(body.max_tokens).toBe(64_000);
   });
 
-  it('yields an error event on non-2xx HTTP', async () => {
+  it('yields a retryable server-coded error event on 529', async () => {
     stubFetch(() => new Response('overloaded', { status: 529 }));
 
     const provider = anthropicProvider.create({ apiKey: 'sk-ant-test' });
@@ -113,8 +113,28 @@ describe('anthropicProvider', () => {
         messages: [{ role: 'user', content: 'hi' }],
       }),
     );
-    expect(events[0]).toMatchObject({ type: 'error', retryable: true });
+    expect(events[0]).toMatchObject({ type: 'error', retryable: true, code: 'server' });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'error' });
+  });
+
+  it('classifies HTTP errors via mapHttpStatusToErrorCode', async () => {
+    const cases = [
+      { status: 401, code: 'auth', retryable: false },
+      { status: 429, code: 'rate_limit', retryable: true },
+      { status: 400, code: 'invalid_request', retryable: false },
+    ] as const;
+    for (const c of cases) {
+      stubFetch(() => new Response('nope', { status: c.status }));
+      const provider = anthropicProvider.create({ apiKey: 'sk-ant-test' });
+      const events = await collect(
+        provider.chat({ model: 'claude-sonnet-4-6', messages: [{ role: 'user', content: 'hi' }] }),
+      );
+      expect(events[0]).toMatchObject({
+        type: 'error',
+        retryable: c.retryable,
+        code: c.code,
+      });
+    }
   });
 
   it('sets x-api-key, anthropic-version, and anthropic-beta headers', async () => {

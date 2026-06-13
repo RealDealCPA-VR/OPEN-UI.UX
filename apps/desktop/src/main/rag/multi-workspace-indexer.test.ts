@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { rmTmp } from '../../test/rm-tmp';
 import { MultiWorkspaceIndexer, type EmbeddingProviderResolver } from './multi-workspace-indexer';
 import type { SqliteVectorStore, VectorSearchHit } from './vector-store';
 import { WorkspaceWatcher, type WatcherBatch, type WatcherChangeHandler } from './watcher';
@@ -68,7 +69,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await fs.rm(baseDir, { recursive: true, force: true });
+  await rmTmp(baseDir);
 });
 
 describe('MultiWorkspaceIndexer', () => {

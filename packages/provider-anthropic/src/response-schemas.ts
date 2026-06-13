@@ -7,7 +7,19 @@ const usageSchema = z.object({
   cache_read_input_tokens: z.number().int().nonnegative().optional(),
 });
 
-const stopReasonSchema = z.enum(['end_turn', 'max_tokens', 'stop_sequence', 'tool_use']);
+// Known stop reasons plus a string catchall: an unrecognized stop_reason must
+// never fail the message_delta parse, or the final usage totals are lost too.
+const stopReasonSchema = z
+  .enum([
+    'end_turn',
+    'max_tokens',
+    'stop_sequence',
+    'tool_use',
+    'refusal',
+    'pause_turn',
+    'model_context_window_exceeded',
+  ])
+  .or(z.string());
 
 const messageStartSchema = z.object({
   type: z.literal('message_start'),
@@ -31,9 +43,22 @@ const toolUseContentBlockSchema = z.object({
   input: z.unknown().optional(),
 });
 
+const thinkingContentBlockSchema = z.object({
+  type: z.literal('thinking'),
+  thinking: z.string().optional(),
+  signature: z.string().optional(),
+});
+
+const redactedThinkingContentBlockSchema = z.object({
+  type: z.literal('redacted_thinking'),
+  data: z.string().optional(),
+});
+
 const contentBlockSchema = z.discriminatedUnion('type', [
   textContentBlockSchema,
   toolUseContentBlockSchema,
+  thinkingContentBlockSchema,
+  redactedThinkingContentBlockSchema,
 ]);
 
 const contentBlockStartSchema = z.object({
@@ -52,7 +77,22 @@ const inputJsonDeltaSchema = z.object({
   partial_json: z.string(),
 });
 
-const blockDeltaSchema = z.discriminatedUnion('type', [textDeltaSchema, inputJsonDeltaSchema]);
+const thinkingDeltaSchema = z.object({
+  type: z.literal('thinking_delta'),
+  thinking: z.string(),
+});
+
+const signatureDeltaSchema = z.object({
+  type: z.literal('signature_delta'),
+  signature: z.string(),
+});
+
+const blockDeltaSchema = z.discriminatedUnion('type', [
+  textDeltaSchema,
+  inputJsonDeltaSchema,
+  thinkingDeltaSchema,
+  signatureDeltaSchema,
+]);
 
 const contentBlockDeltaSchema = z.object({
   type: z.literal('content_block_delta'),

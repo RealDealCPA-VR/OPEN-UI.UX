@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { getCodeGraphResolver, setCodeGraphResolver } from '@opencodex/tools';
 import { CodeGraph, type GraphEdge, type GraphNode } from '@opencodex/code-graph';
+import { rmTmp } from '../../test/rm-tmp';
 import { applyMigrations, setDbForTesting } from '../storage/db';
 import { createWorkspace, setRagEnabled } from './workspaces-store';
 import { persistWorkspaceGraph } from '../rag/code-graph-store';
@@ -52,7 +53,7 @@ afterEach(async () => {
   uninstallCodeGraphResolver();
   setDbForTesting(null);
   db.close();
-  await fs.rm(tmp, { recursive: true, force: true });
+  await rmTmp(tmp);
 });
 
 describe('buildCodeGraphResolver', () => {

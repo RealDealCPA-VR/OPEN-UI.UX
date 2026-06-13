@@ -17,16 +17,16 @@
     "package": "node scripts/build-runner-plugins.mjs && node scripts/copy-grammars.mjs && electron-vite build && electron-builder --dir",
     "dist": "node scripts/build-runner-plugins.mjs && node scripts/copy-grammars.mjs && electron-vite build && electron-builder",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
+    "lint": "eslint src scripts e2e",
     "pretest": "node scripts/ensure-native-abi.mjs node",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "e2e": "playwright test",
     "bench": "node scripts/bench.mjs",
     "clean": "rimraf out release .vite",
-    "rebuild-native": "electron-rebuild -f -w better-sqlite3",
-    "rebuild-native-node": "pnpm rebuild better-sqlite3",
-    "postinstall": "electron-rebuild -f -w better-sqlite3 || echo 'rebuild-native skipped — run pnpm rebuild-native manually'"
+    "rebuild-native": "node scripts/ensure-native-abi.mjs electron",
+    "rebuild-native-node": "node scripts/ensure-native-abi.mjs node",
+    "postinstall": "node scripts/ensure-native-abi.mjs electron || echo 'rebuild-native skipped — run pnpm rebuild-native manually'"
   },
   "dependencies": {
     "@opencodex/audit-verify": "workspace:*",
@@ -59,6 +59,7 @@
     "electron-updater": "^6.3.0",
     "gray-matter": "^4.0.3",
     "keytar": "^7.9.0",
+    "mermaid": "^11.15.0",
     "pino": "^9.5.0",
     "react-router-dom": "^6.26.0",
     "zod": "^3.23.0"

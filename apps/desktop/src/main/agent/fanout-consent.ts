@@ -18,6 +18,12 @@ type RequestedListener = (event: FanoutConsentRequestedEvent) => void;
 const pending = new Map<string, PendingFanout>();
 const listeners = new Set<RequestedListener>();
 
+// Producers (the fan-out gate) use this to detect the headless path: with no
+// renderer-facing listener attached, a consent request could never be answered.
+export function hasFanoutListeners(): boolean {
+  return listeners.size > 0;
+}
+
 export function onFanoutRequested(listener: RequestedListener): () => void {
   listeners.add(listener);
   return () => {

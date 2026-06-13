@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { hasGrammar } from '@opencodex/rag-chunker';
+import { rmTmp } from '../../test/rm-tmp';
 import { languageForPath, registerBundledGrammars, resolveGrammarDir } from './ast-chunk';
 
 const require = createRequire(import.meta.url);
@@ -57,7 +58,7 @@ describe('registerBundledGrammars', () => {
   });
 
   afterEach(async () => {
-    await fs.rm(dir, { recursive: true, force: true });
+    await rmTmp(dir);
   });
 
   async function touch(name: string): Promise<void> {

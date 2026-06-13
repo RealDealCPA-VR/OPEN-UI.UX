@@ -144,6 +144,17 @@ const SettingsSchema = z.object({
     .default(['127.0.0.1', 'localhost', '*.local']),
   // Lane 14 — MCP marketplace registry URL.
   mcpRegistryUrl: z.string().url().nullable().default(null),
+  // Last main-window placement; restored on launch after display validation.
+  windowBounds: z
+    .object({
+      x: z.number().int(),
+      y: z.number().int(),
+      width: z.number().int().min(1),
+      height: z.number().int().min(1),
+      maximized: z.boolean().default(false),
+    })
+    .nullable()
+    .default(null),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -601,6 +612,17 @@ export function setNetworkPolicy(policy: NetworkPolicySnapshot): NetworkPolicySn
     networkAllowlist: [...policy.allowlist],
   });
   return { localOnlyMode: next.localOnlyMode, allowlist: [...next.networkAllowlist] };
+}
+
+export type StoredWindowBounds = NonNullable<Settings['windowBounds']>;
+
+export function getWindowBounds(): StoredWindowBounds | null {
+  return getSettings().windowBounds;
+}
+
+export function setWindowBounds(bounds: StoredWindowBounds): StoredWindowBounds | null {
+  const next = updateSettings({ windowBounds: bounds });
+  return next.windowBounds;
 }
 
 // Lane 14 — MCP registry URL

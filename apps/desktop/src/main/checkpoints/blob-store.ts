@@ -1,11 +1,18 @@
 import { createHash } from 'node:crypto';
-import { gunzipSync, gzipSync } from 'node:zlib';
+import { gunzip as gunzipCb, gzip as gzipCb } from 'node:zlib';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { app } from 'electron';
 import type Database from 'better-sqlite3';
 import { logger } from '../logger';
 import { getDb } from '../storage/db';
+
+// Async zlib runs on the libuv threadpool — pre-run snapshots gzip every file
+// in the workspace, and the sync variants would block the main-process event
+// loop (frozen UI, stalled IPC) for the whole capture/restore.
+const gzip = promisify(gzipCb);
+const gunzip = promisify(gunzipCb);
 
 let blobsDirOverride: string | null = null;
 
@@ -42,7 +49,7 @@ export async function putBlob(bytes: Buffer): Promise<string> {
     // not present yet
   }
   await fs.mkdir(dir, { recursive: true });
-  const gz = gzipSync(bytes);
+  const gz = await gzip(bytes);
   // Write to a temp sibling then rename so a crash never leaves a half blob
   // under the content-addressed name (which would otherwise be trusted).
   const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
@@ -65,7 +72,7 @@ export async function getBlob(sha: string): Promise<Buffer | null> {
   const { file } = shardPathFor(sha);
   try {
     const gz = await fs.readFile(file);
-    return gunzipSync(gz);
+    return await gunzip(gz);
   } catch {
     return null;
   }

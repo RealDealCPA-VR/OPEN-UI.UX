@@ -2,56 +2,62 @@
 
 ## Last Session Summary
 
-Goal: "make OpenCodex feel like the Claude desktop app — fan out an audit, produce the upgrades,
-work them one at a time checking TS/lint." Ran a **7-dimension multi-agent audit** (8 agents, 57
-findings) → synthesized a **21-item prioritized backlog** in
-[docs/CLAUDE-DESKTOP-FEEL-PLAN.md](./docs/CLAUDE-DESKTOP-FEEL-PLAN.md), then implemented **all 21
-(CD-01 … CD-21)** top-to-bottom, gating each on desktop typecheck + lint.
+Goal: "audit the entirety of this project and fix anything that is broken or doesn't look
+visually nice." Audited both visual surfaces (Nextra docs site + Electron renderer) on top of the
+already-green code gate.
 
-- **Design tokens (CD-01–03):** indigo → Claude clay/terracotta accent across both themes; warm
-  cream/oat light surfaces + brown-tinted shadows; serif display stack on headings; defined the
-  previously-undefined chip/citation tokens. WCAG AA verified.
-- **Chat surface (CD-04–10):** styled empty-state greeting + starter chips; narrower reading
-  measure + line-height; warm composer + clay Send; per-message hover actions (copy/retry/edit);
-  blinking caret + thinking dots; collapsible `<think>` reasoning blocks; code/citation polish.
-- **Conversations (CD-11–13):** LLM auto-title (opt-in flag) + `conversations:changed` broadcast +
-  live sidebar; inline rename; star/pin (migration **v22** `starred`).
-- **Features/chrome/polish (CD-14–21):** artifact preview side panel (html/svg/markdown, sandboxed
-  iframe); prominent New Chat button; 2-zone nav rail; demoted/compact status bar; macOS
-  hidden-inset titlebar + drag regions; popover scale-in + copy flourish; warmer onboarding;
-  relative-time metadata + Cmd/K search focus.
-- New unit tests: extract-thinking, auto-title, extract-artifacts, relative-time, + message-bubble
-  memo comparator update.
+- **Fixed (broken):**
+  - **Docs landing was a hard 500.** `website/pages/index.mdx` used Nextra `<Cards>/<Card>`
+    without importing them (`import { Cards, Card } from 'nextra/components'`) — these are not
+    global MDX components in Nextra v2. Added the import; `next build` now prerenders all 14 pages
+    static. This slipped through because `pnpm build` (= `pnpm -r build`) never builds the
+    npm-managed website and `tsc --noEmit` can't see MDX runtime errors.
+  - **CI gate gap:** added a `Build website` step to `.github/workflows/ci.yml` (runs `next build`
+    in `website/`) so this class of MDX render bug can't ship silently again.
+  - **Flaky test:** `AutomationsView.test.tsx` mocked the editor modal by pushing to `editorMounts`
+    in the _render body_, so the host's `listTasks().then(setTasks)` resolving after the modal
+    opened produced a 2nd render → `editorMounts.length === 2` under parallel load. Now counts
+    _mounts_ via `useEffect(…, [])`. Full suite back to 274/274.
+- **Fixed (visual / brand):** the app moved to a terracotta/clay palette but the website was still
+  on the old indigo. Rebranded `website/styles/globals.css` (added a real `:root` + `html.dark`
+  token block mirroring the app — the hero border/radius and `.eyebrow` had no definitions at all),
+  `website/theme.config.tsx` (logo fill + `primaryHue`/`primarySaturation` so Nextra's own
+  links/active-nav/search go copper).
+- **Audited clean (no change needed):** renderer `styles.css` is token-rigorous — 0 undefined
+  `var()` tokens across CSS _and_ `.tsx` inline styles (146 defined / 140 used); the 5-palette
+  system (clay/indigo/ocean/emerald/violet) has complete light+dark blocks derived via `color-mix`.
 
 ## Verify Before Continuing
 
-- [ ] **Gate (all green this session):** `pnpm -r typecheck` 0, `pnpm -r lint` 0, `pnpm test`
-      2382 pass.
-- [ ] **Known flakes only (NOT regressions):** the full-suite parallel run showed 5 failures, all
-      Windows `EBUSY` temp-cleanup races in `checkpoints/manager.test.ts` (+ the documented
-      `agent/git-init`, `agent/merge-review`, `stdio-transport`). All pass in isolation — re-ran
-      `manager.test.ts`/`git-init`/`merge-review` together → **41/41 pass**.
-- [ ] **better-sqlite3 ABI sentinel quirk (unchanged):** if DB tests throw `ERR_DLOPEN`, run
-      `cd apps/desktop && pnpm rebuild better-sqlite3` (done once this session).
-- [ ] **Needs a running app to validate (shipped but unverified headlessly):** the clay theme in
-      light + dark; artifact iframe rendering; macOS hidden-inset titlebar; auto-title firing on a
-      real first turn; conversation star/rename live-update.
+- [ ] **Gate (all green at handoff):** `pnpm typecheck` 0, `pnpm lint` 0, `pnpm test`
+      **274/274 files, 2587 passed / 8 skipped / 0 failed**, and **`cd website && npx next build`**
+      exit 0 (14/14 static pages — this is NOT covered by `pnpm build`).
+- [ ] Headless visual recheck (optional): Edge `--headless=new --screenshot` against `next dev`
+      renders the docs faithfully. NB: `next dev` survives `TaskStop` of its wrapper — kill the real
+      node PID on the port or `.next` stays locked and the next `next build` hangs on EPERM.
 
 ## Next Task
 
-Deferred sub-features (documented, each needs a running app or a new dependency):
+Still needs a **running Electron app** to verify (shipped typecheck/lint/test-clean, but headless):
 
-1. **Windows/Linux frameless titlebar** with custom min/max/close controls (CD-18 shipped macOS only).
-2. **Mermaid / JSX-TSX artifact rendering** (CD-14 ships html/svg/markdown; the rest needs
-   mermaid + a JSX transpiler dependency).
-3. **Projects with custom instructions** (CD-21 deferred this; star+rename cover most of the feel).
+1. Win32 frameless titlebar — overlay colors/height vs the 144px caption reservation, drag feel,
+   theme-change recolor; linux WindowControls.
+2. Fan-out consent modal round-trip (Allow/Deny from the renderer on first `spawn_subagent`).
+3. Projects UI polish (create → assign → grouped header → instructions editor) and mermaid
+   artifact visual render (lazy chunk, dark/default theme).
+4. `tampered` plugin status badge — renderer shows `lastError` generically; no dedicated styling.
 
-See `docs/CLAUDE-DESKTOP-FEEL-PLAN.md` for the full per-item implementation log.
+Remaining backlog (consciously deferred): LSP bridge real implementation (`pair/lsp-bridge.ts`
+stub), subagent live streaming (`subagent.ts:234` TODO), JSX/TSX artifact transpile, tree-sitter
+grammar .wasm bundling, plugin providers in the model picker, hero screenshot
+(PLACEHOLDERS.md:69 — landing hero is still the SVG mock), 'window:maximized-changed' event.
 
 ## Context Notes
 
-- Nothing was committed this session (tree left dirty for review, matching prior sessions).
-- Keyboard ⌘1–6 mapping + shortcuts-catalog intentionally left unchanged in CD-16 (zones are
-  visual-only) to avoid catalog/test churn.
-- Carry-overs still true: Node 20 pinned; path has a space + period (`OPEN UI.UX`) — quote in shell;
-  vitest runs from repo root.
+- The dirty working tree still includes the **prior** (2026-06-10) session's uncommitted fix waves
+  in addition to this session's 5 source edits (ci.yml, AutomationsView.test.tsx,
+  website/{index.mdx, globals.css, theme.config.tsx}). Nothing committed this session, matching the
+  established convention (tree left dirty for review).
+- Carry-overs still true: Node 20 pinned; path has a space + period (`OPEN UI.UX`) — quote in
+  shell; vitest runs from repo root; better-sqlite3 ABI sentinel quirk
+  (`pnpm rebuild-native-node`, NOT `rebuild-native`, for vitest DB tests).

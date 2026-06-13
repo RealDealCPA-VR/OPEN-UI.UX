@@ -75,6 +75,30 @@ describe('conversations storage', () => {
     expect(listMessages(c.id, db)).toEqual([]);
   });
 
+  it('deleting a conversation purges its messages_fts rows', () => {
+    const c = createConversation({}, db);
+    appendMessage({ conversationId: c.id, role: 'user', content: 'secret alpha text' }, db);
+    appendMessage({ conversationId: c.id, role: 'assistant', content: 'secret beta reply' }, db);
+
+    const other = createConversation({}, db);
+    appendMessage({ conversationId: other.id, role: 'user', content: 'unrelated gamma' }, db);
+
+    const countFts = (conversationId: string): number =>
+      (
+        db
+          .prepare('SELECT COUNT(*) AS n FROM messages_fts WHERE conversation_id = ?')
+          .get(conversationId) as { n: number }
+      ).n;
+
+    expect(countFts(c.id)).toBe(2);
+
+    deleteConversation(c.id, db);
+
+    expect(countFts(c.id)).toBe(0);
+    // Other conversations' FTS rows are untouched.
+    expect(countFts(other.id)).toBe(1);
+  });
+
   it('appends a message and updates conversation updated_at', async () => {
     const c = createConversation({}, db);
     const original = c.updatedAt;

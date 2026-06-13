@@ -150,7 +150,7 @@ describe('mistralProvider', () => {
         messages: [{ role: 'user', content: 'hi' }],
       }),
     );
-    expect(events[0]).toMatchObject({ type: 'error', retryable: true });
+    expect(events[0]).toMatchObject({ type: 'error', retryable: true, code: 'rate_limit' });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'error' });
   });
 

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -44,12 +44,14 @@ beforeEach(() => {
   setBlobsDirForTesting(blobs);
 });
 
-afterEach(() => {
+afterEach(async () => {
   setDbForTesting(null);
   setBlobsDirForTesting(null);
   db.close();
-  rmSync(workspace, { recursive: true, force: true });
-  rmSync(blobs, { recursive: true, force: true });
+  // maxRetries/retryDelay paper over Windows EBUSY when a handle is still
+  // closing (documented flake).
+  await fs.rm(workspace, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  await fs.rm(blobs, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 async function capture(messageId: string, toolName: string, rel: string): Promise<void> {
@@ -261,17 +263,17 @@ describe('createRunCheckpoint — git tracked + untracked round-trip', () => {
     expect(cp.kind).toBe('git');
     expect(cp.gitBaseSha).toBeTruthy();
 
-    // Run mutates tracked file + creates an untracked file.
+    // Run mutates tracked file + creates an untracked file AFTER capture.
     await fs.writeFile(path.join(workspace, 'tracked.txt'), 'v2-mutated\n');
     await fs.writeFile(path.join(workspace, 'untracked.txt'), 'new');
 
-    // Capture happened before the mutations, so untracked.txt was NOT present
-    // at capture time; simulate the real ordering by re-capturing untracked via
-    // a fresh checkpoint is unnecessary — instead verify tracked reset works and
-    // pre-existing untracked handling. Recreate scenario properly:
+    // untracked.txt has no checkpoint entry (it did not exist pre-run), so
+    // restore must delete it in addition to resetting the tracked edit.
     const res = await restoreCheckpoint(cp.id, db);
     expect(res.restoredCount).toBeGreaterThanOrEqual(1);
+    expect(res.deletedCount).toBeGreaterThanOrEqual(1);
     expect(await fs.readFile(path.join(workspace, 'tracked.txt'), 'utf8')).toBe('v1\n');
+    await expect(fs.access(path.join(workspace, 'untracked.txt'))).rejects.toThrow();
   });
 
   it('captures untracked file at run start and deletes it on restore', async () => {

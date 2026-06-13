@@ -172,6 +172,70 @@ describe('streamEventsToChatEvents', () => {
     expect(out.at(-1)).toEqual({ type: 'done', stopReason: 'end_turn' });
   });
 
+  it('maps a refusal stop to content_filter and keeps the final usage', async () => {
+    const events: StreamEvent[] = [
+      {
+        type: 'message_start',
+        message: { id: 'm', role: 'assistant', usage: { input_tokens: 9, output_tokens: 1 } },
+      },
+      { type: 'message_delta', delta: { stop_reason: 'refusal' }, usage: { output_tokens: 6 } },
+      { type: 'message_stop' },
+    ];
+    const out = await collect(streamEventsToChatEvents(fromArray(events)));
+    expect(out).toContainEqual({ type: 'usage', inputTokens: 9, outputTokens: 6 });
+    expect(out.at(-1)).toEqual({ type: 'done', stopReason: 'content_filter' });
+  });
+
+  it('maps model_context_window_exceeded to budget_exceeded', async () => {
+    const events: StreamEvent[] = [
+      { type: 'message_delta', delta: { stop_reason: 'model_context_window_exceeded' } },
+    ];
+    const out = await collect(streamEventsToChatEvents(fromArray(events)));
+    expect(out.at(-1)).toEqual({ type: 'done', stopReason: 'budget_exceeded' });
+  });
+
+  it('maps pause_turn and unknown stop reasons to end_turn', async () => {
+    for (const reason of ['pause_turn', 'some_future_reason']) {
+      const events: StreamEvent[] = [{ type: 'message_delta', delta: { stop_reason: reason } }];
+      const out = await collect(streamEventsToChatEvents(fromArray(events)));
+      expect(out.at(-1)).toEqual({ type: 'done', stopReason: 'end_turn' });
+    }
+  });
+
+  it('drops thinking blocks and deltas without losing text, usage, or stop reason', async () => {
+    const events: StreamEvent[] = [
+      {
+        type: 'message_start',
+        message: { id: 'm', role: 'assistant', usage: { input_tokens: 7, output_tokens: 1 } },
+      },
+      { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'thinking_delta', thinking: 'pondering...' },
+      },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'signature_delta', signature: 'sig==' },
+      },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'content_block_start', index: 1, content_block: { type: 'redacted_thinking' } },
+      { type: 'content_block_stop', index: 1 },
+      { type: 'content_block_start', index: 2, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 2, delta: { type: 'text_delta', text: 'Answer' } },
+      { type: 'content_block_stop', index: 2 },
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 12 } },
+      { type: 'message_stop' },
+    ];
+    const out = await collect(streamEventsToChatEvents(fromArray(events)));
+    expect(out).toEqual([
+      { type: 'text_delta', delta: 'Answer' },
+      { type: 'usage', inputTokens: 7, outputTokens: 12 },
+      { type: 'done', stopReason: 'end_turn' },
+    ]);
+  });
+
   it('translates an error stream event into error then done', async () => {
     const events: StreamEvent[] = [
       {

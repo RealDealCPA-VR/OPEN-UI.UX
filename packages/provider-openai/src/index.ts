@@ -5,12 +5,14 @@ export {
   buildChatRequestBody,
   translateMessages,
   translateTools,
+  type BuildChatRequestOptions,
   type OpenAIChatRequestBody,
   type OpenAIMessage,
   type OpenAITool,
   type OpenAIToolCall,
 } from './translate-request';
-export { streamChunksToEvents } from './translate-stream';
+export { streamChunksToEvents, type StreamChunksOptions } from './translate-stream';
+export { httpErrorEvent } from './http-error';
 export {
   responsesStream,
   buildResponsesRequestBody,

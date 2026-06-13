@@ -367,6 +367,20 @@ const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_conversations_starred ON conversations(starred) WHERE starred = 1;
     `,
   },
+  {
+    version: 23,
+    sql: `
+      CREATE TABLE projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        instructions TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      ALTER TABLE conversations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+      CREATE INDEX idx_conversations_project ON conversations(project_id);
+    `,
+  },
 ];
 
 let db: Database.Database | null = null;

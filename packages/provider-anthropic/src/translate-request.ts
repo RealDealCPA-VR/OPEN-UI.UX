@@ -42,6 +42,10 @@ export type AnthropicToolChoice =
   | { type: 'none' }
   | { type: 'tool'; name: string };
 
+export type AnthropicThinkingConfig =
+  | { type: 'enabled'; budget_tokens: number }
+  | { type: 'adaptive' };
+
 export interface AnthropicChatRequestBody {
   model: string;
   messages: AnthropicMessage[];
@@ -53,19 +57,32 @@ export interface AnthropicChatRequestBody {
   stop_sequences?: string[];
   stream?: boolean;
   tool_choice?: AnthropicToolChoice;
-  thinking?: { type: 'enabled'; budget_tokens: number };
+  thinking?: AnthropicThinkingConfig;
+  output_config?: { effort: 'low' | 'medium' | 'high' };
 }
 
+// Opus 4.7/4.8 and the 4.6 family only accept thinking:{type:'adaptive'} —
+// the enabled+budget_tokens shape 400s on 4.7/4.8 and is deprecated on 4.6.
+const ADAPTIVE_THINKING_MODELS = /^claude-(opus-4-[678]|sonnet-4-6|haiku-4-5)/;
+// temperature/top_p/top_k were removed on Opus 4.7/4.8 and 400 even when
+// thinking is off.
+const SAMPLING_REMOVED_MODELS = /^claude-opus-4-[78]/;
+// output_config.effort errors on Haiku 4.5 — Opus 4.6+ and Sonnet 4.6 only.
+const EFFORT_MODELS = /^claude-(opus-4-[678]|sonnet-4-6)/;
+
 /**
- * Map the provider-agnostic ReasoningOption to Anthropic extended thinking.
- * `true` → a default budget; `{ maxTokens }` → that exact budget; `{ effort }`
- * → a per-effort budget. The Anthropic API requires budget_tokens >= 1024, so
- * the result is floored to 1024. Returns undefined when reasoning is off.
+ * Map the provider-agnostic ReasoningOption to Anthropic thinking config.
+ * Adaptive-thinking models get `{ type: 'adaptive' }` (no token budget).
+ * Pre-4.6 models keep extended thinking: `true` → a default budget;
+ * `{ maxTokens }` → that exact budget; `{ effort }` → a per-effort budget,
+ * floored to the API minimum of 1024. Returns undefined when reasoning is off.
  */
 export function anthropicThinking(
   reasoning: ChatRequest['reasoning'],
-): { type: 'enabled'; budget_tokens: number } | undefined {
+  model: string,
+): AnthropicThinkingConfig | undefined {
   if (reasoning === undefined || reasoning === false) return undefined;
+  if (ADAPTIVE_THINKING_MODELS.test(model)) return { type: 'adaptive' };
   let budget: number;
   if (reasoning === true) {
     budget = 4096;
@@ -209,23 +226,33 @@ export function buildChatRequestBody(
   if (system) body.system = system;
   const tools = translateTools(req.tools);
   if (tools) body.tools = tools;
-  if (req.temperature !== undefined) body.temperature = req.temperature;
-  if (req.topP !== undefined) body.top_p = req.topP;
+  // Opus 4.7/4.8 reject sampling params outright, thinking or not.
+  const samplingRemoved = SAMPLING_REMOVED_MODELS.test(req.model);
+  if (req.temperature !== undefined && !samplingRemoved) body.temperature = req.temperature;
+  if (req.topP !== undefined && !samplingRemoved) body.top_p = req.topP;
   if (req.stop && req.stop.length > 0) body.stop_sequences = req.stop;
   if (req.toolChoice !== undefined) {
     const tc = translateToolChoice(req.toolChoice);
     if (tc) body.tool_choice = tc;
   }
-  const thinking = anthropicThinking(req.reasoning);
+  const thinking = anthropicThinking(req.reasoning, req.model);
   if (thinking) {
     body.thinking = thinking;
-    // budget_tokens must be strictly less than max_tokens — give headroom for
-    // the visible (non-thinking) output if the caller's max_tokens is too small.
-    if (body.max_tokens <= thinking.budget_tokens) {
-      body.max_tokens = thinking.budget_tokens + 1024;
+    if (thinking.type === 'enabled') {
+      // budget_tokens must be strictly less than max_tokens — give headroom for
+      // the visible (non-thinking) output if the caller's max_tokens is too small.
+      if (body.max_tokens <= thinking.budget_tokens) {
+        body.max_tokens = thinking.budget_tokens + 1024;
+      }
+    } else if (
+      typeof req.reasoning === 'object' &&
+      req.reasoning.effort !== undefined &&
+      EFFORT_MODELS.test(req.model)
+    ) {
+      body.output_config = { effort: req.reasoning.effort };
     }
-    // Extended thinking requires default sampling params; Anthropic rejects a
-    // custom temperature/top_p when thinking is enabled.
+    // Thinking requires default sampling params; Anthropic rejects a custom
+    // temperature/top_p when thinking is on.
     delete body.temperature;
     delete body.top_p;
   }

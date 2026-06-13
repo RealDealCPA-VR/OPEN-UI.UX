@@ -138,6 +138,25 @@ describe('chat queue', () => {
     await waitFor(() => expect(result.current.queued).toHaveLength(0));
   });
 
+  it("preserves the queue and does not auto-fire when done carries stopReason 'cancelled'", async () => {
+    const { chat } = installBridge();
+    const { result } = await renderChat();
+    await act(async () => {
+      await result.current.send({ providerId: 'p1', modelId: 'm1', userMessage: 'go' });
+    });
+    act(() =>
+      result.current.enqueue({ providerId: 'p2', model: 'm2', text: 'next', attachments: [] }),
+    );
+
+    await act(async () => {
+      emitEvent?.({ type: 'done', stopReason: 'cancelled' } as ChatEvent);
+    });
+
+    await waitFor(() => expect(result.current.streaming).toBe(false));
+    expect(chat.start).toHaveBeenCalledTimes(1);
+    expect(result.current.queued.map((q) => q.text)).toEqual(['next']);
+  });
+
   it('preserves the queue and does not auto-fire on error', async () => {
     const { chat } = installBridge();
     const { result } = await renderChat();

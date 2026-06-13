@@ -92,12 +92,31 @@ describe('fetchWithRetry', () => {
     expect(res.status).toBe(200);
   });
 
-  it('does not retry by default (maxAttempts=1)', async () => {
+  it('retries a 429 by default and returns the eventual success', async () => {
     let calls = 0;
-    const res = await fetchWithRetry(async () => {
-      calls += 1;
-      return new Response('rate', { status: 429 });
-    });
+    const res = await fetchWithRetry(
+      async () => {
+        calls += 1;
+        if (calls < 3) {
+          return new Response('rate', { status: 429, headers: { 'retry-after': '0' } });
+        }
+        return new Response('ok', { status: 200 });
+      },
+      { sleep: async () => {} },
+    );
+    expect(calls).toBe(3);
+    expect(res.status).toBe(200);
+  });
+
+  it('honors an explicit maxAttempts=1 opt-out', async () => {
+    let calls = 0;
+    const res = await fetchWithRetry(
+      async () => {
+        calls += 1;
+        return new Response('rate', { status: 429 });
+      },
+      { maxAttempts: 1, sleep: async () => {} },
+    );
     expect(calls).toBe(1);
     expect(res.status).toBe(429);
   });

@@ -8,6 +8,7 @@ import type {
   ProviderFactory,
 } from '@opencodex/core';
 import { assertValidApiKey, fetchWithRetry, sanitizeErrorDetail } from '@opencodex/core';
+import { httpErrorEvent } from './http-error';
 import { openAIConfigSchema, type OpenAIConfig } from './config';
 import { findModel, knownModels } from './models';
 import { sseEvents } from './sse';
@@ -35,11 +36,7 @@ class OpenAIProvider implements LLMProvider {
     const response = await this.post('/chat/completions', body, req.signal);
     if (!response.ok || !response.body) {
       const detail = await this.safeReadText(response);
-      yield {
-        type: 'error',
-        message: `OpenAI chat HTTP ${response.status}: ${detail}`,
-        retryable: response.status >= 500 || response.status === 429,
-      };
+      yield httpErrorEvent(`OpenAI chat HTTP ${response.status}: ${detail}`, response.status);
       yield { type: 'done', stopReason: 'error' };
       return;
     }

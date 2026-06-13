@@ -63,6 +63,7 @@ const KNOWN: ReadonlyArray<ModelCapabilities> = [
     vision: true,
     streaming: true,
     embeddings: false,
+    reasoning: true,
     pricing: { inputPerMillion: 15, outputPerMillion: 60, cachedInputPerMillion: 7.5 },
   },
   {
@@ -75,6 +76,7 @@ const KNOWN: ReadonlyArray<ModelCapabilities> = [
     vision: false,
     streaming: true,
     embeddings: false,
+    reasoning: true,
     pricing: { inputPerMillion: 1.1, outputPerMillion: 4.4, cachedInputPerMillion: 0.55 },
   },
   {

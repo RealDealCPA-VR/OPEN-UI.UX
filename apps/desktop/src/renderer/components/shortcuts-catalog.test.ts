@@ -24,6 +24,14 @@ describe('SHORTCUTS_CATALOG', () => {
     }
   });
 
+  it('includes the Ctrl/⌘ K conversation-search shortcut exactly once', () => {
+    const matches = SHORTCUTS_CATALOG.flatMap((g) => g.entries).filter(
+      (e) => e.keys === 'Ctrl/⌘ K',
+    );
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.label.toLowerCase()).toContain('conversation search');
+  });
+
   it('includes the ? shortcut for opening this overlay', () => {
     const found = SHORTCUTS_CATALOG.flatMap((g) => g.entries).find((e) => e.keys === '?');
     expect(found).toBeDefined();

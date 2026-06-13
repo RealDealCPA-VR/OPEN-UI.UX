@@ -96,8 +96,53 @@ describe('openRouterProvider', () => {
         messages: [{ role: 'user', content: 'hi' }],
       }),
     );
-    expect(events[0]).toMatchObject({ type: 'error', retryable: true });
+    expect(events[0]).toMatchObject({ type: 'error', retryable: true, code: 'rate_limit' });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'error' });
+  });
+
+  it('maps finish_reason content_filter to a content_filter stop', async () => {
+    const fixture = [
+      'data: {"id":"a","object":"chat.completion.chunk","model":"openai/gpt-4o","choices":[{"index":0,"delta":{"content":"par"},"finish_reason":"content_filter"}]}',
+      '',
+      'data: [DONE]',
+      '',
+      '',
+    ].join('\n');
+    stubFetch(() => streamResponse(fixture));
+
+    const provider = openRouterProvider.create({ apiKey: 'or-test' });
+    const events = await collect(
+      provider.chat({ model: 'openai/gpt-4o', messages: [{ role: 'user', content: 'hi' }] }),
+    );
+    expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'content_filter' });
+  });
+
+  it('sends legacy max_tokens and attaches tool_call_id to string tool messages', async () => {
+    const { calls } = stubFetch(() => streamResponse('data: [DONE]\n\n'));
+
+    const provider = openRouterProvider.create({ apiKey: 'or-test' });
+    await collect(
+      provider.chat({
+        model: 'openai/gpt-4o',
+        maxTokens: 64,
+        messages: [
+          {
+            role: 'assistant',
+            content: [{ type: 'tool_use', id: 'call_7', name: 'grep', arguments: { q: 'x' } }],
+          },
+          { role: 'tool', content: 'found it' },
+        ],
+      }),
+    );
+
+    const body = JSON.parse(calls[0]?.init.body as string);
+    expect(body.max_tokens).toBe(64);
+    expect(body.max_completion_tokens).toBeUndefined();
+    expect(body.messages.at(-1)).toEqual({
+      role: 'tool',
+      tool_call_id: 'call_7',
+      content: 'found it',
+    });
   });
 
   it('sets Authorization, HTTP-Referer, and X-Title headers from config', async () => {

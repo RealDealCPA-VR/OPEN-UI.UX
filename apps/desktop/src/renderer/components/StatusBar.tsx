@@ -92,11 +92,7 @@ export function StatusBar(): JSX.Element {
   };
 
   return (
-    <footer
-      className={`statusbar statusbar-${state}${compact ? ' compact' : ''}`}
-      role="status"
-      aria-live="polite"
-    >
+    <footer className={`statusbar statusbar-${state}${compact ? ' compact' : ''}`}>
       <div className="statusbar-left">
         <button
           type="button"
@@ -117,9 +113,18 @@ export function StatusBar(): JSX.Element {
           </svg>
         </button>
         <span className={`statusbar-dot statusbar-dot-${state}`} aria-hidden="true" />
-        <span className="statusbar-state">{stateLabel(state)}</span>
+        {/* The live region covers only the coarse state label — token/cost/tool
+            spans change on nearly every stream delta and would otherwise be
+            re-announced continuously, drowning out the chat log. */}
+        <span className="statusbar-state" role="status" aria-live="polite">
+          {stateLabel(state)}
+        </span>
         {runningTool ? (
-          <span className="statusbar-tool" title={`Running tool: ${runningTool}`}>
+          <span
+            className="statusbar-tool"
+            title={`Running tool: ${runningTool}`}
+            aria-hidden="true"
+          >
             <span className="statusbar-sep" aria-hidden="true">
               ›
             </span>
@@ -140,6 +145,7 @@ export function StatusBar(): JSX.Element {
           <span
             className="statusbar-tokens"
             title={`${meter.tokens.toLocaleString()} / ${meter.context.toLocaleString()} tokens (${Math.round(meter.ratio * 100)}%)`}
+            aria-hidden="true"
           >
             <span aria-hidden="true" className="statusbar-token-meter">
               <span
@@ -151,7 +157,7 @@ export function StatusBar(): JSX.Element {
             {costText ? <span className="statusbar-mono"> · {costText}</span> : null}
           </span>
         ) : tokensText ? (
-          <span className="statusbar-tokens" title="Tokens since session start">
+          <span className="statusbar-tokens" title="Tokens since session start" aria-hidden="true">
             <span className="statusbar-mono">{tokensText}</span>
             {costText ? <span className="statusbar-mono"> · {costText}</span> : null}
           </span>
@@ -160,6 +166,7 @@ export function StatusBar(): JSX.Element {
           <span
             className="statusbar-cache"
             title="Prompt-cache hit (cached input tokens · share of input)"
+            aria-hidden="true"
           >
             <span className="statusbar-mono">{cacheText}</span>
           </span>

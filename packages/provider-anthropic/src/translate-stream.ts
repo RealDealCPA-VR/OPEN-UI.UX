@@ -11,15 +11,20 @@ interface PendingToolUse {
 
 function mapStopReason(reason: AnthropicStopReason | null | undefined): StopReason {
   switch (reason) {
-    case 'end_turn':
-      return 'end_turn';
     case 'max_tokens':
       return 'max_tokens';
     case 'stop_sequence':
       return 'stop_sequence';
     case 'tool_use':
       return 'tool_use';
+    case 'refusal':
+      return 'content_filter';
+    case 'model_context_window_exceeded':
+      // Context window exhausted is a token-budget stop, not the requested
+      // output cap — core's budget_exceeded is the closest classification.
+      return 'budget_exceeded';
     default:
+      // end_turn, pause_turn, and unknown future reasons.
       return 'end_turn';
   }
 }
@@ -62,10 +67,12 @@ export async function* streamEventsToChatEvents(
       case 'content_block_delta':
         if (evt.delta.type === 'text_delta') {
           yield { type: 'text_delta', delta: evt.delta.text };
-        } else {
+        } else if (evt.delta.type === 'input_json_delta') {
           const cur = toolBlocks.get(evt.index);
           if (cur) cur.partialJson += evt.delta.partial_json;
         }
+        // thinking_delta / signature_delta: core ChatEvent has no reasoning
+        // channel — drop deliberately so usage/stop-reason events still flow.
         break;
       case 'content_block_stop': {
         const cur = toolBlocks.get(evt.index);

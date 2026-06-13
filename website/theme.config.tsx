@@ -2,7 +2,7 @@ import React from 'react';
 import { useRouter } from 'next/router';
 import type { DocsThemeConfig } from 'nextra-theme-docs';
 
-/** Brand mark — luminous indigo square with an 'O' cut-out. */
+/** Brand mark — warm terracotta square with an 'O' cut-out. */
 const LogoMark = () => (
   <svg
     width="22"
@@ -13,7 +13,7 @@ const LogoMark = () => (
     aria-hidden="true"
     style={{ display: 'block', flexShrink: 0 }}
   >
-    <rect width="22" height="22" rx="6" fill="var(--accent-bg, #5e5ce6)" />
+    <rect width="22" height="22" rx="6" fill="var(--accent-bg, #c15f3c)" />
     <path
       d="M11 6a5 5 0 1 0 0 10A5 5 0 0 0 11 6zm0 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"
       fill="var(--accent-on-bg, #ffffff)"
@@ -45,6 +45,10 @@ const Logo = () => (
 
 const config: DocsThemeConfig = {
   logo: <Logo />,
+  // Rebrand Nextra's built-in accent (links, active nav, search highlight) to
+  // the desktop app's terracotta. HSL of #d9876b (dark) / #c15f3c (light).
+  primaryHue: { dark: 15, light: 16 },
+  primarySaturation: { dark: 60, light: 53 },
   project: {
     link: 'https://github.com/RealDealCPA-VR/OPEN-UI.UX',
   },

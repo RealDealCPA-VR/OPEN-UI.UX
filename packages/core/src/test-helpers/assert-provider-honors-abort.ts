@@ -132,8 +132,18 @@ export async function assertProviderHonorsAbort(
     t.unref?.();
   });
 
+  // If the deadline wins the race, the finally-block teardown
+  // (iterator.return) makes the abandoned pump reject later; observe that
+  // rejection up front so it can never surface as an unhandled rejection.
+  pump.catch(() => {});
+
   try {
     const result = await Promise.race([pump, deadline]);
+    if (abortAt === 0) {
+      throw new Error(
+        `Provider stream settled before the abort fired (abortAfterMs=${abortAfterMs}) — slow the stub stream or lower abortAfterMs so abort behavior is actually exercised`,
+      );
+    }
     if (result.settledAfterMs > maxSettleMs) {
       throw new Error(
         `Provider honored abort but took ${result.settledAfterMs}ms (limit ${maxSettleMs}ms)`,

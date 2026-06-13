@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { useEffect } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,7 +17,14 @@ const editorMounts: Array<{ task: unknown; prefill: unknown }> = [];
 
 vi.mock('../components/ScheduledTaskEditorModal', () => ({
   ScheduledTaskEditorModal: (props: { task: unknown; prefill: unknown; onClose: () => void }) => {
-    editorMounts.push({ task: props.task, prefill: props.prefill });
+    // Record one entry per *mount*, not per render. The host view's
+    // listTasks().then(setTasks) can resolve after the modal opens, forcing a
+    // harmless re-render; counting renders here made the assertion racy under
+    // parallel suite load.
+    useEffect(() => {
+      editorMounts.push({ task: props.task, prefill: props.prefill });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     return (
       <div role="dialog" aria-label="Edit scheduled task" data-testid="editor-modal">
         <button onClick={props.onClose}>Close</button>

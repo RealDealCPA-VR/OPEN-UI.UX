@@ -21,18 +21,31 @@ describe('create-opencodex-plugin scaffold', () => {
       const parsed = ManifestSchema.safeParse(raw);
       expect(parsed.success).toBe(true);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
 
-  it('defaults permissions to [] so authors opt in explicitly', () => {
+  it('declares exactly the permissions the generated contributions require', () => {
     const dir = runScaffold('perm-scaffold');
     try {
       const manifestPath = join(dir, 'perm-scaffold', 'opencodex.plugin.json');
       const raw = JSON.parse(readFileSync(manifestPath, 'utf8'));
-      expect(raw.permissions).toEqual([]);
+      // The generated entry registers a 'read' tool + a runner and contributes
+      // a panel; anything less makes activation throw on install.
+      expect(raw.permissions).toEqual(['workspace.read', 'agent.runner', 'ui.panel']);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    }
+  });
+
+  it('README permission guidance matches the emitted manifest', () => {
+    const dir = runScaffold('readme-scaffold');
+    try {
+      const readme = readFileSync(join(dir, 'readme-scaffold', 'README.md'), 'utf8');
+      expect(readme).toMatch(/\["workspace\.read", "agent\.runner", "ui\.panel"\]/);
+      expect(readme).not.toMatch(/permissions: \[\]/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
 
@@ -45,7 +58,7 @@ describe('create-opencodex-plugin scaffold', () => {
       expect(src).toMatch(/yield \{ type: 'done', stopReason: 'end_turn' \}/);
       expect(src).not.toMatch(/kind: 'final-text'/);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
 
@@ -57,7 +70,7 @@ describe('create-opencodex-plugin scaffold', () => {
       expect(html).toMatch(/default-src 'none'/);
       expect(html).toMatch(/script-src 'none'/);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
 
@@ -69,7 +82,7 @@ describe('create-opencodex-plugin scaffold', () => {
       expect(pkg.dependencies['@opencodex/core']).not.toBe('^0.1.0');
       expect(pkg.dependencies['@opencodex/plugin-sdk']).not.toBe('^0.1.0');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
 });

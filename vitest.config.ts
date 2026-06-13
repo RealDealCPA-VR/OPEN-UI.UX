@@ -5,6 +5,9 @@ const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig({
   resolve: {
+    // Prefer .ts over .js so stray tsc emit artifacts in src/ can never
+    // shadow the TypeScript sources (Vite's default order tries .js first).
+    extensions: ['.ts', '.tsx', '.mts', '.mjs', '.js', '.jsx', '.json'],
     alias: {
       // Subpath alias must come before the broader '@opencodex/core' alias —
       // Vite alias matching is order-sensitive (longest/most-specific first).
@@ -45,6 +48,10 @@ export default defineConfig({
     // instead of requiring every file to declare `// @vitest-environment jsdom`.
     environmentMatchGlobs: [['**/*.test.tsx', 'jsdom']],
     setupFiles: ['./apps/desktop/src/test/setup.ts'],
+    // Git-heavy suites (checkpoints, merge-review, worktrees) routinely exceed
+    // the 5s/10s defaults under full-suite parallel load on Windows.
+    testTimeout: 20_000,
+    hookTimeout: 30_000,
     include: ['**/*.{test,spec}.{ts,tsx}'],
     exclude: ['**/node_modules/**', '**/dist/**', '**/out/**', '**/build/**', '**/e2e/**'],
     coverage: {

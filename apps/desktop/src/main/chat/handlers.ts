@@ -1,6 +1,7 @@
 import { BrowserWindow, dialog } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import { z } from 'zod';
+import { contentBlockSchema } from '@opencodex/core';
 import { logger } from '../logger';
 import { registerInvoke } from '../ipc/registry';
 import { anonymizeId, track } from '../telemetry/manager';
@@ -28,6 +29,7 @@ import { chatReattachRequestSchema, type ChatListActiveResponse } from '../../sh
 import { consumeInterruptedTurn, listInterruptedTurns } from './turn-restore';
 import { prepareAttachments } from './attachments';
 import { broadcastConversationsChanged } from './conversations-events';
+import { registerProjectHandlers } from './project-handlers';
 
 const roleSchema = z.enum(['system', 'user', 'assistant', 'tool']);
 
@@ -47,6 +49,9 @@ function broadcast(): ChatStreamSink {
 }
 
 export function registerChatHandlers(): void {
+  // CD-21 — projects with custom instructions
+  registerProjectHandlers();
+
   registerInvoke('conversations:list', z.void(), () => listConversations());
 
   registerInvoke(
@@ -102,11 +107,14 @@ export function registerChatHandlers(): void {
       conversationId: z.string().min(1),
       role: roleSchema,
       content: z.string(),
+      contentBlocks: z.array(contentBlockSchema).nullable().optional(),
       providerId: z.string().nullable().optional(),
       modelId: z.string().nullable().optional(),
       inputTokens: z.number().int().nonnegative().nullable().optional(),
       outputTokens: z.number().int().nonnegative().nullable().optional(),
+      cachedInputTokens: z.number().int().nonnegative().nullable().optional(),
       costUsd: z.number().nonnegative().nullable().optional(),
+      turnStatus: z.enum(['streaming', 'final']).optional(),
     }),
     (req) => appendMessage(req),
   );

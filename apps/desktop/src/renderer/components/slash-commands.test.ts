@@ -5,6 +5,7 @@ import type { Skill } from '../../shared/skills';
 import {
   applyInsert,
   buildSlashGroups,
+  detectPluginCommandInvocation,
   filterPluginCommands,
   filterPrompts,
   filterSkills,
@@ -352,6 +353,50 @@ describe('buildSlashGroups with plugin commands', () => {
   it('omits plugin groups when no commands are supplied', () => {
     const groups = buildSlashGroups([], [makeSkill('foo')], '');
     expect(groups.every((g) => !g.header.startsWith('Plugin'))).toBe(true);
+  });
+});
+
+describe('detectPluginCommandInvocation', () => {
+  const commands = [pluginCmd('p1', 'Deploy Tools', 'deploy'), pluginCmd('p2', 'Linter', 'lint')];
+
+  it('matches a bare command with empty args', () => {
+    expect(detectPluginCommandInvocation('/deploy', commands)).toEqual({
+      command: commands[0],
+      args: '',
+    });
+  });
+
+  it('captures everything after the command name as the args string', () => {
+    expect(detectPluginCommandInvocation('/deploy prod --fast', commands)).toEqual({
+      command: commands[0],
+      args: 'prod --fast',
+    });
+  });
+
+  it('tolerates surrounding whitespace', () => {
+    expect(detectPluginCommandInvocation('  /lint src  ', commands)).toEqual({
+      command: commands[1],
+      args: 'src',
+    });
+  });
+
+  it('returns null for unknown command names', () => {
+    expect(detectPluginCommandInvocation('/unknown thing', commands)).toBeNull();
+  });
+
+  it('returns null for skill-style and MCP-style tokens', () => {
+    expect(detectPluginCommandInvocation('/skill:deploy', commands)).toBeNull();
+    expect(detectPluginCommandInvocation('/git:deploy', commands)).toBeNull();
+  });
+
+  it('never intercepts multi-line messages', () => {
+    expect(detectPluginCommandInvocation('/deploy prod\nand more prose', commands)).toBeNull();
+  });
+
+  it('returns null for non-slash text, a bare slash, and an empty registry', () => {
+    expect(detectPluginCommandInvocation('deploy', commands)).toBeNull();
+    expect(detectPluginCommandInvocation('/', commands)).toBeNull();
+    expect(detectPluginCommandInvocation('/deploy', [])).toBeNull();
   });
 });
 

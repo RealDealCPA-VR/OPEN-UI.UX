@@ -25,7 +25,7 @@ Fan-out announcement (REQUIRED before parallel spawn): when you intend to dispat
 }
 \`\`\`
 
-Then call spawn_subagent for each entry. The host UI will surface this plan to the user with Allow / Edit / Deny controls (with an optional auto-allow delay). Honor the user's decision: if denied, do not call spawn_subagent; if edited, use the edited tasks verbatim.
+Then call spawn_subagent for each entry. The first spawn_subagent call in a run is gated on user consent: the host UI surfaces the spawn to the user with Allow / Edit / Deny controls (with an optional auto-allow delay). Once allowed, later spawns in the same run proceed without re-prompting. If the user edits the task, the edited text runs verbatim. If the user denies, the tool call fails with "spawn_subagent denied" — do NOT retry spawn_subagent in that run; do the work yourself or ask the user how to proceed.
 
 After subagents return:
 1. Verify the summary actually accomplishes the dispatched task

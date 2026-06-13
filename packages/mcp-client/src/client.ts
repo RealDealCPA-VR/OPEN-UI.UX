@@ -75,22 +75,30 @@ export class McpClient {
     if (this.connected) return;
     await this.transport.start();
     this.connected = true;
-    const result = await this.request<unknown>('initialize', {
-      protocolVersion: PROTOCOL_VERSION,
-      clientInfo: { name: 'opencodex', version: '0.0.0' },
-      capabilities: {
-        sampling: {},
-        elicitation: {},
-      },
-    });
-    const parsed = mcpInitializeResultSchema.parse(result);
-    if (!SUPPORTED_PROTOCOL_VERSIONS.includes(parsed.protocolVersion)) {
+    try {
+      const result = await this.request<unknown>('initialize', {
+        protocolVersion: PROTOCOL_VERSION,
+        clientInfo: { name: 'opencodex', version: '0.0.0' },
+        capabilities: {
+          sampling: {},
+          elicitation: {},
+        },
+      });
+      const parsed = mcpInitializeResultSchema.parse(result);
+      if (!SUPPORTED_PROTOCOL_VERSIONS.includes(parsed.protocolVersion)) {
+        throw new UnsupportedProtocolVersionError(PROTOCOL_VERSION, parsed.protocolVersion);
+      }
+      this.serverInfo = parsed;
+      await this.notify('notifications/initialized', {});
+    } catch (err) {
+      // Any initialize failure must tear the transport down, or the spawned
+      // child leaks while the manager constructs a fresh client on reconnect.
       this.connected = false;
-      await this.transport.stop();
-      throw new UnsupportedProtocolVersionError(PROTOCOL_VERSION, parsed.protocolVersion);
+      await this.transport.stop().catch(() => {
+        // best-effort; transport may already be gone
+      });
+      throw err;
     }
-    this.serverInfo = parsed;
-    await this.notify('notifications/initialized', {});
   }
 
   async disconnect(): Promise<void> {
@@ -120,18 +128,44 @@ export class McpClient {
   }
 
   async listTools(): Promise<McpTool[]> {
-    const result = await this.request<unknown>('tools/list', {});
-    return mcpListToolsResultSchema.parse(result).tools;
+    return this.listAllPages('tools/list', (result) => {
+      const parsed = mcpListToolsResultSchema.parse(result);
+      return { items: parsed.tools, nextCursor: parsed.nextCursor };
+    });
   }
 
   async listResources(): Promise<McpResource[]> {
-    const result = await this.request<unknown>('resources/list', {});
-    return mcpListResourcesResultSchema.parse(result).resources;
+    return this.listAllPages('resources/list', (result) => {
+      const parsed = mcpListResourcesResultSchema.parse(result);
+      return { items: parsed.resources, nextCursor: parsed.nextCursor };
+    });
   }
 
   async listPrompts(): Promise<McpPrompt[]> {
-    const result = await this.request<unknown>('prompts/list', {});
-    return mcpListPromptsResultSchema.parse(result).prompts;
+    return this.listAllPages('prompts/list', (result) => {
+      const parsed = mcpListPromptsResultSchema.parse(result);
+      return { items: parsed.prompts, nextCursor: parsed.nextCursor };
+    });
+  }
+
+  private async listAllPages<T>(
+    method: string,
+    parsePage: (result: unknown) => { items: T[]; nextCursor: string | undefined },
+  ): Promise<T[]> {
+    const items: T[] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | undefined;
+    for (;;) {
+      const result = await this.request<unknown>(method, cursor === undefined ? {} : { cursor });
+      const page = parsePage(result);
+      items.push(...page.items);
+      cursor = page.nextCursor;
+      if (cursor === undefined) break;
+      // Defend against buggy servers that return a repeating cursor.
+      if (seenCursors.has(cursor)) break;
+      seenCursors.add(cursor);
+    }
+    return items;
   }
 
   async callTool(name: string, args: unknown): Promise<McpCallToolResult> {

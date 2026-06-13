@@ -92,8 +92,53 @@ describe('xaiProvider', () => {
     const events = await collect(
       provider.chat({ model: 'grok-4', messages: [{ role: 'user', content: 'hi' }] }),
     );
-    expect(events[0]).toMatchObject({ type: 'error', retryable: true });
+    expect(events[0]).toMatchObject({ type: 'error', retryable: true, code: 'rate_limit' });
     expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'error' });
+  });
+
+  it('maps finish_reason content_filter to a content_filter stop', async () => {
+    const fixture = [
+      'data: {"id":"a","object":"chat.completion.chunk","model":"grok-4","choices":[{"index":0,"delta":{"content":"par"},"finish_reason":"content_filter"}]}',
+      '',
+      'data: [DONE]',
+      '',
+      '',
+    ].join('\n');
+    stubFetch(() => streamResponse(fixture));
+
+    const provider = xaiProvider.create({ apiKey: 'xai-test' });
+    const events = await collect(
+      provider.chat({ model: 'grok-4', messages: [{ role: 'user', content: 'hi' }] }),
+    );
+    expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'content_filter' });
+  });
+
+  it('sends legacy max_tokens and attaches tool_call_id to string tool messages', async () => {
+    const { calls } = stubFetch(() => streamResponse('data: [DONE]\n\n'));
+
+    const provider = xaiProvider.create({ apiKey: 'xai-test' });
+    await collect(
+      provider.chat({
+        model: 'grok-4',
+        maxTokens: 64,
+        messages: [
+          {
+            role: 'assistant',
+            content: [{ type: 'tool_use', id: 'call_7', name: 'grep', arguments: { q: 'x' } }],
+          },
+          { role: 'tool', content: 'found it' },
+        ],
+      }),
+    );
+
+    const body = JSON.parse(calls[0]?.init.body as string);
+    expect(body.max_tokens).toBe(64);
+    expect(body.max_completion_tokens).toBeUndefined();
+    expect(body.messages.at(-1)).toEqual({
+      role: 'tool',
+      tool_call_id: 'call_7',
+      content: 'found it',
+    });
   });
 
   it('sets Authorization header from config.apiKey', async () => {

@@ -196,6 +196,11 @@ export async function collectSubagentResult(
     };
   }
 
+  // Unresolved tool calls must surface on EVERY exit path (normal end, abort
+  // break, and the catch above), or cancelled/budget runs under-report what
+  // the subagent actually did.
+  flushPending();
+
   if (aborted) {
     if (stopReason !== 'cancelled') {
       stopReason = 'cancelled';

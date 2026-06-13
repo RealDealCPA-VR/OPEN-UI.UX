@@ -3,19 +3,61 @@
  * Imported once via pages/_app.tsx so it applies site-wide.
  */
 
+/* ── Brand design tokens ────────────────────────────────────────────────── */
+/*
+ * Mirrors apps/desktop/src/renderer/styles.css so the docs site carries the
+ * same warm terracotta / oat-paper identity as the desktop app. These are the
+ * tokens referenced (without literal fallbacks) by pages/index.mdx and
+ * theme.config.tsx — without them the hero border, eyebrow, and logo render
+ * unstyled. Nextra toggles `class="dark"` on <html>; we map both modes.
+ */
+:root {
+  --accent: #c15f3c;
+  --accent-text: #b1542f;
+  --accent-bg: #c15f3c;
+  --accent-on-bg: #ffffff;
+  --text-primary: #2a2420;
+  --text-secondary: #4a443e;
+  --text-muted: #5b554d;
+  --border-strong: rgba(0, 0, 0, 0.1);
+  --radius-xs: 5px;
+  --radius: 9px;
+  --radius-lg: 13px;
+  --focus-ring-offset: 2px;
+}
+
+html[class~='dark'] {
+  --accent: #d9876b;
+  --accent-text: #e8a58f;
+  --accent-bg: #c15f3c;
+  --accent-on-bg: #ffffff;
+  --text-primary: #f5f5f7;
+  --text-secondary: #98989d;
+  --text-muted: #9ea0a6;
+  --border-strong: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Eyebrow (kicker above the landing H1) ──────────────────────────────── */
+
+.eyebrow {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
 /* ── Focus ring ─────────────────────────────────────────────────────────── */
 /*
- * Branded :focus-visible ring using design-token values.
- * Matches the desktop app's --accent / --focus-ring-offset contract so the
- * docs site stays visually consistent with the app shell.
- *
- * Fallback literals are the dark-theme token values; in practice the Nextra
- * layout injects a <style> block with CSS custom properties on :root, so the
- * var() references resolve at runtime.
+ * Branded :focus-visible ring using the design tokens above. Fallback literals
+ * are the dark-theme accent so the ring is still branded if the token block
+ * above is ever stripped.
  */
 
 *:focus-visible {
-  outline: 2px solid var(--accent, #7c7cff);
+  outline: 2px solid var(--accent, #d9876b);
   outline-offset: var(--focus-ring-offset, 2px);
   border-radius: var(--radius-xs, 5px);
 }

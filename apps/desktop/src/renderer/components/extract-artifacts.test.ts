@@ -1,9 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
   artifactExtension,
+  artifactLabel,
   extractArtifactsFromText,
+  kindForLang,
   pickLatestArtifact,
 } from './extract-artifacts';
+
+describe('kindForLang', () => {
+  it('maps mermaid to the mermaid kind', () => {
+    expect(kindForLang('mermaid')).toBe('mermaid');
+  });
+
+  it('is case-insensitive', () => {
+    expect(kindForLang('Mermaid')).toBe('mermaid');
+    expect(kindForLang('HTML')).toBe('html');
+  });
+
+  it('returns undefined for non-previewable languages', () => {
+    expect(kindForLang('python')).toBeUndefined();
+    expect(kindForLang('tsx')).toBeUndefined();
+  });
+});
 
 describe('extractArtifactsFromText', () => {
   it('extracts an html block', () => {
@@ -17,6 +35,13 @@ describe('extractArtifactsFromText', () => {
     const text = '```svg\n<svg/>\n```\n```md\n# Title\n```';
     const arts = extractArtifactsFromText(text, 'm');
     expect(arts.map((a) => a.kind)).toEqual(['svg', 'markdown']);
+  });
+
+  it('extracts a mermaid block', () => {
+    const text = 'diagram:\n```mermaid\ngraph TD;\nA-->B;\n```\ndone';
+    expect(extractArtifactsFromText(text, 'm1')).toEqual([
+      { kind: 'mermaid', code: 'graph TD;\nA-->B;', messageId: 'm1', blockIndex: 0 },
+    ]);
   });
 
   it('ignores non-previewable languages', () => {
@@ -62,6 +87,17 @@ describe('pickLatestArtifact', () => {
     ]);
     expect(art?.kind).toBe('html');
   });
+
+  it('mermaid beats markdown but loses to svg', () => {
+    const beatsMd = pickLatestArtifact([
+      { id: 'a', role: 'assistant', content: '```md\n# t\n```\n```mermaid\ngraph TD;\n```' },
+    ]);
+    expect(beatsMd?.kind).toBe('mermaid');
+    const losesToSvg = pickLatestArtifact([
+      { id: 'a', role: 'assistant', content: '```mermaid\ngraph TD;\n```\n```svg\n<svg/>\n```' },
+    ]);
+    expect(losesToSvg?.kind).toBe('svg');
+  });
 });
 
 describe('artifactExtension', () => {
@@ -69,5 +105,12 @@ describe('artifactExtension', () => {
     expect(artifactExtension('html')).toBe('html');
     expect(artifactExtension('svg')).toBe('svg');
     expect(artifactExtension('markdown')).toBe('md');
+    expect(artifactExtension('mermaid')).toBe('mmd');
+  });
+});
+
+describe('artifactLabel', () => {
+  it('labels mermaid artifacts', () => {
+    expect(artifactLabel('mermaid')).toBe('Mermaid preview');
   });
 });

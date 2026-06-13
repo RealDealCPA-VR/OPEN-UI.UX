@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { rmTmp } from '../../test/rm-tmp';
 import { applyMigrations } from '../storage/db';
 import {
   createWorkspace,
@@ -41,10 +42,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   db.close();
-  await Promise.all([
-    fs.rm(tmpA, { recursive: true, force: true }),
-    fs.rm(tmpB, { recursive: true, force: true }),
-  ]);
+  await Promise.all([rmTmp(tmpA), rmTmp(tmpB)]);
 });
 
 describe('workspaces-store', () => {

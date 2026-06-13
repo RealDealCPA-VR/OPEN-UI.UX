@@ -1,4 +1,4 @@
-export type ArtifactKind = 'html' | 'svg' | 'markdown';
+export type ArtifactKind = 'html' | 'svg' | 'markdown' | 'mermaid';
 
 export interface Artifact {
   kind: ArtifactKind;
@@ -15,19 +15,25 @@ export interface ArtifactSourceMessage {
 }
 
 // Fenced-code languages we can render live in a sandboxed panel without any
-// transpilation or extra dependencies. (jsx/tsx/mermaid are intentionally
-// excluded — they would need a bundler/renderer; they stay as normal code.)
+// transpilation. Mermaid renders via a lazy-loaded renderer to SVG. (jsx/tsx
+// are intentionally excluded — they would need a bundler; they stay as code.)
 const LANG_TO_KIND: Readonly<Record<string, ArtifactKind>> = {
   html: 'html',
   svg: 'svg',
   markdown: 'markdown',
   md: 'markdown',
+  mermaid: 'mermaid',
 };
+
+export function kindForLang(lang: string): ArtifactKind | undefined {
+  return LANG_TO_KIND[lang.toLowerCase()];
+}
 
 // Higher wins when a single message contains several previewable blocks.
 const KIND_PRIORITY: Readonly<Record<ArtifactKind, number>> = {
-  html: 3,
-  svg: 2,
+  html: 4,
+  svg: 3,
+  mermaid: 2,
   markdown: 1,
 };
 
@@ -40,9 +46,9 @@ export function extractArtifactsFromText(text: string, messageId: string): Artif
   let blockIndex = 0;
   FENCE_RE.lastIndex = 0;
   while ((match = FENCE_RE.exec(text)) !== null) {
-    const lang = (match[1] ?? '').toLowerCase();
+    const lang = match[1] ?? '';
     const code = match[2] ?? '';
-    const kind = LANG_TO_KIND[lang];
+    const kind = kindForLang(lang);
     if (kind && code.trim().length > 0) {
       out.push({ kind, code: code.replace(/\n$/, ''), messageId, blockIndex });
     }
@@ -77,6 +83,8 @@ export function artifactExtension(kind: ArtifactKind): string {
       return 'svg';
     case 'markdown':
       return 'md';
+    case 'mermaid':
+      return 'mmd';
   }
 }
 
@@ -88,5 +96,7 @@ export function artifactLabel(kind: ArtifactKind): string {
       return 'SVG preview';
     case 'markdown':
       return 'Markdown preview';
+    case 'mermaid':
+      return 'Mermaid preview';
   }
 }

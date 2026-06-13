@@ -1,9 +1,10 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { rmTmp } from '../../test/rm-tmp';
 import { acceptMerge, parseChangedFiles, prepareMergeBundle, rejectMerge } from './merge-review';
 import { __resetForTests, recordComplete, recordStart } from './run-registry';
 import { createWorktree } from './worktrees';
@@ -44,7 +45,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (baseTmp) await rm(baseTmp, { recursive: true, force: true });
+  if (baseTmp) await rmTmp(baseTmp);
 });
 
 describe('parseChangedFiles', () => {
@@ -123,7 +124,26 @@ describe('prepareMergeBundle / accept / reject', () => {
 
   afterEach(async () => {
     __resetForTests();
-    if (repoRoot) await rm(repoRoot, { recursive: true, force: true });
+    if (repoRoot) {
+      // Detach any worktrees still registered under repoRoot before deleting
+      // it — a live worktree keeps git metadata (and on Windows, handles)
+      // pointing into the directory we are about to remove.
+      try {
+        const porcelain = await git(repoRoot, ['worktree', 'list', '--porcelain']);
+        const worktreePaths = porcelain
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith('worktree '))
+          .map((line) => line.slice('worktree '.length))
+          .filter((p) => path.resolve(p) !== path.resolve(repoRoot));
+        for (const wtPath of worktreePaths) {
+          await git(repoRoot, ['worktree', 'remove', '--force', wtPath]).catch(() => undefined);
+        }
+        await git(repoRoot, ['worktree', 'prune']);
+      } catch {
+        // repoRoot may already be gone or not a repo — nothing to detach.
+      }
+      await rmTmp(repoRoot);
+    }
   });
 
   it('throws when runId unknown', async () => {

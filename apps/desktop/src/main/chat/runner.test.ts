@@ -11,6 +11,7 @@ import { listToolCallsForMessage } from '../storage/tool-audit';
 import {
   activeStreamCount,
   cancelChatStream,
+  classifyProviderError,
   expandStoredMessages,
   getActivePartial,
   listActiveStreams,
@@ -801,7 +802,110 @@ describe('startChatStream', () => {
     expect(events.some((e) => e.event.type === 'text_delta')).toBe(true);
     const msgs = listMessages(conv.id);
     expect(msgs[1]?.content).toBe('before');
+    // User cancellation must be distinguishable from a natural completion.
+    const last = events[events.length - 1];
+    expect(last?.event).toEqual({ type: 'done', stopReason: 'cancelled' });
   });
+
+  it('treats a mid-stream provider error as terminal: error then done(error), no tool execution', async () => {
+    const conv = createConversation({});
+    const { events, sink } = collectSink();
+
+    const registry = new ToolRegistry();
+    let toolInvocations = 0;
+    registry.register(
+      defineTool({
+        name: 'fake_lookup',
+        description: 'lookup',
+        inputZod: z.object({ q: z.string() }),
+        permissionTier: 'read',
+        execute: async () => {
+          toolInvocations++;
+          return { ok: true };
+        },
+      }),
+    );
+
+    let turns = 0;
+    const provider: LLMProvider = {
+      id: 'fake',
+      displayName: 'Fake',
+      async *chat(): AsyncIterable<ChatEvent> {
+        turns++;
+        yield { type: 'text_delta', delta: 'partial' };
+        yield { type: 'error', message: 'mid-stream failure', retryable: false };
+        // The runner must stop consuming after the terminal error, so the
+        // tool_call below never reaches the loop.
+        yield { type: 'tool_call', id: 'c1', name: 'fake_lookup', arguments: { q: 'x' } };
+        yield { type: 'done', stopReason: 'tool_use' };
+      },
+      embed: vi.fn(),
+      listModels: vi.fn(),
+      capabilities: vi.fn(),
+    } as unknown as LLMProvider;
+
+    await startChatStream({
+      conversationId: conv.id,
+      providerId: 'fake',
+      modelId: 'fake-1',
+      userMessage: 'hi',
+      sink,
+      buildProvider: async () => provider,
+      toolRegistry: registry,
+      workspaceRoot: '/tmp',
+    });
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(turns).toBe(1);
+    expect(toolInvocations).toBe(0);
+    expect(events.map((e) => e.event.type)).toEqual(['text_delta', 'error', 'done']);
+    const last = events[events.length - 1];
+    expect(last?.event).toEqual({ type: 'done', stopReason: 'error' });
+  });
+
+  it('retries when the provider marks an error retryable even if the message contains 4xx-looking digits', async () => {
+    // Pin jitter to 0 so the retry delay is exactly RETRY_BASE_MS.
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const conv = createConversation({});
+      const { events, sink } = collectSink();
+      let attempts = 0;
+      const provider: LLMProvider = {
+        id: 'fake',
+        displayName: 'Fake',
+        async *chat(): AsyncIterable<ChatEvent> {
+          attempts++;
+          if (attempts === 1) {
+            yield { type: 'error', message: 'request timed out after 4000ms', retryable: true };
+            return;
+          }
+          yield { type: 'text_delta', delta: 'recovered' };
+          yield { type: 'done', stopReason: 'end_turn' };
+        },
+        embed: vi.fn(),
+        listModels: vi.fn(),
+        capabilities: vi.fn(),
+      } as unknown as LLMProvider;
+
+      await startChatStream({
+        conversationId: conv.id,
+        providerId: 'fake',
+        modelId: 'fake-1',
+        userMessage: 'hi',
+        sink,
+        buildProvider: async () => provider,
+      });
+      // Wait out the 1s backoff plus stream completion.
+      await new Promise((r) => setTimeout(r, 1500));
+
+      expect(attempts).toBe(2);
+      expect(events.some((e) => e.event.type === 'error')).toBe(false);
+      const msgs = listMessages(conv.id);
+      expect(msgs[1]?.content).toBe('recovered');
+    } finally {
+      randomSpy.mockRestore();
+    }
+  }, 10000);
 
   it('persists tool blocks and replays them on the next turn', async () => {
     const conv = createConversation({});
@@ -905,6 +1009,43 @@ describe('startChatStream', () => {
     if (Array.isArray(finalAssistantText)) {
       expect(finalAssistantText[0]).toMatchObject({ type: 'text', text: 'done' });
     }
+  });
+});
+
+describe('classifyProviderError', () => {
+  it('honors an explicit retryable hint when the message contains incidental digits like 4000ms', () => {
+    const r = classifyProviderError('request timed out after 4000ms', true);
+    expect(r.isRetryable).toBe(true);
+  });
+
+  it('treats code rate_limit as retryable regardless of message or hint', () => {
+    const r = classifyProviderError('opaque provider message', undefined, 'rate_limit');
+    expect(r.isRetryable).toBe(true);
+    expect(r.friendly).toContain('rate-limited');
+  });
+
+  it('treats code server/timeout/network as retryable', () => {
+    expect(classifyProviderError('x', undefined, 'server').isRetryable).toBe(true);
+    expect(classifyProviderError('x', undefined, 'timeout').isRetryable).toBe(true);
+    expect(classifyProviderError('x', undefined, 'network').isRetryable).toBe(true);
+  });
+
+  it('treats code auth/invalid_request/context_length as fatal even with retryable hint true', () => {
+    expect(classifyProviderError('x', true, 'auth').isRetryable).toBe(false);
+    expect(classifyProviderError('x', true, 'invalid_request').isRetryable).toBe(false);
+    expect(classifyProviderError('x', true, 'context_length').isRetryable).toBe(false);
+  });
+
+  it('honors an explicit retryable:false hint over a retryable-looking message', () => {
+    expect(classifyProviderError('503 service unavailable', false).isRetryable).toBe(false);
+  });
+
+  it('falls back to word-boundary sniffing: bare 400 status is fatal, 4000ms is not auth/bad-request', () => {
+    expect(classifyProviderError('HTTP 400: bad request').isRetryable).toBe(false);
+    expect(classifyProviderError('HTTP 503: service unavailable').isRetryable).toBe(true);
+    // No code, no hint, no recognizable status — fatal by default, but not
+    // because '4000' was misread as a 400.
+    expect(classifyProviderError('timed out after 4000ms').isRetryable).toBe(false);
   });
 });
 

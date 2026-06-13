@@ -16,7 +16,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await fs.rm(root, { recursive: true, force: true });
+  await fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 describe('resolveVaultPathSync (lexical)', () => {
@@ -57,7 +57,7 @@ describe('resolveVaultPath (realpath)', () => {
       await fs.symlink(outsideDir, path.join(root, 'evil'));
       await expect(resolveVaultPath(root, 'evil/secret.md')).rejects.toBeInstanceOf(VaultPathError);
     } finally {
-      await fs.rm(outsideDir, { recursive: true, force: true });
+      await fs.rm(outsideDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
 });

@@ -39,7 +39,7 @@ describe('resolveWithinWorkspace (async, realpath-checked)', () => {
   });
 
   afterEach(async () => {
-    await fs.rm(tmpRoot, { recursive: true, force: true });
+    await fs.rm(tmpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
 
   it('returns the resolved path for plain in-workspace requests', async () => {

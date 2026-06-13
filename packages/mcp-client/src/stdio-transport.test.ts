@@ -8,6 +8,15 @@ const helperJs = path.resolve(here, '..', 'test-fixtures', 'echo-server.cjs');
 const envDumpJs = path.resolve(here, '..', 'test-fixtures', 'env-dump-server.cjs');
 const noisyStderrJs = path.resolve(here, '..', 'test-fixtures', 'noisy-stderr-server.cjs');
 
+function firstMessage(transport: StdioTransport, received: unknown[]): Promise<unknown> {
+  return new Promise<unknown>((resolve) => {
+    transport.onMessage((msg) => {
+      received.push(msg);
+      resolve(msg);
+    });
+  });
+}
+
 describe('StdioTransport', () => {
   it('starts a child process, sends a message, and receives a JSON-RPC reply', async () => {
     const transport = new StdioTransport({
@@ -18,16 +27,15 @@ describe('StdioTransport', () => {
     });
 
     const received: unknown[] = [];
-    transport.onMessage((msg) => received.push(msg));
+    const reply = firstMessage(transport, received);
 
     await transport.start();
     await transport.send({ jsonrpc: '2.0', id: 1, method: 'ping', params: {} });
 
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await expect(reply).resolves.toMatchObject({ jsonrpc: '2.0', id: 1 });
     await transport.stop();
 
     expect(received.length).toBeGreaterThan(0);
-    expect(received[0]).toMatchObject({ jsonrpc: '2.0', id: 1 });
   });
 
   it('scrubs env — does not forward arbitrary parent env to the child', async () => {
@@ -42,14 +50,13 @@ describe('StdioTransport', () => {
       });
 
       const received: unknown[] = [];
-      transport.onMessage((msg) => received.push(msg));
+      const replyPromise = firstMessage(transport, received);
 
       await transport.start();
       await transport.send({ jsonrpc: '2.0', id: 1, method: 'env', params: {} });
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      const reply = (await replyPromise) as { result: { keys: string[] } };
       await transport.stop();
 
-      const reply = received[0] as { result: { keys: string[] } };
       expect(reply.result.keys).toContain('ALLOWED_KEY');
       expect(reply.result.keys).not.toContain(SECRET_KEY);
     } finally {
@@ -66,11 +73,11 @@ describe('StdioTransport', () => {
     });
 
     const received: unknown[] = [];
-    transport.onMessage((msg) => received.push(msg));
+    const reply = firstMessage(transport, received);
 
     await transport.start();
     await transport.send({ jsonrpc: '2.0', id: 1, method: 'ping', params: {} });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await reply;
 
     expect(received.length).toBeGreaterThan(0);
     expect(transport.getStderrTail()).toContain('LAST_LINE_MARKER');
@@ -88,7 +95,12 @@ describe('StdioTransport', () => {
 
     const a: unknown[] = [];
     const b: unknown[] = [];
-    transport.onMessage((m) => a.push(m));
+    const firstA = new Promise<unknown>((resolve) => {
+      transport.onMessage((m) => {
+        a.push(m);
+        resolve(m);
+      });
+    });
     transport.onMessage((m) => b.push(m));
 
     const closes: number[] = [];
@@ -97,13 +109,31 @@ describe('StdioTransport', () => {
 
     await transport.start();
     await transport.send({ jsonrpc: '2.0', id: 1, method: 'ping', params: {} });
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await firstA;
+    // stop() awaits the child 'close' event, so close listeners have fired.
     await transport.stop();
-    await new Promise((resolve) => setTimeout(resolve, 100));
 
     expect(a.length).toBeGreaterThan(0);
     expect(b.length).toBe(a.length);
     expect(closes).toEqual([1, 2]);
+  });
+
+  it('stop() resolves only after the child has exited and close handlers ran', async () => {
+    const transport = new StdioTransport({
+      kind: 'stdio',
+      command: process.execPath,
+      args: [helperJs],
+      env: {},
+    });
+
+    let closedBeforeStopResolved = false;
+    transport.onClose(() => {
+      closedBeforeStopResolved = true;
+    });
+
+    await transport.start();
+    await transport.stop();
+    expect(closedBeforeStopResolved).toBe(true);
   });
 
   it('handles process close', async () => {

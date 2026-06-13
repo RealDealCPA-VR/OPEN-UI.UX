@@ -41,6 +41,12 @@ export const SHORTCUTS_CATALOG: readonly ShortcutGroup[] = [
         label: 'Toggle left column',
         scope: 'navigation',
       },
+      {
+        id: 'nav-conversation-search',
+        keys: 'Ctrl/⌘ K',
+        label: 'Focus conversation search (Chat view)',
+        scope: 'navigation',
+      },
     ],
   },
   {

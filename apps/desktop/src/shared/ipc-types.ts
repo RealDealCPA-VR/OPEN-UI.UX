@@ -234,6 +234,7 @@ import type {
   ExportConversationResult,
   StoredMessage,
 } from './conversation';
+import type { Project, ProjectsChangedEvent } from './projects';
 import type {
   ProviderDeleteRequest,
   ProviderListItem,
@@ -489,6 +490,31 @@ export interface IpcInvokeChannels extends IpcInvokeChannelsBase {
     response: Conversation;
   };
   'conversations:delete': {
+    request: { id: string };
+    response: void;
+  };
+  'conversations:assignProject': {
+    request: { id: string; projectId: string | null };
+    response: Conversation;
+  };
+  // CD-21 — projects with custom instructions
+  'projects:list': {
+    request: void;
+    response: Project[];
+  };
+  'projects:create': {
+    request: { name: string };
+    response: Project;
+  };
+  'projects:rename': {
+    request: { id: string; name: string };
+    response: Project;
+  };
+  'projects:setInstructions': {
+    request: { id: string; instructions: string };
+    response: Project;
+  };
+  'projects:delete': {
     request: { id: string };
     response: void;
   };
@@ -1377,6 +1403,8 @@ export interface IpcEventChannels {
   'chat:provider-switched': ProviderSwitchChangedEvent;
   // Unified checkpoint manager
   'checkpoints:changed': CheckpointsChangedEvent;
+  // CD-21 — projects with custom instructions
+  'projects:changed': ProjectsChangedEvent;
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

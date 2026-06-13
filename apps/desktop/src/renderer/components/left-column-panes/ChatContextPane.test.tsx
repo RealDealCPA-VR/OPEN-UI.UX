@@ -7,6 +7,7 @@ import type {
   ConversationSearchHit,
   ConversationSearchResponse,
 } from '../../../shared/conversation-search';
+import type { Project } from '../../../shared/projects';
 
 const navigateMock = vi.fn();
 
@@ -23,6 +24,7 @@ const conversations: Conversation[] = [
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-02T00:00:00.000Z',
     starred: false,
+    projectId: null,
   },
   {
     id: 'conv-2',
@@ -32,16 +34,32 @@ const conversations: Conversation[] = [
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-02T00:00:00.000Z',
     starred: false,
+    projectId: null,
   },
 ];
 
+// Mutable per-test fixtures consumed by the useChat mock below.
+let mockConversations: Conversation[] = conversations;
+let mockProjects: Project[] = [];
+const createProjectMock = vi.fn(() => Promise.resolve());
+const deleteProjectMock = vi.fn(() => Promise.resolve());
+const setProjectInstructionsMock = vi.fn(() => Promise.resolve());
+const assignConversationToProjectMock = vi.fn(() => Promise.resolve());
+
 vi.mock('../../state/chat-context', () => ({
   useChat: () => ({
-    conversations,
+    conversations: mockConversations,
     activeId: 'conv-1',
     selectConversation: vi.fn(),
-    createConversation: vi.fn(() => Promise.resolve(conversations[0])),
+    createConversation: vi.fn(() => Promise.resolve(mockConversations[0])),
     deleteConversation: vi.fn(() => Promise.resolve()),
+    renameConversation: vi.fn(() => Promise.resolve()),
+    toggleStarConversation: vi.fn(() => Promise.resolve()),
+    projects: mockProjects,
+    createProject: createProjectMock,
+    deleteProject: deleteProjectMock,
+    setProjectInstructions: setProjectInstructionsMock,
+    assignConversationToProject: assignConversationToProjectMock,
   }),
 }));
 
@@ -96,6 +114,8 @@ function installBridge(response: ConversationSearchResponse): OpencodexMock {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  mockConversations = conversations;
+  mockProjects = [];
 });
 
 afterEach(() => {
@@ -104,6 +124,27 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   delete (window as unknown as { opencodex?: unknown }).opencodex;
+});
+
+describe('ChatContextPane Ctrl/Cmd+K shortcut', () => {
+  it('focuses and selects the search input on Ctrl+K', () => {
+    installBridge({ hits: [], truncated: false });
+    render(<ChatContextPane />);
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    const input = screen.getByLabelText('Search conversations and messages');
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('does not steal focus while typing in another editable field', () => {
+    installBridge({ hits: [], truncated: false });
+    render(<ChatContextPane />);
+    const outside = document.createElement('textarea');
+    document.body.appendChild(outside);
+    outside.focus();
+    fireEvent.keyDown(outside, { key: 'k', ctrlKey: true });
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
+  });
 });
 
 describe('ChatContextPane message search', () => {
@@ -189,5 +230,76 @@ describe('ChatContextPane message search', () => {
       conversationId: 'conv-2',
       messageId: 'msg-9',
     });
+  });
+});
+
+describe('ChatContextPane projects (CD-21)', () => {
+  const project: Project = {
+    id: 'proj-1',
+    name: 'Acme Site',
+    instructions: 'Be terse.',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+
+  it('groups assigned conversations under their project header', () => {
+    mockProjects = [project];
+    mockConversations = [conversations[0]!, { ...conversations[1]!, projectId: 'proj-1' }];
+    installBridge({ hits: [], truncated: false });
+    render(<ChatContextPane />);
+
+    expect(screen.getByText('Acme Site')).toBeTruthy();
+    const group = screen.getByText('Acme Site').closest('li');
+    expect(group?.textContent).toContain('Beta retrospective');
+    expect(group?.textContent).not.toContain('Alpha planning');
+    expect(screen.getByText('Alpha planning')).toBeTruthy();
+  });
+
+  it('creates a project from the + affordance', () => {
+    installBridge({ hits: [], truncated: false });
+    render(<ChatContextPane />);
+
+    fireEvent.click(screen.getByLabelText('New project'));
+    const input = screen.getByLabelText('New project name');
+    fireEvent.change(input, { target: { value: '  Acme Site  ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(createProjectMock).toHaveBeenCalledWith('Acme Site');
+    expect(screen.queryByLabelText('New project name')).toBeNull();
+  });
+
+  it('assigns a conversation to a project via the move-to-project select', () => {
+    mockProjects = [project];
+    installBridge({ hits: [], truncated: false });
+    render(<ChatContextPane />);
+
+    fireEvent.click(screen.getByLabelText('Move Alpha planning to a project'));
+    const select = screen.getByLabelText('Move Alpha planning to project');
+    fireEvent.change(select, { target: { value: 'proj-1' } });
+
+    expect(assignConversationToProjectMock).toHaveBeenCalledWith('conv-1', 'proj-1');
+  });
+
+  it('edits and saves project instructions inline', () => {
+    mockProjects = [project];
+    installBridge({ hits: [], truncated: false });
+    render(<ChatContextPane />);
+
+    fireEvent.click(screen.getByLabelText('Edit instructions for Acme Site'));
+    const textarea = screen.getByLabelText('Instructions for Acme Site');
+    expect((textarea as HTMLTextAreaElement).value).toBe('Be terse.');
+    fireEvent.change(textarea, { target: { value: 'Always reply in haiku.' } });
+    fireEvent.click(screen.getByText('Save'));
+
+    expect(setProjectInstructionsMock).toHaveBeenCalledWith('proj-1', 'Always reply in haiku.');
+    expect(screen.queryByLabelText('Instructions for Acme Site')).toBeNull();
+  });
+
+  it('deletes a project from its header action', () => {
+    mockProjects = [project];
+    installBridge({ hits: [], truncated: false });
+    render(<ChatContextPane />);
+
+    fireEvent.click(screen.getByLabelText('Delete project Acme Site'));
+    expect(deleteProjectMock).toHaveBeenCalledWith('proj-1');
   });
 });

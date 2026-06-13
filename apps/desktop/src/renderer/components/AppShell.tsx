@@ -12,6 +12,7 @@ import {
 import { LocalOnlyPill } from './LocalOnlyPill';
 import { McpToolRunner } from './McpToolRunner';
 import { StatusBar } from './StatusBar';
+import { WindowControls } from './WindowControls';
 import { useCollapseState } from '../state/use-collapse-state';
 import { getBridge } from '../bridge';
 import { deriveInbox } from '../views/agent-runs-derive';
@@ -298,8 +299,22 @@ export function AppShell(): JSX.Element {
         </div>
       </aside>
       <div className="main-column">
-        <div className="main-column-header" role="presentation">
+        <div
+          className="main-column-header"
+          role="presentation"
+          onDoubleClick={(e) => {
+            // Linux frameless windows get no native double-click-to-maximize
+            // on the drag region; win32's titleBarOverlay handles it natively.
+            const chrome = getBridge()?.windowChrome;
+            if (chrome?.platform !== 'linux') return;
+            if ((e.target as HTMLElement).closest('button, a, input, select, [role="button"]')) {
+              return;
+            }
+            void chrome.toggleMaximize();
+          }}
+        >
           <LocalOnlyPill />
+          <WindowControls />
         </div>
         <main id="main-content" className="content" tabIndex={-1}>
           <Outlet />

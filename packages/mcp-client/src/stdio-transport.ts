@@ -7,6 +7,9 @@ type CloseHandler = () => void;
 
 const STDERR_TAIL_BYTES = 16 * 1024;
 
+const SIGTERM_GRACE_MS = 5_000;
+const SIGKILL_GRACE_MS = 2_000;
+
 const DEFAULT_ENV_ALLOWLIST: readonly string[] = [
   'PATH',
   'HOME',
@@ -90,14 +93,34 @@ export class StdioTransport implements Transport {
   }
 
   async stop(): Promise<void> {
-    if (!this.child) return;
-    try {
-      this.child.kill('SIGTERM');
-    } catch {
-      // already gone
-    }
+    const child = this.child;
+    if (!child) return;
     this.child = null;
     this.started = false;
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    await new Promise<void>((resolve) => {
+      // 'close' may fire after SIGKILL too; the fallback timer only guards
+      // against a kernel that never reports the exit.
+      const escalateTimer = setTimeout(() => {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          // already gone
+        }
+        const fallbackTimer = setTimeout(resolve, SIGKILL_GRACE_MS);
+        fallbackTimer.unref?.();
+      }, SIGTERM_GRACE_MS);
+      escalateTimer.unref?.();
+      child.once('close', () => {
+        clearTimeout(escalateTimer);
+        resolve();
+      });
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        // already gone
+      }
+    });
   }
 
   getStderrTail(): string {

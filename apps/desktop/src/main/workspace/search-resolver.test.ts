@@ -8,6 +8,7 @@ import {
   setSearchWorkspaceResolver,
   type WorkspaceForSearch,
 } from '@opencodex/tools';
+import { rmTmp } from '../../test/rm-tmp';
 import { applyMigrations, setDbForTesting } from '../storage/db';
 import { createWorkspace, setRagEnabled } from './workspaces-store';
 import {
@@ -33,8 +34,8 @@ afterEach(async () => {
   uninstallSearchWorkspaceResolver();
   setDbForTesting(null);
   db.close();
-  await fs.rm(tmpA, { recursive: true, force: true });
-  await fs.rm(tmpB, { recursive: true, force: true });
+  await rmTmp(tmpA);
+  await rmTmp(tmpB);
 });
 
 describe('buildSearchWorkspaceResolver', () => {

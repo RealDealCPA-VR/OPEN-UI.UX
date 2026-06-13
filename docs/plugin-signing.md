@@ -1,6 +1,6 @@
 # Plugin Signing
 
-OpenCodex uses Ed25519 detached signatures to attest that a plugin manifest was published by a trusted author. Signatures are advisory — installs are never silently blocked. Instead, OpenCodex records a clear consent log so the user always knows whether the plugin they enabled was signed.
+OpenCodex uses Ed25519 detached signatures to attest that a plugin — its manifest **and** its executable entry files — was published by a trusted author. Signatures are advisory for unsigned/untrusted plugins (installs are never silently blocked; the consent log records what the user accepted), but a **trusted** signature is enforced: any integrity mismatch quarantines the plugin as `tampered` and it never activates.
 
 ## Threat model
 
@@ -8,17 +8,19 @@ Signing protects against:
 
 - Tampering of `opencodex.plugin.json` after the publisher built it (e.g. a CDN swap or middlebox injecting an extra permission).
 - A registry that lies about which permissions a plugin declares — the manifest the host loads is what gets verified, not the registry entry.
+- **Tampering of the plugin's executable code** (`dist/index.js`, panel HTML entries, slash-command entries) after signing — envelope v2 covers SHA-256 hashes of every manifest-referenced entry file, re-verified on **every activation** (install, startup `loadStoredPlugins`, enable, permission re-grant).
 
 Signing does **not** protect against:
 
 - A malicious build by a trusted publisher.
-- A compromised plugin entry point (`dist/index.js`). Use plugin permissions (`workspace.write`, `shell.execute`, etc.) to bound damage.
+- Files the manifest does not reference. Use plugin permissions (`workspace.write`, `shell.execute`, etc.) to bound damage.
 
-## Key shape
+## Envelope shape (v2)
 
 - Algorithm: Ed25519 (Node's built-in `crypto.sign(null, payload, key)`; no hash parameter).
-- Payload: canonical JSON of the parsed `PluginManifest` (sorted keys, `undefined` skipped).
+- Payload: canonical JSON (sorted keys, `undefined` skipped) of an **integrity payload**: the parsed `PluginManifest` plus `{ path, sha256 }` for the entry file and every panel/command entry, files sorted by normalized forward-slash path.
 - Signature encoding: base64 of the raw 64-byte signature.
+- `signatureEnvelopeSchema` is a discriminated union: v2 (current) and v1 (legacy, manifest-only). **A trusted v1/raw manifest-only signature now fails closed as `tampered`** — zero hash coverage would let entry code be swapped under the old signature. Previously-signed plugins must re-sign with `signPluginDirectory`.
 
 Trusted keys are stored per-user in `electron-store` under `trustedPublisherKeys`:
 
@@ -28,32 +30,34 @@ type TrustedKey = { id: string; publicKey: string }; // PEM, SPKI
 
 The `id` is the human-readable signer label that surfaces in the consent log and Plugin Search panel.
 
-## Signing a manifest
+## Signing a plugin
 
 ```ts
 import { generateKeyPairSync } from 'node:crypto';
-import { signManifest, ManifestSchema } from '@opencodex/plugin-sdk';
+import { signPluginDirectory, ManifestSchema } from '@opencodex/plugin-sdk';
 
-const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+const { privateKey } = generateKeyPairSync('ed25519');
 const privateKeyPem = privateKey.export({ format: 'pem', type: 'pkcs8' }).toString();
 
 const manifest = ManifestSchema.parse(JSON.parse(readFileSync('opencodex.plugin.json', 'utf8')));
-const signature = signManifest(manifest, privateKeyPem);
-writeFileSync('opencodex.plugin.sig', signature);
+// Hashes the entry + panel/command files referenced by the manifest, then signs.
+const envelope = await signPluginDirectory(pluginDir, manifest, privateKeyPem);
+writeFileSync('opencodex.plugin.sig', JSON.stringify(envelope));
 ```
+
+(`signPluginEnvelope(manifest, files, key)` is the lower-level variant when you already have hashes. `signManifestEnvelope` is deprecated and still emits v1.)
 
 Ship `opencodex.plugin.sig` alongside `opencodex.plugin.json` in the plugin directory or tarball.
 
-## Verifying at install time
+## Verifying
 
-`installPluginFromPath` in `apps/desktop/src/main/plugins/manager.ts`:
+`verifyPluginIntegrity` returns `'unsigned' | 'untrusted' | 'signed' | 'tampered'`:
 
-1. Reads `opencodex.plugin.json` (existing `readManifest`).
-2. Reads `opencodex.plugin.sig` if present.
-3. Calls `verifyManifest(manifest, signature, trustedPublisherKeys)`.
-4. Appends a `pluginConsentLog` entry with `{ signed, signer, userAcceptedUnsigned }`.
+- **unsigned / untrusted** — no signature, or a signature by an unknown key: the existing sideload/consent flow applies unchanged (`userAcceptedUnsigned` recorded in `pluginConsentLog`).
+- **signed** — trusted key, manifest matches the payload, every referenced file's SHA-256 matches disk.
+- **tampered** — trusted key but any mismatch: manifest vs payload, hash mismatch, referenced file missing, or missing hash coverage (including trusted legacy v1). The plugin is listed with status `tampered` (reason in `lastError`) and never activates; enable/grant re-run the gate.
 
-A failed verification does not abort the install — it logs a warning and records `signed: false` in the consent log. The Plugins panel surfaces this status next to each installed plugin.
+Verification runs at install (`installPluginFromPath`) **and on every activation path** — `activatePlugin` re-reads the signature and re-hashes disk files, so startup (`loadStoredPlugins`), enable, and permission re-grant all re-check.
 
 ## Rotation
 
@@ -67,4 +71,4 @@ There is intentionally no central revocation list — OpenCodex is local-first.
 
 ## Tests
 
-See `packages/plugin-sdk/src/signing.test.ts` for the round-trip + tamper-detection coverage.
+See `packages/plugin-sdk/src/signing.test.ts` (v2 round-trip over a real plugin dir, tamper/missing-file/missing-coverage → `tampered`, legacy v1 fail-closed, untrusted-key behavior) and the signing describe blocks in `apps/desktop/src/main/plugins/manager.test.ts` (install/startup/enable re-verification, quarantine).

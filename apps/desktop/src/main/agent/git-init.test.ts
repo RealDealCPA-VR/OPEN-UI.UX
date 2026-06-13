@@ -1,9 +1,10 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { rmTmp } from '../../test/rm-tmp';
 import { initGitRepo } from './git-init';
 
 const execFileAsync = promisify(execFile);
@@ -40,7 +41,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (baseTmp) {
-    await rm(baseTmp, { recursive: true, force: true });
+    await rmTmp(baseTmp);
   }
 });
 
@@ -54,7 +55,7 @@ describe('initGitRepo', () => {
 
   afterEach(async () => {
     if (workspace) {
-      await rm(workspace, { recursive: true, force: true });
+      await rmTmp(workspace);
     }
   });
 

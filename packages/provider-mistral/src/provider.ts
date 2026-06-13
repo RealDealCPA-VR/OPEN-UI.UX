@@ -7,7 +7,12 @@ import type {
   ModelCapabilities,
   ProviderFactory,
 } from '@opencodex/core';
-import { assertValidApiKey, fetchWithRetry, sanitizeErrorDetail } from '@opencodex/core';
+import {
+  assertValidApiKey,
+  fetchWithRetry,
+  mapHttpStatusToErrorCode,
+  sanitizeErrorDetail,
+} from '@opencodex/core';
 import { mistralConfigSchema, type MistralConfig } from './config';
 import { findModel, knownModels } from './models';
 import { sseEvents } from './sse';
@@ -30,10 +35,13 @@ class MistralProvider implements LLMProvider {
     const response = await this.post('/chat/completions', body, req.signal);
     if (!response.ok || !response.body) {
       const detail = await this.safeReadText(response);
+      const code = mapHttpStatusToErrorCode(response.status);
       yield {
         type: 'error',
         message: `Mistral chat HTTP ${response.status}: ${detail}`,
-        retryable: response.status >= 500 || response.status === 429,
+        retryable:
+          code === 'rate_limit' || code === 'server' || code === 'timeout' || code === 'network',
+        code,
       };
       yield { type: 'done', stopReason: 'error' };
       return;

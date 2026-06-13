@@ -31,13 +31,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Native modules (better-sqlite3 in particular) are load-bearing:
-      # apps/desktop/scripts/ensure-native-abi.mjs runs as pretest/predev/prebuild
-      # and refuses to continue without a matching ABI sentinel. A rebuild
-      # failure here means the whole pipeline is wedged — fail loudly rather
-      # than swallowing it.
-      - name: Rebuild native modules
-        run: pnpm --filter @opencodex/desktop run rebuild-native
+      # website/ is npm-managed (not a pnpm workspace member) but the root
+      # typecheck chain includes `pnpm --dir website typecheck`, so its deps
+      # must be present (mirrors docs.yml).
+      - name: Install website dependencies
+        working-directory: website
+        run: npm install --no-audit --no-fund
+
+      # Native modules (better-sqlite3 in particular) are handled by
+      # apps/desktop/scripts/ensure-native-abi.mjs: postinstall builds for the
+      # Electron ABI and writes a sentinel, and the pretest/predev/prebuild
+      # hooks rebuild only on an ABI switch — no explicit rebuild step needed.
 
       # Note: `pnpm check-placeholders` runs in .github/workflows/release-readiness.yml,
       # which is gated on release tags + manual dispatch so unfilled placeholders block
@@ -57,6 +61,14 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # website/ is npm-managed and excluded from `pnpm -r build`, so the root
+      # Build step never renders its MDX. `next build` runs the full SSG pass
+      # and fails on render errors (e.g. an MDX component used without an
+      # import) that typecheck alone cannot catch.
+      - name: Build website
+        working-directory: website
+        run: npm run build
 
       # The desktop binary must be present at out/main/index.cjs — the Build
       # step above runs `pnpm build` which invokes electron-vite for the

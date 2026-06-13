@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { rmTmpSync } from '../../test/rm-tmp';
 import { FileChangeWatcher, FileChangeWatcherRegistry } from './file-watcher';
 
 function waitFor(predicate: () => boolean, timeoutMs = 4000): Promise<void> {
@@ -31,7 +32,7 @@ describe('FileChangeWatcher', () => {
 
   afterEach(() => {
     try {
-      rmSync(dir, { recursive: true, force: true });
+      rmTmpSync(dir);
     } catch {
       // ignore
     }
@@ -148,7 +149,7 @@ describe('FileChangeWatcherRegistry', () => {
 
   afterEach(() => {
     try {
-      rmSync(dir, { recursive: true, force: true });
+      rmTmpSync(dir);
     } catch {
       // ignore
     }

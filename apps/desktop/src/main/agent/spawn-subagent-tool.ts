@@ -1,9 +1,14 @@
 import { z } from 'zod';
 import { defineTool } from '@opencodex/core';
 import { logger } from '../logger';
+import { fanoutGate } from './fanout-gate';
 import { recordComplete, recordError, recordStart } from './run-registry';
 import { type SubagentResult } from './subagent';
 import { isUtilityProcessAvailable, runSubagentInline, runSubagentInWorker } from './worker-host';
+
+// Fallback gate key for call paths that (defensively) arrive without a signal;
+// they all share one consent scope for the life of the process.
+const signallessGateKey: object = {};
 
 async function trackEvent(
   event: string,
@@ -53,8 +58,22 @@ export const spawnSubagentTool = defineTool({
   permissionTier: 'execute',
   inputZod: inputSchema,
   async execute(input, ctx) {
+    const runnerId = input.runnerId ?? 'internal';
+    const consent = await fanoutGate.ensureConsent(ctx.signal ?? signallessGateKey, {
+      task: input.task,
+      runnerId,
+      modelId: input.modelId,
+    });
+    if (!consent.allowed) {
+      throw new Error(
+        `spawn_subagent denied: ${consent.reason ?? 'fan-out consent was not granted'}. ` +
+          'Do not retry spawn_subagent in this run — do the work yourself or ask the user how to proceed.',
+      );
+    }
+    const task = consent.editedTask ?? input.task;
+
     logger.info(
-      { task: input.task.slice(0, 80), providerId: input.providerId, modelId: input.modelId },
+      { task: task.slice(0, 80), providerId: input.providerId, modelId: input.modelId },
       'spawning subagent',
     );
     const budget = {
@@ -63,10 +82,8 @@ export const spawnSubagentTool = defineTool({
       ...(input.maxWallTimeMs !== undefined ? { maxWallTimeMs: input.maxWallTimeMs } : {}),
     };
 
-    const runnerId = input.runnerId ?? 'internal';
-
     const runId = recordStart({
-      task: input.task,
+      task,
       providerId: input.providerId,
       modelId: input.modelId,
       runnerId,
@@ -90,7 +107,7 @@ export const spawnSubagentTool = defineTool({
       if (useWorker) {
         try {
           result = await runSubagentInWorker({
-            task: input.task,
+            task,
             providerId: input.providerId,
             modelId: input.modelId,
             workspaceRoot: ctx.workspaceRoot,
@@ -127,7 +144,7 @@ export const spawnSubagentTool = defineTool({
 
     async function runInline(): Promise<SubagentResult> {
       return runSubagentInline({
-        task: input.task,
+        task,
         providerId: input.providerId,
         modelId: input.modelId,
         workspaceRoot: ctx.workspaceRoot,

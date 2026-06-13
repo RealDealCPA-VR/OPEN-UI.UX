@@ -2,23 +2,36 @@ import type { ModelCapabilities } from '@opencodex/core';
 
 const KNOWN: ReadonlyArray<ModelCapabilities> = [
   {
-    id: 'claude-opus-4-7',
+    id: 'claude-opus-4-8',
     providerId: 'anthropic',
-    displayName: 'Claude Opus 4.7',
-    contextWindow: 200_000,
-    maxOutputTokens: 64_000,
+    displayName: 'Claude Opus 4.8',
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
     toolUse: true,
     vision: true,
     streaming: true,
     embeddings: false,
     promptCaching: true,
-    pricing: { inputPerMillion: 15, outputPerMillion: 75, cachedInputPerMillion: 1.5 },
+    pricing: { inputPerMillion: 5, outputPerMillion: 25, cachedInputPerMillion: 0.5 },
+  },
+  {
+    id: 'claude-opus-4-7',
+    providerId: 'anthropic',
+    displayName: 'Claude Opus 4.7',
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
+    toolUse: true,
+    vision: true,
+    streaming: true,
+    embeddings: false,
+    promptCaching: true,
+    pricing: { inputPerMillion: 5, outputPerMillion: 25, cachedInputPerMillion: 0.5 },
   },
   {
     id: 'claude-sonnet-4-6',
     providerId: 'anthropic',
     displayName: 'Claude Sonnet 4.6',
-    contextWindow: 200_000,
+    contextWindow: 1_000_000,
     maxOutputTokens: 64_000,
     toolUse: true,
     vision: true,
@@ -28,7 +41,7 @@ const KNOWN: ReadonlyArray<ModelCapabilities> = [
     pricing: { inputPerMillion: 3, outputPerMillion: 15, cachedInputPerMillion: 0.3 },
   },
   {
-    id: 'claude-haiku-4-5-20251001',
+    id: 'claude-haiku-4-5',
     providerId: 'anthropic',
     displayName: 'Claude Haiku 4.5',
     contextWindow: 200_000,
@@ -40,32 +53,6 @@ const KNOWN: ReadonlyArray<ModelCapabilities> = [
     promptCaching: true,
     pricing: { inputPerMillion: 1, outputPerMillion: 5, cachedInputPerMillion: 0.1 },
   },
-  {
-    id: 'claude-3-5-sonnet-20241022',
-    providerId: 'anthropic',
-    displayName: 'Claude 3.5 Sonnet',
-    contextWindow: 200_000,
-    maxOutputTokens: 8_192,
-    toolUse: true,
-    vision: true,
-    streaming: true,
-    embeddings: false,
-    promptCaching: true,
-    pricing: { inputPerMillion: 3, outputPerMillion: 15, cachedInputPerMillion: 0.3 },
-  },
-  {
-    id: 'claude-3-5-haiku-20241022',
-    providerId: 'anthropic',
-    displayName: 'Claude 3.5 Haiku',
-    contextWindow: 200_000,
-    maxOutputTokens: 8_192,
-    toolUse: true,
-    vision: false,
-    streaming: true,
-    embeddings: false,
-    promptCaching: true,
-    pricing: { inputPerMillion: 0.8, outputPerMillion: 4, cachedInputPerMillion: 0.08 },
-  },
 ];
 
 const DEFAULT_MAX_OUTPUT_TOKENS = 4_096;
@@ -75,7 +62,12 @@ export function knownModels(): ModelCapabilities[] {
 }
 
 export function findModel(id: string): ModelCapabilities | undefined {
-  return KNOWN.find((m) => m.id === id);
+  const exact = KNOWN.find((m) => m.id === id);
+  if (exact) return exact;
+  // Dated snapshot IDs (e.g. claude-haiku-4-5-20251001) alias their bare entry.
+  const dateless = id.replace(/-\d{8}$/, '');
+  if (dateless !== id) return KNOWN.find((m) => m.id === dateless);
+  return undefined;
 }
 
 export function defaultMaxTokens(modelId: string): number {

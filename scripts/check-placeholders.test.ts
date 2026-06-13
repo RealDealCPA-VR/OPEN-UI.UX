@@ -65,7 +65,7 @@ describe('check-placeholders scanDirectory', () => {
       expect(relPaths).toContain('bad.md');
       expect(relPaths).not.toContain('node_modules/evil.md');
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
 
@@ -76,7 +76,7 @@ describe('check-placeholders scanDirectory', () => {
       const hits = scanDirectory(root);
       expect(hits).toEqual([]);
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   });
 });

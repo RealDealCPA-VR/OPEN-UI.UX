@@ -20,6 +20,8 @@ function mapStopReason(finish: string | null | undefined): StopReason {
     case 'tool_calls':
     case 'function_call':
       return 'tool_use';
+    case 'content_filter':
+      return 'content_filter';
     default:
       return 'end_turn';
   }
@@ -87,6 +89,20 @@ export async function* streamChunksToEvents(
       ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
       ...(cost !== undefined ? { costUsd: cost } : {}),
     };
+  }
+
+  // Mistral signals a mid-stream generation failure via finish_reason
+  // 'error'; surface it instead of pretending the turn completed, and skip
+  // any partially accumulated tool calls.
+  if (finishReason === 'error') {
+    yield {
+      type: 'error',
+      message: 'Mistral stream ended with finish_reason "error"',
+      retryable: false,
+      code: 'unknown',
+    };
+    yield { type: 'done', stopReason: 'error' };
+    return;
   }
 
   const sorted = [...pending.values()].sort((a, b) => a.order - b.order);

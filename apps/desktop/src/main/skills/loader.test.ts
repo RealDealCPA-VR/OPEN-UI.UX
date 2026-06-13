@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { rmTmpSync } from '../../test/rm-tmp';
 import { skillFrontmatterSchema } from '../../shared/skills';
 import { loadSkillsFromRoot } from './loader';
 
@@ -27,7 +28,7 @@ beforeEach(() => {
 
 afterEach(() => {
   try {
-    rmSync(root, { recursive: true, force: true });
+    rmTmpSync(root);
   } catch {
     // best-effort
   }

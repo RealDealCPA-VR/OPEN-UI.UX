@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { rmTmp } from '../../test/rm-tmp';
 import {
   WorkspaceWatcher,
   setWatchedWorkspace,
@@ -19,7 +20,7 @@ async function createTmp(): Promise<Tmp> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'opencodex-watcher-test-'));
   return {
     root,
-    cleanup: () => fs.rm(root, { recursive: true, force: true }),
+    cleanup: () => rmTmp(root),
   };
 }
 

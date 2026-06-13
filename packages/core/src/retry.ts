@@ -88,13 +88,14 @@ const defaultSleep = (ms: number, signal?: AbortSignal): Promise<void> =>
 
 /**
  * Wraps a fetch-returning thunk with retry/backoff. Retries 429/408/5xx by
- * default; honors Retry-After from the response.
+ * default (up to 3 attempts total); honors Retry-After from the response.
+ * Pass `maxAttempts: 1` to opt out of retries entirely.
  */
 export async function fetchWithRetry(
   doFetch: () => Promise<Response>,
   opts: RetryableFetchOptions = {},
 ): Promise<Response> {
-  const maxAttempts = Math.max(1, opts.maxAttempts ?? 1);
+  const maxAttempts = Math.max(1, opts.maxAttempts ?? 3);
   const isRetryable = opts.isRetryable ?? defaultRetryable;
   const sleep = opts.sleep ?? defaultSleep;
   let lastResponse: Response | undefined;

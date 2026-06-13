@@ -10,6 +10,7 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   starred: boolean;
+  projectId: string | null;
 }
 
 export interface StoredMessage {

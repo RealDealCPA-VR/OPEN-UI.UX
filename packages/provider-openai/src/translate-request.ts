@@ -1,4 +1,5 @@
 import type { ChatRequest, Message, ToolDefinition } from '@opencodex/core';
+import { findModel } from './models';
 
 type OpenAITextPart = { type: 'text'; text: string };
 type OpenAIImagePart = { type: 'image_url'; image_url: { url: string } };
@@ -49,6 +50,7 @@ export interface OpenAIChatRequestBody {
   messages: OpenAIMessage[];
   temperature?: number;
   max_tokens?: number;
+  max_completion_tokens?: number;
   top_p?: number;
   stop?: string[];
   tools?: OpenAITool[];
@@ -75,7 +77,29 @@ export function reasoningEffort(
 }
 
 export function translateMessages(messages: Message[]): OpenAIMessage[] {
-  return messages.flatMap(translateMessage);
+  const out: OpenAIMessage[] = [];
+  // OpenAI rejects role:'tool' messages without tool_call_id, but core's
+  // messageSchema allows { role: 'tool', content: string } with no id. Track
+  // the most recent tool_use id (same strategy as the Responses translator)
+  // so those messages can be attached to the call they answer.
+  let lastToolUseId: string | undefined;
+  for (const msg of messages) {
+    if (msg.role === 'tool' && typeof msg.content === 'string') {
+      if (lastToolUseId !== undefined) {
+        out.push({ role: 'tool', tool_call_id: lastToolUseId, content: msg.content });
+      } else {
+        out.push({ role: 'user', content: msg.content });
+      }
+      continue;
+    }
+    if (typeof msg.content !== 'string') {
+      for (const block of msg.content) {
+        if (block.type === 'tool_use') lastToolUseId = block.id;
+      }
+    }
+    out.push(...translateMessage(msg));
+  }
+  return out;
 }
 
 function stringifyToolOutput(output: unknown): string {
@@ -156,18 +180,42 @@ export function translateTools(tools: ToolDefinition[] | undefined): OpenAITool[
   }));
 }
 
+export interface BuildChatRequestOptions {
+  stream: boolean;
+  /**
+   * OpenAI deprecated `max_tokens` in favor of `max_completion_tokens` (the
+   * old name 400s on reasoning models), but other OpenAI-compatible APIs
+   * (xAI, OpenRouter) still document the legacy parameter.
+   */
+  maxTokensParam?: 'max_tokens' | 'max_completion_tokens';
+}
+
+/**
+ * o-series reasoning models reject `temperature`/`top_p` outright; prefer the
+ * catalog's `reasoning` flag, falling back to an id-prefix check for o-series
+ * models not in the catalog (o4-mini, dated snapshots, ...).
+ */
+function isReasoningModel(model: string): boolean {
+  const meta = findModel(model);
+  if (meta?.reasoning !== undefined) return meta.reasoning;
+  return /^o\d/.test(model);
+}
+
 export function buildChatRequestBody(
   req: ChatRequest,
-  opts: { stream: boolean },
+  opts: BuildChatRequestOptions,
 ): OpenAIChatRequestBody {
   const body: OpenAIChatRequestBody = {
     model: req.model,
     messages: translateMessages(req.messages),
     stream: opts.stream,
   };
-  if (req.temperature !== undefined) body.temperature = req.temperature;
-  if (req.maxTokens !== undefined) body.max_tokens = req.maxTokens;
-  if (req.topP !== undefined) body.top_p = req.topP;
+  const reasoningModel = isReasoningModel(req.model);
+  if (req.temperature !== undefined && !reasoningModel) body.temperature = req.temperature;
+  if (req.maxTokens !== undefined) {
+    body[opts.maxTokensParam ?? 'max_completion_tokens'] = req.maxTokens;
+  }
+  if (req.topP !== undefined && !reasoningModel) body.top_p = req.topP;
   if (req.stop && req.stop.length > 0) body.stop = req.stop;
   const tools = translateTools(req.tools);
   if (tools) body.tools = tools;

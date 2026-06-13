@@ -44,10 +44,14 @@ const workspaceBareAliases = Object.entries(workspacePackages).map(([name, relPa
 const allAliases = [...workspaceSubpathAliases, ...workspaceBareAliases];
 const workspacePackageNames = Object.keys(workspacePackages);
 
+// Prefer .ts over .js so stray tsc emit artifacts in packages/*/src can never
+// shadow the TypeScript sources (Vite's default order tries .js first).
+const tsFirstExtensions = ['.ts', '.tsx', '.mts', '.mjs', '.js', '.jsx', '.json'];
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({ exclude: [...workspacePackageNames, 'electron-store'] })],
-    resolve: { alias: allAliases },
+    resolve: { alias: allAliases, extensions: tsFirstExtensions },
     build: {
       rollupOptions: {
         input: {
@@ -67,7 +71,7 @@ export default defineConfig({
     plugins: [
       externalizeDepsPlugin({ exclude: [...workspacePackageNames, 'electron-store', 'zod'] }),
     ],
-    resolve: { alias: allAliases },
+    resolve: { alias: allAliases, extensions: tsFirstExtensions },
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/preload/index.ts') },
@@ -88,6 +92,7 @@ export default defineConfig({
         { find: /^@shared\/(.*)$/, replacement: `${resolve(__dirname, 'src/shared')}/$1` },
         ...allAliases,
       ],
+      extensions: tsFirstExtensions,
     },
     build: {
       rollupOptions: {

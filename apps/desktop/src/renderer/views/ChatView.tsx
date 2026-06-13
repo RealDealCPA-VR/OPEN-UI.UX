@@ -25,11 +25,13 @@ import { useToast } from '../components/Toasts';
 import {
   applyInsert,
   buildSlashGroups,
+  detectPluginCommandInvocation,
   findSkillsForTriggerText,
   formatPluginCommandInsert,
   formatPromptInsert,
   formatSkillInsert,
   getSlashTrigger,
+  type PluginCommandInvocation,
   type SlashCommandTrigger,
 } from '../components/slash-commands';
 import {
@@ -53,7 +55,10 @@ import type {
   StoredMessage,
 } from '../../shared/conversation';
 import type { McpPromptEntry } from '../../shared/mcp';
-import type { PluginSlashCommandDescriptor } from '../../shared/plugins';
+import type {
+  PluginSlashCommandDescriptor,
+  RunPluginSlashCommandResult,
+} from '../../shared/plugins';
 import type { Skill } from '../../shared/skills';
 
 export function ChatView(): JSX.Element {
@@ -432,12 +437,60 @@ function ChatPane({
     null,
   );
 
+  // Plugin slash commands execute at send time, mirroring how /skill: messages
+  // are detected in main's chat runner — selection only inserts the command
+  // text, so args typed after it reach the handler. The result lands in the
+  // conversation as a system message, the same mechanism merge-reject notices
+  // and provider-switch summaries use.
+  const runPluginCommand = async ({ command, args }: PluginCommandInvocation): Promise<void> => {
+    const conversationId = chat.activeId;
+    const invocationLine = `/${command.name}${args.length > 0 ? ` ${args}` : ''}`;
+    let result: RunPluginSlashCommandResult;
+    try {
+      result = await window.opencodex.plugins.runSlashCommand({
+        pluginId: command.pluginId,
+        name: command.name,
+        args,
+      });
+    } catch (err) {
+      result = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    const summary = result.ok
+      ? `[plugin: ${command.pluginName}] ${invocationLine} — completed`
+      : `[plugin: ${command.pluginName}] ${invocationLine} — failed: ${result.error}`;
+    if (conversationId) {
+      try {
+        await window.opencodex.conversations.appendMessage({
+          conversationId,
+          role: 'system',
+          content: summary,
+        });
+        chat.reload();
+        return;
+      } catch {
+        // Non-fatal — fall through to the toast below.
+      }
+    }
+    toast.show(summary, { kind: result.ok ? 'success' : 'error' });
+  };
+
   const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
     if (slashOpen || mentionOpen) return;
     const trimmed = input.trim();
     if (!trimmed && attachments.length === 0) return;
     if (preparingAttachments) return;
+    // Plugin commands run in main independently of any active stream, so they
+    // dispatch immediately instead of queueing behind the LLM turn. Messages
+    // with attachments are never intercepted — handlers only take an args string.
+    const pluginInvocation =
+      attachments.length === 0 ? detectPluginCommandInvocation(trimmed, pluginCommands) : null;
+    if (pluginInvocation) {
+      clearComposerDraft();
+      setAttachmentError(null);
+      void runPluginCommand(pluginInvocation);
+      return;
+    }
     const sent = attachments;
     // Mid-stream submissions queue as the next FIFO turn rather than starting a
     // second concurrent stream; the composer still clears so the user can type more.
@@ -657,6 +710,8 @@ function ChatPane({
     }
   };
 
+  // Insert-only, like insertSkill: dispatch happens in handleSubmit via
+  // detectPluginCommandInvocation so args typed after the command are passed.
   const insertPluginCommand = (command: PluginSlashCommandDescriptor): void => {
     if (!slashTrigger) return;
     const el = inputRef.current;
@@ -671,17 +726,6 @@ function ChatPane({
         el.setSelectionRange(next.caret, next.caret);
       });
     }
-    void window.opencodex.plugins
-      .runSlashCommand({ pluginId: command.pluginId, name: command.name, args: '' })
-      .then((res) => {
-        if (!res.ok) {
-          toast.show(`/${command.name} failed: ${res.error}`, { kind: 'error' });
-        }
-      })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        toast.show(`/${command.name} failed: ${message}`, { kind: 'error' });
-      });
   };
 
   // Inline "Try /<skill>" hint — debounced 300ms; substring match against
@@ -753,32 +797,9 @@ function ChatPane({
     updateMentionFromCaret(el.value, caret);
   };
 
-  const openSlashMenuManually = (): void => {
-    const el = inputRef.current;
-    const caret = el ? (el.selectionEnd ?? input.length) : input.length;
-    const before = input.slice(0, caret);
-    const after = input.slice(caret);
-    const needsNewline = before.length > 0 && !before.endsWith('\n');
-    const insert = `${needsNewline ? '\n' : ''}/`;
-    const next = before + insert + after;
-    const nextCaret = before.length + insert.length;
-    setInput(next);
-    setSlashTrigger({ query: '', start: nextCaret - 1 });
-    setSlashActiveIndex(0);
-    if (el) {
-      requestAnimationFrame(() => {
-        el.focus();
-        el.setSelectionRange(nextCaret, nextCaret);
-      });
-    }
-  };
-
+  // Ctrl/Cmd+K belongs to the sidebar conversation search (ChatContextPane);
+  // the slash menu stays reachable by typing '/' at the caret.
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-      e.preventDefault();
-      openSlashMenuManually();
-      return;
-    }
     if (slashOpen) {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -899,6 +920,7 @@ function ChatPane({
       const msgs = messagesRef.current;
       const idx = msgs.findIndex((m) => m.id === assistantId);
       if (idx < 0) return;
+      const rejected = msgs[idx];
       let userText = '';
       for (let i = idx - 1; i >= 0; i -= 1) {
         if (msgs[i]?.role === 'user') {
@@ -906,15 +928,40 @@ function ChatPane({
           break;
         }
       }
-      if (userText.trim().length === 0) return;
-      void sendRef.current({ providerId, modelId, userMessage: userText });
+      if (userText.trim().length === 0 || !rejected) return;
+      void (async () => {
+        // No truncate/branch IPC exists, so the rejected reply stays in the
+        // history sent to the model; persist a system instruction so the
+        // regeneration doesn't anchor on it. Best-effort — regeneration still
+        // proceeds when the append fails.
+        try {
+          await window.opencodex.conversations.appendMessage({
+            conversationId: rejected.conversationId,
+            role: 'system',
+            content:
+              'The user rejected the previous assistant reply and asked for a regeneration. ' +
+              'Disregard that rejected reply and answer the repeated question afresh.',
+          });
+        } catch {
+          // Non-fatal.
+        }
+        await sendRef.current({ providerId, modelId, userMessage: userText });
+      })();
     },
     [providerId, modelId],
   );
 
-  const visibleMessages = chat.draft
-    ? chat.messages.filter((m) => m.id !== chat.draft?.messageId)
-    : chat.messages;
+  // Memoized so per-delta draft updates don't mint a new array identity (and
+  // re-trigger the artifact regex scan below) on every animation frame.
+  const draftMessageId = chat.draft?.messageId ?? null;
+  const chatMessagesForView = chat.messages;
+  const visibleMessages = useMemo(
+    () =>
+      draftMessageId !== null
+        ? chatMessagesForView.filter((m) => m.id !== draftMessageId)
+        : chatMessagesForView,
+    [chatMessagesForView, draftMessageId],
+  );
 
   // Artifacts — live preview of the latest previewable block (html/svg/markdown)
   // an assistant produced, shown in a collapsible right-side panel.
@@ -926,6 +973,16 @@ function ChatPane({
     [visibleMessages],
   );
   const [artifactCollapsed, , setArtifactCollapsed] = useCollapseState('artifact-panel', false);
+  // Closing the panel dismisses the artifact that was showing, not auto-preview
+  // forever: a different artifact (new message/block) re-opens the panel.
+  const artifactKey = artifact !== null ? `${artifact.messageId}:${artifact.blockIndex}` : null;
+  const lastArtifactKeyRef = useRef<string | null>(artifactKey);
+  useEffect(() => {
+    if (artifactKey !== null && artifactKey !== lastArtifactKeyRef.current) {
+      setArtifactCollapsed(false);
+    }
+    lastArtifactKeyRef.current = artifactKey;
+  }, [artifactKey, setArtifactCollapsed]);
   const showArtifact = artifact !== null && !artifactCollapsed;
 
   const streamWorkspaceRoot = chat.streamWorkspaceRoot;
@@ -1699,9 +1756,26 @@ interface MessageBubbleProps {
 }
 
 // Discreet "copy this message" affordance, mirroring the code-block copy button.
-function CopyMessageButton({ content }: { content: string }): JSX.Element | null {
+// Assistant replies copy only the visible reply — inline <think>/<thinking>/
+// <reasoning> chain-of-thought is collapsed out of the rendered bubble and must
+// not leak into the clipboard either.
+function CopyMessageButton({
+  content,
+  stripThinking = false,
+}: {
+  content: string;
+  stripThinking?: boolean;
+}): JSX.Element | null {
   const [copied, setCopied] = useState(false);
-  const text = content.trim();
+  const text = useMemo(() => {
+    const source = stripThinking
+      ? splitThinkingSegments(content)
+          .filter((s) => s.kind === 'text')
+          .map((s) => s.text)
+          .join('')
+      : content;
+    return source.trim();
+  }, [content, stripThinking]);
   if (text.length === 0) return null;
   const onCopy = async (): Promise<void> => {
     try {
@@ -1756,7 +1830,7 @@ function MessageBubbleInner({
       ) : null}
       {message.role === 'assistant' ? (
         <div className="chat-bubble-actions">
-          <CopyMessageButton content={message.content} />
+          <CopyMessageButton content={message.content} stripThinking />
           <HoverHint hint="Regenerate this reply">
             <button
               type="button"

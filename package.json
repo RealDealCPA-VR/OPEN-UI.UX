@@ -15,12 +15,13 @@
   "scripts": {
     "dev": "pnpm --filter @opencodex/desktop dev",
     "build": "pnpm -r build",
-    "lint": "pnpm -r lint",
+    "lint": "pnpm -r lint && pnpm exec eslint website scripts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm -r typecheck && pnpm --dir website typecheck",
     "pretest": "pnpm --filter @opencodex/desktop exec node scripts/ensure-native-abi.mjs node",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "diagnose": "node apps/desktop/scripts/diagnose.mjs",
     "bench": "pnpm --filter @opencodex/desktop run bench",
     "test:watch": "vitest",
@@ -31,6 +32,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@types/node": "^20.11.0",
+    "@vitest/coverage-v8": "^1.4.0",
     "eslint": "^9.0.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   ChatEvent,
   ContentBlock,
+  ErrorCode,
   LLMProvider,
   Message,
   Role,
@@ -38,13 +39,38 @@ interface RetryableErrorInfo {
   message: string;
 }
 
-function classifyProviderError(
+export function classifyProviderError(
   message: string,
   retryableHint?: boolean,
+  code?: ErrorCode,
 ): { isRetryable: boolean; friendly: string } {
+  const retryFriendly = (rateLimited: boolean): string =>
+    rateLimited
+      ? 'The provider rate-limited the request. Retrying.'
+      : 'The provider had a temporary issue. Retrying.';
+  // Normalized ErrorCode is the most reliable signal — trust it first.
+  switch (code) {
+    case 'rate_limit':
+      return { isRetryable: true, friendly: retryFriendly(true) };
+    case 'server':
+    case 'timeout':
+    case 'network':
+      return { isRetryable: true, friendly: retryFriendly(false) };
+    case 'auth':
+    case 'invalid_request':
+    case 'context_length':
+      return { isRetryable: false, friendly: message };
+    default:
+      break;
+  }
   const lower = message.toLowerCase();
   const looks429 =
-    lower.includes('429') || lower.includes('rate limit') || lower.includes('too many requests');
+    /\b429\b/.test(lower) || lower.includes('rate limit') || lower.includes('too many requests');
+  // Then the provider's explicit hint, before any message sniffing.
+  if (retryableHint === true) return { isRetryable: true, friendly: retryFriendly(looks429) };
+  if (retryableHint === false) return { isRetryable: false, friendly: message };
+  // Last resort: sniff the message with word-boundary status matches so
+  // incidental digits ('timed out after 4000ms') can't change the outcome.
   const looks5xx =
     /\b5\d\d\b/.test(lower) ||
     lower.includes('internal server error') ||
@@ -52,21 +78,15 @@ function classifyProviderError(
     lower.includes('service unavailable') ||
     lower.includes('gateway timeout');
   const looksAuth =
-    lower.includes('401') ||
-    lower.includes('403') ||
+    /\b401\b/.test(lower) ||
+    /\b403\b/.test(lower) ||
     lower.includes('unauthorized') ||
     lower.includes('forbidden') ||
     lower.includes('invalid api key') ||
     lower.includes('authentication');
-  const looksBadReq = lower.includes('400') && !looks429;
+  const looksBadReq = /\b400\b/.test(lower);
   if (looksAuth || looksBadReq) return { isRetryable: false, friendly: message };
-  const explicitlyRetryable = retryableHint === true;
-  if (explicitlyRetryable || looks429 || looks5xx) {
-    const friendly = looks429
-      ? 'The provider rate-limited the request. Retrying.'
-      : 'The provider had a temporary issue. Retrying.';
-    return { isRetryable: true, friendly };
-  }
+  if (looks429 || looks5xx) return { isRetryable: true, friendly: retryFriendly(looks429) };
   return { isRetryable: false, friendly: message };
 }
 
@@ -224,7 +244,10 @@ export async function startChatStream(opts: StartChatStreamOptions): Promise<Cha
 
   // Lane 7 — compose base system prompt (memory.md prepend + anti-sycophancy).
   try {
-    const baseSystemPrompt = await buildChatSystemPrompt({ workspaceRoot });
+    const baseSystemPrompt = await buildChatSystemPrompt({
+      workspaceRoot,
+      conversationId: opts.conversationId,
+    });
     if (baseSystemPrompt !== null) {
       messages.unshift({ role: 'system', content: baseSystemPrompt });
     }
@@ -402,12 +425,14 @@ async function runStream(args: RunStreamArgs): Promise<void> {
       let iterText = '';
       let iterStop: StopReason = 'end_turn';
       let retryError: RetryableErrorInfo | null = null;
+      let terminalErrorEmitted = false;
 
       const runOneAttempt = async (): Promise<void> => {
         iterToolCalls.length = 0;
         iterText = '';
         iterStop = 'end_turn';
         retryError = null;
+        terminalErrorEmitted = false;
         // Lane: phase14-tier1-cost-ceiling — enforce budgets before each turn.
         try {
           getBudgetManager().check({
@@ -458,11 +483,15 @@ async function runStream(args: RunStreamArgs): Promise<void> {
           } else if (event.type === 'done') {
             iterStop = event.stopReason;
           } else if (event.type === 'error') {
-            const classified = classifyProviderError(event.message, event.retryable);
+            const classified = classifyProviderError(event.message, event.retryable, event.code);
             if (classified.isRetryable && iterText.length === 0 && iterToolCalls.length === 0) {
               retryError = { message: classified.friendly };
             } else {
+              // The renderer finalizes the stream on the first error event —
+              // stop consuming so main and renderer agree the turn is over.
               emit(event);
+              terminalErrorEmitted = true;
+              break;
             }
           } else {
             emit(event);
@@ -501,7 +530,13 @@ async function runStream(args: RunStreamArgs): Promise<void> {
         // On user cancel, persist whatever partial we have before the terminal
         // write flips turn_status to 'final'.
         checkpoint();
-        if (!emittedDoneOrError) emit({ type: 'done', stopReason: 'end_turn' });
+        if (!emittedDoneOrError) emit({ type: 'done', stopReason: 'cancelled' });
+        return;
+      }
+
+      if (terminalErrorEmitted) {
+        // Mirror the retry-exhausted path — the error already went to the sink.
+        emit({ type: 'done', stopReason: 'error' });
         return;
       }
 

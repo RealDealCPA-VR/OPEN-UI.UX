@@ -1,8 +1,9 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { rmTmpSync } from '../../test/rm-tmp';
 
 vi.mock('electron', () => ({
   app: {
@@ -73,7 +74,7 @@ describe('plugins:install-from-registry installer', () => {
   afterEach(async () => {
     const { shutdownAllPlugins } = await import('./manager');
     shutdownAllPlugins();
-    rmSync(workRoot, { recursive: true, force: true });
+    rmTmpSync(workRoot);
   });
 
   it('installs unsigned plugin from a file:// URL when acceptUnsigned is true', async () => {

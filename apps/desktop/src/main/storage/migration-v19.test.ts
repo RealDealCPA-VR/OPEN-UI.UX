@@ -19,6 +19,9 @@ describe('migration v19 — turn_status', () => {
     // running every migration, then rolling the recorded version back to 16 and
     // dropping the v17/v18/v19 artifacts so the upgrade path is exercised.
     applyMigrations(db);
+    db.exec('DROP INDEX IF EXISTS idx_conversations_project');
+    db.exec('ALTER TABLE conversations DROP COLUMN project_id');
+    db.exec('DROP TABLE IF EXISTS projects');
     db.exec('DROP INDEX IF EXISTS idx_conversations_starred');
     db.exec('ALTER TABLE conversations DROP COLUMN starred');
     db.exec('DROP TABLE IF EXISTS code_graph_edges');

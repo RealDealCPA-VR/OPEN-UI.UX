@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { McpClient, UnsupportedProtocolVersionError } from './client';
 import { PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS } from './protocol';
 import type { Transport, TransportKind } from './transport';
@@ -9,6 +9,7 @@ type CloseHandler = () => void;
 interface MockTransport extends Transport {
   pushIncoming(msg: unknown): void;
   outgoing: unknown[];
+  stopCalls: number;
 }
 
 function makeMockTransport(): MockTransport {
@@ -18,10 +19,12 @@ function makeMockTransport(): MockTransport {
   const transport: MockTransport = {
     kind: 'http' as TransportKind,
     outgoing,
+    stopCalls: 0,
     async start() {
       // no-op
     },
     async stop() {
+      transport.stopCalls += 1;
       closeHandler?.();
     },
     async send(message) {
@@ -138,6 +141,60 @@ describe('McpClient', () => {
     });
 
     await expect(connect).rejects.toBeInstanceOf(UnsupportedProtocolVersionError);
+    expect(transport.stopCalls).toBe(1);
+    expect(client.isConnected()).toBe(false);
+  });
+
+  it('stops the transport when initialize returns a JSON-RPC error', async () => {
+    const transport = makeMockTransport();
+    const client = new (class extends McpClient {
+      constructor() {
+        super('test', { kind: 'stdio', command: 'noop', args: [] });
+        (this as unknown as { transport: Transport }).transport = transport;
+        transport.onMessage((msg) => {
+          (this as unknown as { handleMessage: (m: unknown) => void }).handleMessage(msg);
+        });
+      }
+    })();
+
+    const connect = client.connect();
+    await vi.waitFor(() => expect(transport.outgoing.length).toBe(1));
+    const initId = (transport.outgoing[0] as { id: number }).id;
+    transport.pushIncoming({
+      jsonrpc: '2.0',
+      id: initId,
+      error: { code: -32603, message: 'init exploded' },
+    });
+
+    await expect(connect).rejects.toThrow('init exploded');
+    expect(transport.stopCalls).toBe(1);
+    expect(client.isConnected()).toBe(false);
+  });
+
+  it('stops the transport when the initialize result fails schema validation', async () => {
+    const transport = makeMockTransport();
+    const client = new (class extends McpClient {
+      constructor() {
+        super('test', { kind: 'stdio', command: 'noop', args: [] });
+        (this as unknown as { transport: Transport }).transport = transport;
+        transport.onMessage((msg) => {
+          (this as unknown as { handleMessage: (m: unknown) => void }).handleMessage(msg);
+        });
+      }
+    })();
+
+    const connect = client.connect();
+    await vi.waitFor(() => expect(transport.outgoing.length).toBe(1));
+    const initId = (transport.outgoing[0] as { id: number }).id;
+    transport.pushIncoming({
+      jsonrpc: '2.0',
+      id: initId,
+      result: { notTheShape: true },
+    });
+
+    await expect(connect).rejects.toThrow();
+    expect(transport.stopCalls).toBe(1);
+    expect(client.isConnected()).toBe(false);
   });
 
   it('supports multiple onClose and onNotification listeners', async () => {
@@ -281,5 +338,84 @@ describe('McpClient', () => {
     });
     const tools = await promise;
     expect(tools).toEqual([{ name: 'echo', description: 'echo back' }]);
+  });
+
+  it('follows nextCursor across pages when listing tools', async () => {
+    const transport = makeMockTransport();
+    const client = new (class extends McpClient {
+      constructor() {
+        super('test', { kind: 'stdio', command: 'noop', args: [] });
+        (this as unknown as { transport: Transport }).transport = transport;
+        transport.onMessage((msg) => {
+          (this as unknown as { handleMessage: (m: unknown) => void }).handleMessage(msg);
+        });
+        (this as unknown as { connected: boolean }).connected = true;
+      }
+    })();
+
+    const promise = client.listTools();
+    await vi.waitFor(() => expect(transport.outgoing.length).toBe(1));
+    const first = transport.outgoing[0] as { id: number; method: string; params: unknown };
+    expect(first.method).toBe('tools/list');
+    expect(first.params).toEqual({});
+    transport.pushIncoming({
+      jsonrpc: '2.0',
+      id: first.id,
+      result: { tools: [{ name: 'page1-tool' }], nextCursor: 'cursor-1' },
+    });
+
+    await vi.waitFor(() => expect(transport.outgoing.length).toBe(2));
+    const second = transport.outgoing[1] as { id: number; method: string; params: unknown };
+    expect(second.method).toBe('tools/list');
+    expect(second.params).toEqual({ cursor: 'cursor-1' });
+    transport.pushIncoming({
+      jsonrpc: '2.0',
+      id: second.id,
+      result: { tools: [{ name: 'page2-tool' }] },
+    });
+
+    const tools = await promise;
+    expect(tools.map((t) => t.name)).toEqual(['page1-tool', 'page2-tool']);
+  });
+
+  it('stops paginating when a server repeats the same cursor', async () => {
+    const transport = makeMockTransport();
+    const client = new (class extends McpClient {
+      constructor() {
+        super('test', { kind: 'stdio', command: 'noop', args: [] });
+        (this as unknown as { transport: Transport }).transport = transport;
+        transport.onMessage((msg) => {
+          (this as unknown as { handleMessage: (m: unknown) => void }).handleMessage(msg);
+        });
+        (this as unknown as { connected: boolean }).connected = true;
+      }
+    })();
+
+    const promise = client.listResources();
+    await vi.waitFor(() => expect(transport.outgoing.length).toBe(1));
+    const first = transport.outgoing[0] as { id: number };
+    transport.pushIncoming({
+      jsonrpc: '2.0',
+      id: first.id,
+      result: {
+        resources: [{ uri: 'res://a', name: 'a' }],
+        nextCursor: 'loop',
+      },
+    });
+
+    await vi.waitFor(() => expect(transport.outgoing.length).toBe(2));
+    const second = transport.outgoing[1] as { id: number };
+    transport.pushIncoming({
+      jsonrpc: '2.0',
+      id: second.id,
+      result: {
+        resources: [{ uri: 'res://b', name: 'b' }],
+        nextCursor: 'loop',
+      },
+    });
+
+    const resources = await promise;
+    expect(resources.map((r) => r.name)).toEqual(['a', 'b']);
+    expect(transport.outgoing.length).toBe(2);
   });
 });

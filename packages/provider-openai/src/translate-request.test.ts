@@ -122,6 +122,33 @@ describe('translateMessages', () => {
     ]);
     expect(out[0]?.tool_calls?.[0]?.function.arguments).toBe('{"raw":true}');
   });
+
+  it('attaches the last seen tool_use id to a string-content tool message', () => {
+    expect(
+      translateMessages([
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'call_9', name: 'grep', arguments: { q: 'x' } }],
+        },
+        { role: 'tool', content: 'found 2 hits' },
+      ]),
+    ).toEqual([
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          { id: 'call_9', type: 'function', function: { name: 'grep', arguments: '{"q":"x"}' } },
+        ],
+      },
+      { role: 'tool', tool_call_id: 'call_9', content: 'found 2 hits' },
+    ]);
+  });
+
+  it('downgrades a string-content tool message with no preceding tool_use to a user turn', () => {
+    expect(translateMessages([{ role: 'tool', content: 'orphan output' }])).toEqual([
+      { role: 'user', content: 'orphan output' },
+    ]);
+  });
 });
 
 describe('translateTools', () => {
@@ -169,10 +196,39 @@ describe('buildChatRequestBody', () => {
       { stream: false },
     );
     expect(body.temperature).toBe(0.7);
-    expect(body.max_tokens).toBe(100);
+    expect(body.max_completion_tokens).toBe(100);
+    expect(body.max_tokens).toBeUndefined();
     expect(body.top_p).toBeUndefined();
     expect(body.stop).toBeUndefined();
     expect(body.stream_options).toBeUndefined();
+  });
+
+  it('emits the legacy max_tokens name when maxTokensParam requests it', () => {
+    const body = buildChatRequestBody(
+      { model: 'grok-4', messages: [], maxTokens: 100 },
+      { stream: false, maxTokensParam: 'max_tokens' },
+    );
+    expect(body.max_tokens).toBe(100);
+    expect(body.max_completion_tokens).toBeUndefined();
+  });
+
+  it('skips temperature and top_p for catalog reasoning models', () => {
+    const body = buildChatRequestBody(
+      { model: 'o3-mini', messages: [], temperature: 0.7, topP: 0.9, maxTokens: 100 },
+      { stream: false },
+    );
+    expect(body.temperature).toBeUndefined();
+    expect(body.top_p).toBeUndefined();
+    expect(body.max_completion_tokens).toBe(100);
+  });
+
+  it('skips temperature and top_p for o-series models not in the catalog', () => {
+    const body = buildChatRequestBody(
+      { model: 'o4-mini', messages: [], temperature: 0.7, topP: 0.9 },
+      { stream: false },
+    );
+    expect(body.temperature).toBeUndefined();
+    expect(body.top_p).toBeUndefined();
   });
 
   it('omits tools when none provided or empty', () => {

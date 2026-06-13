@@ -16,7 +16,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
     "@opencodex/core": "workspace:*",

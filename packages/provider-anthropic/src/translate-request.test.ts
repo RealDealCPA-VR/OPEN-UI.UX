@@ -8,13 +8,13 @@ import {
 } from './translate-request';
 
 const baseThinkReq: ChatRequest = {
-  model: 'claude-opus-4-7',
+  model: 'claude-sonnet-4-5',
   messages: [{ role: 'user', content: 'hi' }],
   maxTokens: 1000,
   temperature: 0.5,
 };
 
-describe('buildChatRequestBody thinking', () => {
+describe('buildChatRequestBody thinking (pre-4.6 extended thinking)', () => {
   it('omits thinking when reasoning is unset', () => {
     expect(buildChatRequestBody(baseThinkReq, { stream: false }).thinking).toBeUndefined();
   });
@@ -36,12 +36,93 @@ describe('buildChatRequestBody thinking', () => {
     expect(body.temperature).toBeUndefined();
     expect(body.top_p).toBeUndefined();
     expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 16384 });
+    expect(body.output_config).toBeUndefined();
   });
   it('uses an explicit maxTokens budget, floored to 1024', () => {
     expect(
       buildChatRequestBody({ ...baseThinkReq, reasoning: { maxTokens: 500 } }, { stream: false })
         .thinking,
     ).toEqual({ type: 'enabled', budget_tokens: 1024 });
+  });
+});
+
+describe('buildChatRequestBody thinking (adaptive models)', () => {
+  const models = ['claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'];
+  it.each(models)('emits adaptive thinking with no budget on %s', (model) => {
+    const body = buildChatRequestBody(
+      { ...baseThinkReq, model, reasoning: true },
+      { stream: false },
+    );
+    expect(body.thinking).toEqual({ type: 'adaptive' });
+    expect(body.output_config).toBeUndefined();
+    expect(body.max_tokens).toBe(1000);
+  });
+  it('emits adaptive thinking on haiku 4.5, including dated IDs', () => {
+    for (const model of ['claude-haiku-4-5', 'claude-haiku-4-5-20251001']) {
+      expect(
+        buildChatRequestBody({ ...baseThinkReq, model, reasoning: true }, { stream: false })
+          .thinking,
+      ).toEqual({ type: 'adaptive' });
+    }
+  });
+  it('maps reasoning effort to output_config.effort on effort-capable models', () => {
+    const body = buildChatRequestBody(
+      { ...baseThinkReq, model: 'claude-opus-4-7', reasoning: { effort: 'high' } },
+      { stream: false },
+    );
+    expect(body.thinking).toEqual({ type: 'adaptive' });
+    expect(body.output_config).toEqual({ effort: 'high' });
+  });
+  it('does not send output_config.effort to haiku 4.5', () => {
+    const body = buildChatRequestBody(
+      { ...baseThinkReq, model: 'claude-haiku-4-5', reasoning: { effort: 'low' } },
+      { stream: false },
+    );
+    expect(body.thinking).toEqual({ type: 'adaptive' });
+    expect(body.output_config).toBeUndefined();
+  });
+  it('ignores reasoning.maxTokens on adaptive models (no budget_tokens)', () => {
+    const body = buildChatRequestBody(
+      { ...baseThinkReq, model: 'claude-opus-4-8', reasoning: { maxTokens: 50_000 } },
+      { stream: false },
+    );
+    expect(body.thinking).toEqual({ type: 'adaptive' });
+    expect(body.max_tokens).toBe(1000);
+  });
+  it('strips temperature and top_p when adaptive thinking is on', () => {
+    const body = buildChatRequestBody(
+      { ...baseThinkReq, model: 'claude-sonnet-4-6', topP: 0.9, reasoning: true },
+      { stream: false },
+    );
+    expect(body.temperature).toBeUndefined();
+    expect(body.top_p).toBeUndefined();
+  });
+});
+
+describe('buildChatRequestBody sampling params on Opus 4.7/4.8', () => {
+  it.each(['claude-opus-4-7', 'claude-opus-4-8'])(
+    'never sends temperature/top_p to %s even without reasoning',
+    (model) => {
+      const body = buildChatRequestBody(
+        { model, messages: [{ role: 'user', content: 'hi' }], temperature: 0.5, topP: 0.9 },
+        { stream: false },
+      );
+      expect(body.temperature).toBeUndefined();
+      expect(body.top_p).toBeUndefined();
+    },
+  );
+  it('still forwards temperature/top_p to 4.6-family models without reasoning', () => {
+    const body = buildChatRequestBody(
+      {
+        model: 'claude-sonnet-4-6',
+        messages: [{ role: 'user', content: 'hi' }],
+        temperature: 0.5,
+        topP: 0.9,
+      },
+      { stream: false },
+    );
+    expect(body.temperature).toBe(0.5);
+    expect(body.top_p).toBe(0.9);
   });
 });
 

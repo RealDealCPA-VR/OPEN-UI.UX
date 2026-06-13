@@ -16,6 +16,9 @@ afterEach(() => {
 describe('migration v20 — checkpoints', () => {
   it('applies on a v19 DB adding both checkpoint tables + FK cascade', () => {
     applyMigrations(db);
+    db.exec('DROP INDEX IF EXISTS idx_conversations_project');
+    db.exec('ALTER TABLE conversations DROP COLUMN project_id');
+    db.exec('DROP TABLE IF EXISTS projects');
     db.exec('DROP INDEX IF EXISTS idx_conversations_starred');
     db.exec('ALTER TABLE conversations DROP COLUMN starred');
     db.exec('DROP TABLE IF EXISTS code_graph_edges');

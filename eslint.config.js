@@ -21,6 +21,9 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/.git/**',
       '**/coverage/**',
+      // Next.js build output under website/ (the export dir is already
+      // covered by **/out/**).
+      '**/.next/**',
       '**/*.config.js',
       '**/*.config.mjs',
       // Stray tsc emit artifacts that occasionally land in src/ (e.g. if

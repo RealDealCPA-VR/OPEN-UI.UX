@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { rmTmp } from '../../test/rm-tmp';
 
 vi.mock('../storage/settings', () => {
   const state: {
@@ -41,6 +42,10 @@ vi.mock('../logger', () => ({
 const settingsModule = await import('../storage/settings');
 const { buildChatSystemPrompt } = await import('./system-prompt-builder');
 const { ANTI_SYCOPHANCY_CLAUSE } = await import('../agent/anti-sycophancy');
+const { applyMigrations, setDbForTesting } = await import('../storage/db');
+const { createConversation, setConversationProject } = await import('../storage/conversations');
+const { createProject, setProjectInstructions } = await import('../storage/projects');
+const { default: Database } = await import('better-sqlite3');
 
 const __set = (settingsModule as unknown as { __set: (n: Record<string, unknown>) => void }).__set;
 
@@ -70,7 +75,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   if (tmpRoot !== null) {
-    await fs.rm(tmpRoot, { recursive: true, force: true });
+    await rmTmp(tmpRoot);
   }
 });
 
@@ -128,5 +133,61 @@ describe('buildChatSystemPrompt', () => {
     __set({ antiSycophancyEnabled: false });
     const result = await buildChatSystemPrompt({ basePrompt: '' });
     expect(result).toBeNull();
+  });
+
+  it('does not throw for a conversationId when storage is unavailable', async () => {
+    const result = await buildChatSystemPrompt({ basePrompt: 'Base.', conversationId: 'conv-x' });
+    expect(result).toContain('Base.');
+    expect(result).not.toContain('<project_instructions>');
+  });
+});
+
+describe('buildChatSystemPrompt project instructions (CD-21)', () => {
+  let memDb: InstanceType<typeof Database>;
+
+  beforeEach(() => {
+    memDb = new Database(':memory:');
+    memDb.pragma('foreign_keys = ON');
+    applyMigrations(memDb);
+    setDbForTesting(memDb);
+  });
+
+  afterEach(() => {
+    setDbForTesting(null);
+    memDb.close();
+  });
+
+  it('prepends the assigned project instructions before the base prompt', async () => {
+    const project = createProject('Acme', memDb);
+    setProjectInstructions(project.id, 'Always reply in haiku.', memDb);
+    const conversation = createConversation({}, memDb);
+    setConversationProject(conversation.id, project.id, memDb);
+
+    const result = await buildChatSystemPrompt({
+      basePrompt: 'Base.',
+      conversationId: conversation.id,
+    });
+    expect(result).toContain(
+      '<project_instructions>\nAlways reply in haiku.\n</project_instructions>',
+    );
+    expect(result).toContain('Base.');
+    expect(result?.indexOf('Always reply in haiku.')).toBeLessThan(result?.indexOf('Base.') ?? -1);
+  });
+
+  it('omits the block for unassigned conversations and blank instructions', async () => {
+    const conversation = createConversation({}, memDb);
+    const unassigned = await buildChatSystemPrompt({
+      basePrompt: 'Base.',
+      conversationId: conversation.id,
+    });
+    expect(unassigned).not.toContain('<project_instructions>');
+
+    const project = createProject('Acme', memDb);
+    setConversationProject(conversation.id, project.id, memDb);
+    const blank = await buildChatSystemPrompt({
+      basePrompt: 'Base.',
+      conversationId: conversation.id,
+    });
+    expect(blank).not.toContain('<project_instructions>');
   });
 });

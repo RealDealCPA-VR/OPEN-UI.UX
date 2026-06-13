@@ -21,6 +21,7 @@ interface ConversationRow {
   created_at: string;
   updated_at: string;
   starred: number;
+  project_id: string | null;
 }
 
 interface MessageRow {
@@ -61,6 +62,7 @@ function rowToConversation(row: ConversationRow): Conversation {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     starred: row.starred === 1,
+    projectId: row.project_id,
   };
 }
 
@@ -110,7 +112,7 @@ export interface CreateConversationInput {
 export function listConversations(db: Database.Database = getDb()): Conversation[] {
   const rows = db
     .prepare(
-      `SELECT id, title, provider_id, model_id, created_at, updated_at, starred
+      `SELECT id, title, provider_id, model_id, created_at, updated_at, starred, project_id
        FROM conversations ORDER BY starred DESC, updated_at DESC`,
     )
     .all() as ConversationRow[];
@@ -120,7 +122,7 @@ export function listConversations(db: Database.Database = getDb()): Conversation
 export function getConversation(id: string, db: Database.Database = getDb()): Conversation | null {
   const row = db
     .prepare(
-      `SELECT id, title, provider_id, model_id, created_at, updated_at, starred
+      `SELECT id, title, provider_id, model_id, created_at, updated_at, starred, project_id
        FROM conversations WHERE id = ?`,
     )
     .get(id) as ConversationRow | undefined;
@@ -180,8 +182,40 @@ export function setConversationStarred(
   return conversation;
 }
 
+/** Assign a conversation to a project (or unassign with null). */
+export function setConversationProject(
+  id: string,
+  projectId: string | null,
+  db: Database.Database = getDb(),
+): Conversation {
+  if (projectId !== null) {
+    const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(projectId) as
+      | { id: string }
+      | undefined;
+    if (!project) throw new Error(`project ${projectId} not found`);
+  }
+  const result = withSqliteBusyRetry(() =>
+    db.prepare(`UPDATE conversations SET project_id = ? WHERE id = ?`).run(projectId, id),
+  );
+  if (result.changes === 0) throw new Error(`conversation ${id} not found`);
+  const conversation = getConversation(id, db);
+  if (!conversation) throw new Error(`conversation ${id} not found after project assignment`);
+  return conversation;
+}
+
 export function deleteConversation(id: string, db: Database.Database = getDb()): void {
-  withSqliteBusyRetry(() => db.prepare('DELETE FROM conversations WHERE id = ?').run(id));
+  // messages_fts is a standalone FTS5 table — the FK cascade that removes the
+  // messages rows does not touch it, so purge it here or deleted conversation
+  // text stays recoverable in the index forever.
+  const tx = db.transaction(() => {
+    try {
+      db.prepare('DELETE FROM messages_fts WHERE conversation_id = ?').run(id);
+    } catch {
+      // best-effort; do not block conversation deletion if FTS is unavailable
+    }
+    db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
+  });
+  withSqliteBusyRetry(() => tx());
 }
 
 export function listMessages(

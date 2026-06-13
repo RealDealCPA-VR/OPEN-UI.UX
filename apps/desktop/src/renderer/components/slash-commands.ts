@@ -140,6 +140,36 @@ export function formatPluginCommandInsert(command: PluginSlashCommandDescriptor)
   return `/${command.name} `;
 }
 
+export interface PluginCommandInvocation {
+  command: PluginSlashCommandDescriptor;
+  args: string;
+}
+
+/**
+ * Recognize a composer submission that invokes a plugin slash command:
+ * a single-line `/name [args...]` where `name` matches a registered plugin
+ * command. The renderer-side mirror of main's `detectSkillInvocation` for
+ * `/skill:` messages — selection inserts the command text, dispatch happens
+ * at send time so typed args reach the handler. Multi-line messages are never
+ * intercepted so prose that happens to start with a matching token still
+ * reaches the model intact.
+ */
+export function detectPluginCommandInvocation(
+  text: string,
+  commands: ReadonlyArray<PluginSlashCommandDescriptor>,
+): PluginCommandInvocation | null {
+  if (commands.length === 0) return null;
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('/') || trimmed.includes('\n')) return null;
+  const spaceIdx = trimmed.indexOf(' ');
+  const name = spaceIdx === -1 ? trimmed.slice(1) : trimmed.slice(1, spaceIdx);
+  if (name.length === 0) return null;
+  const command = commands.find((c) => c.name === name);
+  if (!command) return null;
+  const args = spaceIdx === -1 ? '' : trimmed.slice(spaceIdx + 1).trim();
+  return { command, args };
+}
+
 /**
  * Build the grouped entry list shown in the dropdown. Skills land in a single
  * "Skills" group; MCP prompts get one group per server; plugin slash commands

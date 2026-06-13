@@ -1,9 +1,10 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { mkdtemp, rm, stat, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, stat, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { rmTmp } from '../../test/rm-tmp';
 import {
   createWorktree,
   getDiffBundle,
@@ -46,7 +47,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (baseTmp) {
-    await rm(baseTmp, { recursive: true, force: true });
+    await rmTmp(baseTmp);
   }
 });
 
@@ -67,7 +68,7 @@ describe('worktrees', () => {
 
   afterEach(async () => {
     if (repoRoot) {
-      await rm(repoRoot, { recursive: true, force: true });
+      await rmTmp(repoRoot);
     }
   });
 
@@ -80,7 +81,7 @@ describe('worktrees', () => {
     try {
       expect(await isGitRepo(tmp)).toBe(false);
     } finally {
-      await rm(tmp, { recursive: true, force: true });
+      await rmTmp(tmp);
     }
   });
 
@@ -226,7 +227,7 @@ describe('worktrees', () => {
     try {
       await expect(createWorktree(tmp)).rejects.toThrow(/git repo/i);
     } finally {
-      await rm(tmp, { recursive: true, force: true });
+      await rmTmp(tmp);
     }
   });
 
@@ -255,7 +256,7 @@ describe('worktrees (no-git fallback)', () => {
     try {
       expect(await isGitRepo(tmp)).toBe(false);
     } finally {
-      await rm(tmp, { recursive: true, force: true });
+      await rmTmp(tmp);
     }
   });
 });
